@@ -10,7 +10,7 @@ import org.springframework.util.AntPathMatcher;
  * URL-권한 매핑을 DB 에서 로딩해 메모리에 캐시한다.
  * 운영에서 권한 변경 시 reload() 호출(관리자 API/스케줄러)로 무중단 반영.
  */
-public class SecurityMetadataService {
+public final class SecurityMetadataService {
 
     private final SecurityMapper securityMapper;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();

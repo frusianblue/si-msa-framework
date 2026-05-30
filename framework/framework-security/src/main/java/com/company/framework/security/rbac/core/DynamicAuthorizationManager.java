@@ -24,7 +24,7 @@ public class DynamicAuthorizationManager implements AuthorizationManager<Request
 
     @Override
     public AuthorizationDecision authorize(
-            Supplier<Authentication> authentication, RequestAuthorizationContext context) {
+            Supplier<? extends Authentication> authentication, RequestAuthorizationContext context) {
         var request = context.getRequest();
         List<String> requiredRoles = metadataService.requiredRoles(request.getRequestURI(), request.getMethod());
 
