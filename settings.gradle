@@ -9,6 +9,7 @@ include 'framework:framework-redis'        // 선택형: Redis TokenStore
 include 'framework:framework-commoncode'   // 선택형: 공통코드 관리
 include 'framework:framework-file'         // 선택형: 파일 업로드(로컬/NAS)
 include 'framework:framework-file-s3'      // 선택형: S3 저장소
+include 'framework:framework-idempotency'  // 선택형: 멱등성(정확히-한번) — 신규
 
 // ----- 업무 / 인프라 서비스 -----
 include 'services:gateway'

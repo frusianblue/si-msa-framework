@@ -1,0 +1,11 @@
+// 선택형 모듈: 멱등성(정확히-한번). 의존성 추가 + framework.idempotency.enabled=true 로만 활성.
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    api project(':framework:framework-core')
+    // web/redis 는 호스트 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지)
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+}
