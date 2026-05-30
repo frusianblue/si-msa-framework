@@ -34,7 +34,7 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
             return;
         }
 
-        ContentCachingRequestWrapper req = new ContentCachingRequestWrapper(request);
+        ContentCachingRequestWrapper req = new ContentCachingRequestWrapper(request, MAX_BODY);
         ContentCachingResponseWrapper res = new ContentCachingResponseWrapper(response);
         long start = System.currentTimeMillis();
         try {

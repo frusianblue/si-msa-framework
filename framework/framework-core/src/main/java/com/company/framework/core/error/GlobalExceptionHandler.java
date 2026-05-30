@@ -79,7 +79,7 @@ public class GlobalExceptionHandler {
     // ===== 업로드 =====
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleUploadSize(MaxUploadSizeExceededException e) {
-        return build(HttpStatus.PAYLOAD_TOO_LARGE, "E0413", "업로드 가능한 파일 크기를 초과했습니다.");
+        return build(HttpStatus.CONTENT_TOO_LARGE, "E0413", "업로드 가능한 파일 크기를 초과했습니다.");
     }
 
     // ===== 최종 폴백 =====
