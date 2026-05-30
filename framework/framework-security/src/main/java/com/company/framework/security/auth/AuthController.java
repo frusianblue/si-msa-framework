@@ -1,6 +1,9 @@
 package com.company.framework.security.auth;
 
 import com.company.framework.core.response.ApiResponse;
+import com.company.framework.security.loginattempt.LoginAttemptProperties;
+import com.company.framework.security.support.ClientIpResolver;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,14 +16,17 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final LoginService loginService;
+    private final LoginAttemptProperties loginAttemptProperties;
 
-    public AuthController(LoginService loginService) {
+    public AuthController(LoginService loginService, LoginAttemptProperties loginAttemptProperties) {
         this.loginService = loginService;
+        this.loginAttemptProperties = loginAttemptProperties;
     }
 
     @PostMapping("/login")
-    public ApiResponse<TokenResponse> login(@RequestBody LoginCommand command) {
-        return ApiResponse.ok(loginService.login(command), "로그인 성공");
+    public ApiResponse<TokenResponse> login(@RequestBody LoginCommand command, HttpServletRequest request) {
+        String clientIp = ClientIpResolver.resolve(request, loginAttemptProperties.getClientIpHeader());
+        return ApiResponse.ok(loginService.login(command, clientIp), "로그인 성공");
     }
 
     @PostMapping("/refresh")
