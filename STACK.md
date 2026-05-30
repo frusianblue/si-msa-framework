@@ -45,7 +45,7 @@
 | `spring-boot-starter-cache` + `caffeine` | 공통 캐시 | framework-core |
 | `micrometer-tracing-bridge-otel` | 분산추적(traceId/spanId) | framework-core, gateway |
 | `spring-boot-starter-security` | 인증/인가 | framework-security |
-| `spring-boot-starter-data-redis` | Redis TokenStore | framework-redis(선택) |
+| `spring-boot-starter-data-redis` | Redis TokenStore + 로그인 시도 잠금 저장소(다중 인스턴스 공유) | framework-redis(선택) |
 | `spring-boot-starter-flyway` + `flyway-database-postgresql` | DB 마이그레이션(PG 10+) | 서비스 |
 | `org.postgresql:postgresql` | 운영 DB 드라이버(프레임워크는 미포함) | 각 서비스 |
 | `com.h2database:h2` | 로컬/테스트 DB | 각 서비스 |

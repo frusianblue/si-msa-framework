@@ -42,16 +42,38 @@ deploy/
 - **CI = Jenkins**(`deploy/cicd/Jenkinsfile`): Build&Test(Testcontainers+JaCoCo) → 품질 게이트(Spotless/OWASP/Sonar 병렬) → Flyway Validate(운영DB) → 이미지 빌드/푸시 → K8s 롤아웃. (구 `ci-cd.yml`(GitHub Actions)은 레거시 — 사용 시 정리 권장)
 
 ## 처음 실행하기
-```bash
-# 1) 로컬(H2) 프로필로 user-service 기동 (gradlew 동봉 — 별도 gradle 설치 불필요)
-./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local'
 
-# 2) 호출 예시 (실 로그인: loginId + password)
+**사전 준비**: JDK 21 만 있으면 된다. 로컬은 H2 인메모리 + Flyway 자동 마이그레이션/시드라 **DB·Redis 등 외부 인프라가 불필요**하다(토큰/로그인 잠금도 로컬은 `memory`). Docker 는 통합테스트(Testcontainers-PostgreSQL)나 이미지 빌드 때만 필요하다.
+
+```bash
+# 빌드 (gradlew 동봉 — 별도 gradle 설치 불필요)
+./gradlew spotlessApply        # 포맷 정렬(최초/포맷 변경 시)
+./gradlew clean build          # 컴파일 + 테스트 + 커버리지   (테스트 생략: build -x test)
+```
+
+```bash
+# 로컬 기동: 기본 활성 프로파일이 없으므로 local 을 반드시 명시해야 H2+시드가 적용된다.
+./gradlew :services:user-service:bootRun  --args='--spring.profiles.active=local'   # → :8080
+./gradlew :services:admin-service:bootRun --args='--spring.profiles.active=local'   # → :8081 (다른 터미널)
+# 환경변수도 가능: SPRING_PROFILES_ACTIVE=local  /  devtools 포함이라 코드 변경 시 핫리로드
+```
+
+```bash
+# 동작 확인 — 시드 계정: admin/admin123(ADMIN), hong/hong123(USER)
 curl -X POST localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' \
      -d '{"loginId":"admin","password":"admin123"}'
+# 같은 loginId 로 5회 실패하면 6번째부터 429(LOGIN_LOCKED)
+
+# 회원가입: password 필수 + 강도 정책(min-length 9, 3종 이상) 충족해야 201, 미달이면 400
 curl -X POST localhost:8080/api/v1/users -H 'Content-Type: application/json' \
-     -d '{"loginId":"hong","name":"홍길동","email":"hong@test.com","phone":"010-1234-5678"}'
+     -d '{"loginId":"kim","password":"Passw0rd!","name":"김","email":"kim@test.com","phone":"010-1234-5678"}'
+
+# 본인 비밀번호 변경(현재 비번 필요) / 관리자 강제 초기화(ADMIN 토큰 필요)
+# PATCH /api/v1/users/me/password        body: {"currentPassword","newPassword"}
+# PATCH /api/v1/users/{id}/password/reset body: {"newPassword"}        ← 비ADMIN 은 403
 ```
+
+> **게이트웨이(:8000) 로컬 주의**: 라우트가 `lb://user-service` 인데 디스커버리 의존성이 없어 로컬에선 `lb://` 가 해석되지 않는다. **로컬은 8080/8081 로 서비스에 직접 호출**하고, k8s 에선 `http://user-service:8080` 직접 URI 로 전환해 쓴다.
 
 ## 컨테이너 / 배포
 ```bash
@@ -62,6 +84,7 @@ docker build -f deploy/docker/Dockerfile \
 kubectl apply -f deploy/k8s/
 ```
 > 실제 운영 흐름은 `deploy/cicd/Jenkinsfile` 한 곳에서 빌드·테스트·게이트·이미지·롤아웃을 수행한다.
+> **다중 인스턴스 주의**: k8s 매니페스트는 `replicas: 2` 다. 인스턴스가 둘 이상이면 로그인 잠금/토큰을 공유해야 하므로 운영 프로파일에서 `framework.security.login-attempt.type=redis` 와 `token-store.type=redis` 를 켠다(기본 `memory` 는 인스턴스별이라 잠금 우회 가능).
 
 ## 확장 가이드
 - 새 업무 서비스: `services/` 아래 모듈 추가 → `settings.gradle`에 include → `framework-*` 의존.
