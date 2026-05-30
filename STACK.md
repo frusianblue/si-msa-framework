@@ -7,9 +7,9 @@
 ---
 
 ## 1. 버전 정책
-- 모든 버전은 `gradle/libs.versions.toml` 가 단일 소스. (`gradle.properties` 의 버전 라인은 제거)
+- 모든 버전은 `gradle/libs.versions.toml` 가 단일 소스. (`gradle.properties` 의 버전 라인 제거, `org.gradle.*` 만 유지)
 - 루트 `build.gradle` 의 `ext { }` 브리지로 기존 모듈의 `${...Version}` 참조가 그대로 동작 → 모듈은 `libs.*` 로 점진 이관.
-- Boot BOM(`spring-boot-dependencies`)이 관리하는 라이브러리는 **버전을 적지 않는다**(BOM 위임). 카탈로그엔 BOM 밖 라이브러리/플러그인만 버전 명시.
+- Boot BOM(`spring-boot-dependencies`)이 관리하는 라이브러리는 **버전을 적지 않는다**(BOM 위임). 단, Testcontainers 는 BOM 이 안 잡아주므로 `testcontainers-bom` 을 명시 import.
 
 ## 2. 적용된 Gradle 플러그인
 | 플러그인 id | 버전 | 용도 | 적용 위치 |
@@ -35,7 +35,7 @@
 | `org.mapstruct:mapstruct(+processor)` | 1.6.3 | DTO 컴파일타임 변환(런타임 비용 0) | framework-commoncode 등 |
 | `org.projectlombok:lombok-mapstruct-binding` | 0.2.0 | Lombok+MapStruct 병행 | (MapStruct 쓰는 모듈) |
 | `software.amazon.awssdk:bom` / `s3` | 2.31.0 | S3 저장소 (Spring Cloud AWS 회피) | framework-file-s3 |
-| `com.github.gavlyukovskiy:datasource-proxy-spring-boot-starter` | 2.0.0 | SQL 디버깅(바인딩 값/슬로우쿼리) — **Boot 4 는 2.0.0+** | 서비스(개발) |
+| `com.github.gavlyukovskiy:datasource-proxy-spring-boot-starter` | 2.0.0 | **[적용]** SQL 디버깅(바인딩 값/슬로우쿼리) — Boot 4 는 2.0.0+ | 서비스(개발) |
 
 ### 3.2 BOM 관리(버전 미명시)
 | 라이브러리 | 용도 | 적용 위치 |
@@ -43,6 +43,7 @@
 | `spring-boot-starter-web/validation/actuator` | 웹/검증/관측 | framework-core |
 | `spring-boot-starter-aspectj` | AOP (Boot 4: starter-aop 개명) | framework-core |
 | `spring-boot-starter-cache` + `caffeine` | 공통 캐시 | framework-core |
+| `org.springframework.security:spring-security-core` (compileOnly) | AuditLogAspect 의 SecurityContextHolder 참조(강결합 회피) | framework-core |
 | `micrometer-tracing-bridge-otel` | 분산추적(traceId/spanId) | framework-core, gateway |
 | `spring-boot-starter-security` | 인증/인가 | framework-security |
 | `spring-boot-starter-data-redis` | Redis TokenStore | framework-redis(선택) |
@@ -56,18 +57,23 @@
 | 항목 | 버전 | 용도 | 적용 위치 |
 |---|---|---|---|
 | `spring-boot-starter-test` | BOM | JUnit5/AssertJ/Mockito | 전 모듈 test |
+| `org.testcontainers:testcontainers-bom` | 1.20.6 (명시) | Testcontainers 버전 중앙 관리 | 루트 dependencyManagement |
 | `spring-boot-testcontainers` | BOM | 실 PostgreSQL 통합테스트(@ServiceConnection) | 서비스 test |
-| `org.testcontainers:junit-jupiter` / `postgresql` | BOM | 컨테이너 기동/PG 모듈 | 서비스 test |
+| `org.testcontainers:junit-jupiter` / `postgresql` | (testcontainers-bom) | 컨테이너 기동/PG 모듈 | 서비스 test |
 | `spring-security-test` | BOM | 보안 테스트 | framework-security test |
-| `spring-boot-devtools` | BOM | 핫 리로드(developmentOnly) | 서비스 |
+| `spring-boot-devtools` | BOM | **[적용]** 핫 리로드(developmentOnly) | 서비스 |
 
 ## 5. Boot 4 호환 주의 (되돌리지 말 것)
 - **Gradle 8.14+** 필수 (Boot 4 Gradle 플러그인 요구사항).
 - **Jackson 3** (`tools.jackson.*`) — 커스터마이저는 `JsonMapperBuilderCustomizer`.
-- **Spring Security 7** — `AuthorizationManager.authorize()` (구 `check()` 제거).
+  - `WRITE_DATES_AS_TIMESTAMPS` 는 `SerializationFeature` → `tools.jackson.databind.cfg.DateTimeFeature` 로 이동(3.0 기본 false).
+- **Spring 7** — `ContentCachingRequestWrapper` 단일인자 생성자 제거 → `(HttpServletRequest, int contentCacheLimit)` 필수.
+- **Spring Security 7** — `AuthorizationManager.authorize()` (구 `check()` 제거), 인자 `Supplier<? extends Authentication>`.
+- **framework-core** — `AuditLogAspect` 가 spring-security 를 쓰므로 `spring-security-core` 를 compileOnly 로 추가.
 - **Gateway** 아티팩트 `spring-cloud-starter-gateway-server-webflux`.
 - **Spring Cloud 2025.1.x(Oakwood)** — 2025.0.x 는 Boot 4 비호환.
 - **datasource-proxy / p6spy 스타터** — 반드시 `2.0.0+`.
+- **Testcontainers** — Boot BOM 미관리 → `testcontainers-bom` 명시 import.
 - **Spring Cloud AWS 미사용** — Jackson2 의존 회피 위해 AWS SDK v2 직접 사용.
 - Docker 이미지: 레이어 추출 후 엔트리포인트는 `org.springframework.boot.loader.launch.JarLauncher` (구 `java -jar` 대체).
 
@@ -91,4 +97,4 @@
 - 플러그인 최신: https://plugins.gradle.org/ 에서 id 검색
 - 라이브러리 최신: https://central.sonatype.com/ 또는 https://mvnrepository.com/
 - 취약점: `./gradlew dependencyCheckAggregate` → `build/reports/dependency-check-report.html`
-- Boot BOM 이 관리하는 버전 확인: `./gradlew :services:user-service:dependencies` 로 실제 해소 버전 확인
+- Boot BOM 이 관리하는 버전 확인: `./gradlew :services:user-service:dependencies`
