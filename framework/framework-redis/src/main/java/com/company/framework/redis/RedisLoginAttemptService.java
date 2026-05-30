@@ -33,8 +33,7 @@ public class RedisLoginAttemptService implements LoginAttemptService {
     @Override
     public void assertNotLocked(String key) {
         if (isLocked(key)) {
-            throw new BusinessException(
-                    ErrorCode.Common.LOGIN_LOCKED, "로그인 시도가 많아 계정이 일시적으로 잠겼습니다. 잠시 후 다시 시도하세요.");
+            throw new BusinessException(ErrorCode.Common.LOGIN_LOCKED, "로그인 시도가 많아 계정이 일시적으로 잠겼습니다. 잠시 후 다시 시도하세요.");
         }
     }
 
