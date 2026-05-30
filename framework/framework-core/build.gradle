@@ -9,6 +9,11 @@ dependencies {
     api 'com.github.ben-manes.caffeine:caffeine'
     // 분산추적/관측성 (Micrometer + OTel)
     api 'io.micrometer:micrometer-tracing-bridge-otel'
+
+    // AuditLogAspect 가 SecurityContextHolder 로 현재 사용자 조회 → 강결합 회피 위해 compileOnly
+    // (보안 모듈이 있는 프로젝트에선 런타임 적용, 없으면 무시)
+    compileOnly 'org.springframework.security:spring-security-core'
+
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

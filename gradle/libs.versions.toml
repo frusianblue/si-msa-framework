@@ -14,6 +14,7 @@ mapstruct               = "1.6.3"
 awsSdk                  = "2.31.0"
 lombokMapstructBinding  = "0.2.0"
 datasourceProxy         = "2.0.0"        # Boot 4 지원은 2.0.0 부터 (1.x 비호환)
+testcontainers          = "1.20.6"       # Boot BOM 이 안 잡아줘서 명시 (testcontainers-bom 으로 중앙 관리)
 
 # build / quality 플러그인
 dependencyManagement    = "1.1.7"
@@ -33,6 +34,7 @@ jjwt-jackson                 = { module = "io.jsonwebtoken:jjwt-jackson",       
 springdoc-openapi-webmvc-ui  = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui",    version.ref = "springdoc" }
 awssdk-bom                   = { module = "software.amazon.awssdk:bom",                            version.ref = "awsSdk" }
 datasource-proxy-starter     = { module = "com.github.gavlyukovskiy:datasource-proxy-spring-boot-starter", version.ref = "datasourceProxy" }
+testcontainers-bom           = { module = "org.testcontainers:testcontainers-bom",                version.ref = "testcontainers" }
 
 [plugins]
 spring-boot                  = { id = "org.springframework.boot",        version.ref = "springBoot" }
