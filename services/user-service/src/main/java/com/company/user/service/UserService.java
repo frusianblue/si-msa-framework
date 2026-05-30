@@ -9,6 +9,7 @@ import com.company.framework.mybatis.support.CurrentUserProvider;
 import com.company.framework.security.password.PasswordPolicy;
 import com.company.user.domain.User;
 import com.company.user.dto.PasswordChangeRequest;
+import com.company.user.dto.PasswordResetRequest;
 import com.company.user.dto.UserCreateRequest;
 import com.company.user.dto.UserResponse;
 import com.company.user.mapper.UserMapper;
@@ -57,15 +58,18 @@ public class UserService {
     }
 
     /**
-     * 본인 비밀번호 변경: 현재 비밀번호 확인 → 정책 검증 → BCrypt 재인코딩.
-     * (관리자 강제 초기화는 현재 비밀번호 없이 동작해야 하므로 별도 플로우로 분리한다.)
+     * 본인 비밀번호 변경: 인증 컨텍스트의 사용자 본인만 대상(타인 변경 불가).
+     * 현재 비밀번호 확인 → 동일 비번 거부 → 정책 검증 → BCrypt 재저장.
      */
     @Transactional
     @AuditLog(action = "USER_PASSWORD_CHANGE", target = "USER")
-    public void changePassword(Long id, PasswordChangeRequest req) {
+    public void changeMyPassword(PasswordChangeRequest req) {
+        String loginId = currentUserProvider
+                .getCurrentUser()
+                .orElseThrow(() -> new BusinessException(ErrorCode.Common.UNAUTHORIZED, "인증 정보가 없습니다."));
         User user = userMapper
-                .findById(id)
-                .orElseThrow(() -> new BusinessException(ErrorCode.Common.NOT_FOUND, "사용자를 찾을 수 없습니다: " + id));
+                .findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.Common.NOT_FOUND, "사용자를 찾을 수 없습니다: " + loginId));
         if (user.getPassword() == null || !passwordEncoder.matches(req.currentPassword(), user.getPassword())) {
             throw new BusinessException(ErrorCode.Common.INVALID_INPUT, "현재 비밀번호가 일치하지 않습니다.");
         }
@@ -73,9 +77,22 @@ public class UserService {
             throw new BusinessException(ErrorCode.Common.INVALID_INPUT, "새 비밀번호는 현재 비밀번호와 달라야 합니다.");
         }
         passwordPolicy.validate(req.newPassword()); // 강도 검증(위반 시 INVALID_INPUT)
-        String encoded = passwordEncoder.encode(req.newPassword());
+        userMapper.updatePassword(user.getId(), passwordEncoder.encode(req.newPassword()), loginId);
+    }
+
+    /**
+     * 관리자 강제 초기화: 현재 비밀번호 없이 대상 사용자 비밀번호를 교체(ADMIN 전용 — 컨트롤러에서 인가).
+     * 본인 확인 절차가 없으므로 반드시 호출 측에서 ADMIN 권한을 강제할 것.
+     */
+    @Transactional
+    @AuditLog(action = "USER_PASSWORD_RESET", target = "USER")
+    public void resetPassword(Long id, PasswordResetRequest req) {
+        User user = userMapper
+                .findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.Common.NOT_FOUND, "사용자를 찾을 수 없습니다: " + id));
+        passwordPolicy.validate(req.newPassword()); // 강도 검증(위반 시 INVALID_INPUT)
         String updatedBy = currentUserProvider.getCurrentUser().orElse("system");
-        userMapper.updatePassword(id, encoded, updatedBy);
+        userMapper.updatePassword(user.getId(), passwordEncoder.encode(req.newPassword()), updatedBy);
     }
 
     @Transactional(readOnly = true)
