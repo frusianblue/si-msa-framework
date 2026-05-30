@@ -13,12 +13,14 @@ springdoc               = "3.0.3"
 mapstruct               = "1.6.3"
 awsSdk                  = "2.31.0"
 lombokMapstructBinding  = "0.2.0"
+datasourceProxy         = "2.0.0"        # Boot 4 지원은 2.0.0 부터 (1.x 비호환)
 
 # build / quality 플러그인
 dependencyManagement    = "1.1.7"
 owaspDependencyCheck    = "12.1.0"
 sonarqube               = "6.0.1.5171"
 spotless                = "8.5.1"
+flyway                  = "11.15.0"      # Flyway Gradle 플러그인 (CI 마이그레이션용)
 
 [libraries]
 mybatis-spring-boot-starter  = { module = "org.mybatis.spring.boot:mybatis-spring-boot-starter", version.ref = "mybatisStarter" }
@@ -30,6 +32,7 @@ jjwt-impl                    = { module = "io.jsonwebtoken:jjwt-impl",          
 jjwt-jackson                 = { module = "io.jsonwebtoken:jjwt-jackson",                          version.ref = "jjwt" }
 springdoc-openapi-webmvc-ui  = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui",    version.ref = "springdoc" }
 awssdk-bom                   = { module = "software.amazon.awssdk:bom",                            version.ref = "awsSdk" }
+datasource-proxy-starter     = { module = "com.github.gavlyukovskiy:datasource-proxy-spring-boot-starter", version.ref = "datasourceProxy" }
 
 [plugins]
 spring-boot                  = { id = "org.springframework.boot",        version.ref = "springBoot" }
@@ -37,3 +40,4 @@ spring-dependency-management = { id = "io.spring.dependency-management", version
 owasp-dependencycheck        = { id = "org.owasp.dependencycheck",       version.ref = "owaspDependencyCheck" }
 sonarqube                    = { id = "org.sonarqube",                   version.ref = "sonarqube" }
 spotless                     = { id = "com.diffplug.spotless",           version.ref = "spotless" }
+flyway                       = { id = "org.flywaydb.flyway",             version.ref = "flyway" }

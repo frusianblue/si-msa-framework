@@ -1,0 +1,111 @@
+// Jenkinsfile  (선언형 파이프라인)
+// 전제: 빌드 노드에 JDK 21, Docker 데몬, kubectl, (Sonar/Coverage/JUnit) Jenkins 플러그인 설치.
+// Testcontainers 통합테스트가 Docker 데몬을 사용하므로 빌드 노드에 Docker 필요.
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        REGISTRY   = 'registry.example.com'
+        IMAGE      = 'si-msa/user-service'
+        SERVICE    = 'services:user-service'
+        JAR        = 'services/user-service/build/libs/user-service-1.0.0.jar'
+        IMAGE_TAG  = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(12) : env.BUILD_NUMBER}"
+        // 비밀이 아닌 접속 URL (DB 계정/비번은 credentials 로 주입)
+        FLYWAY_URL = 'jdbc:postgresql://db.prod.internal:5432/sidb'
+    }
+
+    stages {
+        // 단위 + Testcontainers 통합테스트 + JaCoCo 리포트
+        stage('Build & Test') {
+            steps {
+                sh './gradlew :${SERVICE}:build --no-daemon'
+            }
+            post {
+                always {
+                    junit '**/build/test-results/test/*.xml'
+                    // JaCoCo 플러그인 설치 시:
+                    // recordCoverage(tools: [[parser: 'JACOCO', pattern: '**/build/reports/jacoco/test/jacocoTestReport.xml']])
+                }
+            }
+        }
+
+        // 정적/포맷/취약점/Sonar — 병렬 게이트
+        stage('Quality Gates') {
+            parallel {
+                stage('Spotless') {
+                    steps { sh './gradlew spotlessCheck --no-daemon' }
+                }
+                stage('OWASP') {
+                    // High/Critical CVE 발견 시 빌드 실패 (failBuildOnCVSS=7.0)
+                    steps { sh './gradlew dependencyCheckAggregate --no-daemon' }
+                }
+                stage('SonarQube') {
+                    when { branch 'main' }
+                    steps {
+                        withSonarQubeEnv('sonar') {
+                            sh './gradlew sonar --no-daemon'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ===== 배포 게이트: 운영 DB 마이그레이션 정합성 검증 =====
+        // flywayValidate: 적용된 마이그레이션의 체크섬이 스크립트와 일치하는지 확인
+        //  → 누군가 과거 마이그레이션을 수정했거나 DB 드리프트가 있으면 여기서 실패.
+        //    (신규 미적용 마이그레이션은 통과 — 배포 후 앱 기동 시 적용됨)
+        stage('Flyway Validate (deploy gate)') {
+            when { branch 'main' }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'db-prod',
+                        usernameVariable: 'DB_USER', passwordVariable: 'DB_PASS')]) {
+                    sh '''./gradlew :${SERVICE}:flywayValidate --no-daemon \
+                          -Pflyway.url=${FLYWAY_URL} \
+                          -Pflyway.user=${DB_USER} \
+                          -Pflyway.password=${DB_PASS}'''
+                }
+            }
+        }
+
+        // ===== 이미지 빌드 & 푸시 (jar 는 위에서 빌드됨, Docker 는 런타임 이미지만) =====
+        stage('Docker Build & Push') {
+            when { branch 'main' }
+            steps {
+                sh './gradlew :${SERVICE}:bootJar --no-daemon'
+                sh '''docker build -f deploy/docker/Dockerfile \
+                      --build-arg JAR_FILE=${JAR} \
+                      -t ${REGISTRY}/${IMAGE}:${IMAGE_TAG} \
+                      -t ${REGISTRY}/${IMAGE}:latest .'''
+                withCredentials([usernamePassword(credentialsId: 'registry',
+                        usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
+                    sh 'echo ${REG_PASS} | docker login ${REGISTRY} -u ${REG_USER} --password-stdin'
+                    sh 'docker push ${REGISTRY}/${IMAGE}:${IMAGE_TAG}'
+                    sh 'docker push ${REGISTRY}/${IMAGE}:latest'
+                }
+            }
+        }
+
+        // ===== K8s 롤아웃 =====
+        stage('Deploy to K8s') {
+            when { branch 'main' }
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh '''kubectl apply -f deploy/k8s/
+                          kubectl -n si-msa set image deployment/user-service \
+                            user-service=${REGISTRY}/${IMAGE}:${IMAGE_TAG}
+                          kubectl -n si-msa rollout status deployment/user-service --timeout=120s'''
+                }
+            }
+        }
+    }
+
+    post {
+        always { cleanWs() }
+    }
+}
