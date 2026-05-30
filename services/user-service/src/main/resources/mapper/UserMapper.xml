@@ -7,9 +7,17 @@
 
     <insert id="insert" parameterType="com.company.user.domain.User"
             useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO users (login_id, name, email, phone, role, created_at, created_by)
-        VALUES (#{loginId}, #{name}, #{email}, #{phone}, #{role}, #{createdAt}, #{createdBy})
+        INSERT INTO users (login_id, password, name, email, phone, role, created_at, created_by)
+        VALUES (#{loginId}, #{password}, #{name}, #{email}, #{phone}, #{role}, #{createdAt}, #{createdBy})
     </insert>
+
+    <update id="updatePassword">
+        UPDATE users
+           SET password = #{password},
+               updated_at = CURRENT_TIMESTAMP,
+               updated_by = #{updatedBy}
+         WHERE id = #{id}
+    </update>
 
     <select id="findById" resultType="com.company.user.domain.User">
         SELECT * FROM users WHERE id = #{id}
@@ -28,13 +36,4 @@
     <select id="countAll" resultType="long">
         SELECT COUNT(*) FROM users
     </select>
-
-    <update id="updatePassword">
-        UPDATE users
-        SET password = #{password},
-        updated_at = CURRENT_TIMESTAMP,
-        updated_by = #{updatedBy}
-        WHERE id = #{id}
-    </update>
-
 </mapper>

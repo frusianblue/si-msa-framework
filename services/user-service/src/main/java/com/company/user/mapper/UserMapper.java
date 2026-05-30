@@ -11,13 +11,13 @@ import org.apache.ibatis.annotations.Param;
 public interface UserMapper {
     int insert(User user);
 
+    int updatePassword(@Param("id") Long id, @Param("password") String password, @Param("updatedBy") String updatedBy);
+
     Optional<User> findById(@Param("id") Long id);
 
     Optional<User> findByLoginId(@Param("loginId") String loginId);
 
     List<User> findPage(@Param("page") PageRequest page);
-
-    int updatePassword(@Param("id") Long id, @Param("password") String password, @Param("updatedBy") String updatedBy);
 
     long countAll();
 }
