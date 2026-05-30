@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * 전사 표준 인증 엔드포인트. 인증 방식이 달라도 모든 프로젝트가 동일한 URL/응답을 갖는다.
- * /api/*/auth/** 는 SecurityAutoConfiguration 에서 permitAll.
+ * 인증 경로(api/v1/auth 등)는 SecurityAutoConfiguration 에서 permitAll 로 열려 있다.
  */
 @RestController
 @RequestMapping("/api/v1/auth")
