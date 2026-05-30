@@ -17,5 +17,7 @@ public interface UserMapper {
 
     List<User> findPage(@Param("page") PageRequest page);
 
+    int updatePassword(@Param("id") Long id, @Param("password") String password, @Param("updatedBy") String updatedBy);
+
     long countAll();
 }
