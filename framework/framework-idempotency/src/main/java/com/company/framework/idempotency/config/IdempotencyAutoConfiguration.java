@@ -10,7 +10,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -29,8 +28,11 @@ public class IdempotencyAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(IdempotencyStore.class)
-    @ConditionalOnProperty(prefix = "framework.idempotency.store", name = "type",
-            havingValue = "memory", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.idempotency.store",
+            name = "type",
+            havingValue = "memory",
+            matchIfMissing = true)
     public IdempotencyStore inMemoryIdempotencyStore() {
         return new InMemoryIdempotencyStore();
     }
@@ -44,8 +46,7 @@ public class IdempotencyAutoConfiguration {
     }
 
     @Bean
-    public WebMvcConfigurer idempotencyWebMvcConfigurer(
-            IdempotencyStore store, IdempotencyProperties props) {
+    public WebMvcConfigurer idempotencyWebMvcConfigurer(IdempotencyStore store, IdempotencyProperties props) {
         return new WebMvcConfigurer() {
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
