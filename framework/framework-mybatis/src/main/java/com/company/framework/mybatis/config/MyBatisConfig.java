@@ -1,16 +1,15 @@
 package com.company.framework.mybatis.config;
 
-import com.company.framework.mybatis.interceptor.AuditFieldInterceptor;
 import com.company.framework.mybatis.error.PersistenceExceptionHandler;
+import com.company.framework.mybatis.interceptor.AuditFieldInterceptor;
 import com.company.framework.mybatis.support.CurrentUserProvider;
+import java.util.Optional;
 import org.apache.ibatis.session.ExecutorType;
 import org.mybatis.spring.boot.autoconfigure.ConfigurationCustomizer;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
-
-import java.util.Optional;
 
 /**
  * 전사 공통 MyBatis 기본 설정 + 감사필드 자동주입(토글).
@@ -45,7 +44,11 @@ public class MyBatisConfig {
 
     /** 감사필드 자동주입 인터셉터 (mybatis-spring 이 Interceptor 빈을 자동 등록) */
     @Bean
-    @ConditionalOnProperty(prefix = "framework.mybatis", name = "audit-injection", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.mybatis",
+            name = "audit-injection",
+            havingValue = "true",
+            matchIfMissing = true)
     public AuditFieldInterceptor auditFieldInterceptor(CurrentUserProvider currentUserProvider) {
         return new AuditFieldInterceptor(currentUserProvider);
     }

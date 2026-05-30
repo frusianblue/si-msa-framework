@@ -15,10 +15,27 @@ public class FrameworkSecurityProperties {
     private boolean dynamicAuthorization = true;
     private boolean menu = true;
 
-    public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
-    public boolean isDynamicAuthorization() { return dynamicAuthorization; }
-    public void setDynamicAuthorization(boolean v) { this.dynamicAuthorization = v; }
-    public boolean isMenu() { return menu; }
-    public void setMenu(boolean menu) { this.menu = menu; }
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public boolean isDynamicAuthorization() {
+        return dynamicAuthorization;
+    }
+
+    public void setDynamicAuthorization(boolean v) {
+        this.dynamicAuthorization = v;
+    }
+
+    public boolean isMenu() {
+        return menu;
+    }
+
+    public void setMenu(boolean menu) {
+        this.menu = menu;
+    }
 }

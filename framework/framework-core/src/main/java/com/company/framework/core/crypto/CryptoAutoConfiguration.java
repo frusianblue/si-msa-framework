@@ -13,7 +13,7 @@ public class CryptoAutoConfiguration {
     @Bean
     public AesCryptoService aesCryptoService(CryptoProperties props) {
         AesCryptoService service = new AesCryptoService(props.getAesSecret());
-        CryptoHolder.set(service);   // TypeHandler 등 비-빈 영역에서 사용 가능하도록 등록
+        CryptoHolder.set(service); // TypeHandler 등 비-빈 영역에서 사용 가능하도록 등록
         return service;
     }
 }

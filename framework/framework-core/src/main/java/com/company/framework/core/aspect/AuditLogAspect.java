@@ -31,8 +31,14 @@ public class AuditLogAspect {
             throw t;
         } finally {
             long took = System.currentTimeMillis() - start;
-            audit.info("traceId={} user={} action={} target={} result={} elapsedMs={}",
-                    traceId, user, auditLog.action(), auditLog.target(), result, took);
+            audit.info(
+                    "traceId={} user={} action={} target={} result={} elapsedMs={}",
+                    traceId,
+                    user,
+                    auditLog.action(),
+                    auditLog.target(),
+                    result,
+                    took);
         }
     }
 

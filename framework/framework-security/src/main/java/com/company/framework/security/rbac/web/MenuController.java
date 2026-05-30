@@ -3,13 +3,12 @@ package com.company.framework.security.rbac.web;
 import com.company.framework.core.response.ApiResponse;
 import com.company.framework.security.rbac.core.MenuService;
 import com.company.framework.security.rbac.dto.MenuDto;
+import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 /**
  * 현재 로그인 사용자의 권한에 맞는 메뉴 트리를 반환.

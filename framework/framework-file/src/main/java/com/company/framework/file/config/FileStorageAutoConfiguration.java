@@ -25,7 +25,11 @@ public class FileStorageAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(FileStorage.class)
-    @ConditionalOnProperty(prefix = "framework.file.storage", name = "type", havingValue = "local", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.file.storage",
+            name = "type",
+            havingValue = "local",
+            matchIfMissing = true)
     public FileStorage localFileStorage(FileStorageProperties props) {
         return new FileSystemFileStorage(props.getStorage().getBasePath(), "local");
     }

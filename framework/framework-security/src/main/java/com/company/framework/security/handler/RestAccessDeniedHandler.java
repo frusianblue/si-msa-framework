@@ -2,16 +2,16 @@ package com.company.framework.security.handler;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.web.access.AccessDeniedHandler;
-
-import java.io.IOException;
 
 /** 권한 없음(403)을 표준 JSON 으로 응답. */
 public class RestAccessDeniedHandler implements AccessDeniedHandler {
     @Override
-    public void handle(HttpServletRequest request, HttpServletResponse response,
-                       AccessDeniedException accessDeniedException) throws IOException {
+    public void handle(
+            HttpServletRequest request, HttpServletResponse response, AccessDeniedException accessDeniedException)
+            throws IOException {
         ErrorResponseWriter.write(response, 403, "E0403", "접근 권한이 없습니다.");
     }
 }

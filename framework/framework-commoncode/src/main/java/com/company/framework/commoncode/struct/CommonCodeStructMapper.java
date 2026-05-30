@@ -2,9 +2,8 @@ package com.company.framework.commoncode.struct;
 
 import com.company.framework.commoncode.domain.CommonCode;
 import com.company.framework.commoncode.dto.CommonCodeDto;
-import org.mapstruct.Mapper;
-
 import java.util.List;
+import org.mapstruct.Mapper;
 
 /**
  * 도메인 -> DTO 변환 (MapStruct 컴파일타임 생성).
@@ -13,5 +12,6 @@ import java.util.List;
 @Mapper
 public interface CommonCodeStructMapper {
     CommonCodeDto toDto(CommonCode entity);
+
     List<CommonCodeDto> toDtoList(List<CommonCode> entities);
 }

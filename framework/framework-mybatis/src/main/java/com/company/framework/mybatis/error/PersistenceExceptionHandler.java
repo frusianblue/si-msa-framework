@@ -25,13 +25,19 @@ public class PersistenceExceptionHandler {
 
     @ExceptionHandler(DuplicateKeyException.class)
     public ResponseEntity<ApiResponse<Void>> handleDuplicate(DuplicateKeyException e) {
-        log.warn("[DuplicateKey] traceId={} msg={}", MDC.get("traceId"), e.getMostSpecificCause().getMessage());
+        log.warn(
+                "[DuplicateKey] traceId={} msg={}",
+                MDC.get("traceId"),
+                e.getMostSpecificCause().getMessage());
         return build(HttpStatus.CONFLICT, ErrorCode.Common.CONFLICT.code(), "이미 존재하는 데이터입니다.");
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleIntegrity(DataIntegrityViolationException e) {
-        log.warn("[DataIntegrity] traceId={} msg={}", MDC.get("traceId"), e.getMostSpecificCause().getMessage());
+        log.warn(
+                "[DataIntegrity] traceId={} msg={}",
+                MDC.get("traceId"),
+                e.getMostSpecificCause().getMessage());
         return build(HttpStatus.CONFLICT, ErrorCode.Common.CONFLICT.code(), "데이터 무결성 제약을 위반했습니다.");
     }
 

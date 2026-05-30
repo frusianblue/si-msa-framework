@@ -4,16 +4,15 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * dev-auth 활성 시 모든 요청에 가짜 로그인 사용자를 주입한다.
@@ -29,9 +28,8 @@ public class DevAuthInjectionFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         List<String> roles = props.getRoles();
         if (props.isAllowHeaderOverride()) {
             String header = request.getHeader("X-Dev-Roles");
@@ -45,8 +43,8 @@ public class DevAuthInjectionFilter extends OncePerRequestFilter {
                 .map(a -> (GrantedAuthority) a)
                 .toList();
         var principal = new User(props.getUserId(), "", authorities);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(principal, "dev", authorities));
+        SecurityContextHolder.getContext()
+                .setAuthentication(new UsernamePasswordAuthenticationToken(principal, "dev", authorities));
         filterChain.doFilter(request, response);
     }
 }

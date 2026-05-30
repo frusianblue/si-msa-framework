@@ -5,10 +5,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
 
 /**
  * Authorization: Bearer <token> 검증 후 SecurityContext 에 인증정보 주입.
@@ -28,12 +27,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         String token = resolveToken(request);
-        if (token != null && jwtProvider.validate(token)
-                && !tokenStore.isBlacklisted(jwtProvider.getJti(token))) {
+        if (token != null && jwtProvider.validate(token) && !tokenStore.isBlacklisted(jwtProvider.getJti(token))) {
             SecurityContextHolder.getContext().setAuthentication(jwtProvider.getAuthentication(token));
         }
         filterChain.doFilter(request, response);

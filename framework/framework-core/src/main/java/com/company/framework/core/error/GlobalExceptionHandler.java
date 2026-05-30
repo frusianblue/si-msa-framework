@@ -2,6 +2,7 @@ package com.company.framework.core.error;
 
 import com.company.framework.core.response.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -17,8 +18,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
-
-import java.util.stream.Collectors;
 
 /**
  * 전사 공통 전역 예외 처리기. 모든 예외를 표준 ApiResponse 포맷으로 변환한다.
@@ -40,7 +39,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
         String detail = e.getBindingResult().getFieldErrors().stream()
-                .map(this::formatFieldError).collect(Collectors.joining(", "));
+                .map(this::formatFieldError)
+                .collect(Collectors.joining(", "));
         return common(ErrorCode.Common.INVALID_INPUT, detail);
     }
 

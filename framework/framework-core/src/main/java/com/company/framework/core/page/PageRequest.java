@@ -16,8 +16,7 @@ public record PageRequest(int page, int size) {
     }
 
     public static PageRequest of(Integer page, Integer size) {
-        return new PageRequest(page == null ? DEFAULT_PAGE : page,
-                               size == null ? DEFAULT_SIZE : size);
+        return new PageRequest(page == null ? DEFAULT_PAGE : page, size == null ? DEFAULT_SIZE : size);
     }
 
     /** MyBatis LIMIT/OFFSET 용 */

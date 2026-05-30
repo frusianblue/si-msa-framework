@@ -18,7 +18,7 @@ public final class SecureUtils {
     public static String sanitizeFileName(String fileName) {
         if (fileName == null) return null;
         String name = fileName.replace("\\", "/");
-        name = name.substring(name.lastIndexOf('/') + 1);  // 디렉터리 부분 제거
+        name = name.substring(name.lastIndexOf('/') + 1); // 디렉터리 부분 제거
         name = name.replace("..", "").replaceAll("[\\x00-\\x1f]", "").trim();
         return name.isBlank() ? "unnamed" : name;
     }

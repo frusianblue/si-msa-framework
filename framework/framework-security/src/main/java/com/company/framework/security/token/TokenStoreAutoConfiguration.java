@@ -24,7 +24,11 @@ public class TokenStoreAutoConfiguration {
 
     // 기본값(memory): type 미설정이거나 memory 일 때
     @Bean
-    @ConditionalOnProperty(prefix = "framework.security.token-store", name = "type", havingValue = "memory", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.security.token-store",
+            name = "type",
+            havingValue = "memory",
+            matchIfMissing = true)
     @ConditionalOnMissingBean(TokenStore.class)
     public TokenStore inMemoryTokenStore() {
         return new InMemoryTokenStore();

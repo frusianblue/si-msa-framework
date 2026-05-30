@@ -1,24 +1,41 @@
+// build.gradle (root)
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.6' apply false
-    id 'io.spring.dependency-management' version '1.1.7'
-    // ===== SI 소스 취약점 점검 =====
-    id 'org.owasp.dependencycheck' version '12.1.0'   // 의존성 알려진 취약점(CVE) 스캔
-    id 'org.sonarqube' version '6.0.1.5171'           // 정적분석(코드 품질/보안 핫스팟)
+    alias(libs.plugins.spring.boot) apply false
+    alias(libs.plugins.spring.dependency.management)
+    alias(libs.plugins.owasp.dependencycheck)
+    alias(libs.plugins.sonarqube)
+    alias(libs.plugins.spotless) apply false   // 서브프로젝트에서 apply 하려면 클래스패스에 올려둠
 }
 
 allprojects {
     group = 'com.company'
     version = '1.0.0'
     repositories { mavenCentral() }
+
+    // libs.versions.toml 을 단일 소스로 두고, 기존 모듈 build.gradle 의 ${...Version}
+    // 참조가 그대로 동작하도록 브리지한다. (모듈은 점진적으로 libs.* 로 이관 가능)
+    // -> gradle.properties 의 버전 라인들은 삭제하고 org.gradle.* 설정만 남긴다.
+    ext {
+        springBootVersion      = libs.versions.springBoot.get()
+        springCloudVersion     = libs.versions.springCloud.get()
+        mybatisStarterVersion  = libs.versions.mybatisStarter.get()
+        jjwtVersion            = libs.versions.jjwt.get()
+        springdocVersion       = libs.versions.springdoc.get()
+        mapstructVersion       = libs.versions.mapstruct.get()
+        awsSdkVersion          = libs.versions.awsSdk.get()
+        lombokMapstructBinding = libs.versions.lombokMapstructBinding.get()
+    }
 }
 
 subprojects {
     apply plugin: 'java-library'
+    apply plugin: 'jacoco'
     apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'com.diffplug.spotless'
 
     java {
-        toolchain { languageVersion = JavaLanguageVersion.of(21) }
+        toolchain { languageVersion = JavaLanguageVersion.of(libs.versions.java.get().toInteger()) }
     }
 
     dependencyManagement {
@@ -28,32 +45,64 @@ subprojects {
         }
     }
 
-    tasks.withType(JavaCompile) {
+    tasks.withType(JavaCompile).configureEach {
         options.encoding = 'UTF-8'
         options.compilerArgs.add('-parameters')
-        // 컴파일 경고 표시 (시큐어코딩: deprecated/unchecked 사용 가시화)
         options.compilerArgs.add('-Xlint:all,-processing')
     }
-    tasks.withType(Test) { useJUnitPlatform() }
+
+    // 테스트 후 커버리지 리포트 자동 생성
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+        finalizedBy tasks.named('jacocoTestReport')
+    }
+
+    // ===== JaCoCo: 커버리지 -> Sonar 가 XML 을 읽어감 =====
+    jacocoTestReport {
+        dependsOn tasks.named('test')
+        reports {
+            xml.required = true
+            html.required = true
+        }
+    }
+    // (선택) 커버리지 게이트 — 초반엔 낮게 잡고 점진적으로 올린다.
+    // jacocoTestCoverageVerification {
+    //     violationRules { rule { limit { minimum = 0.30 } } }
+    // }
+    // check.dependsOn jacocoTestCoverageVerification
+
+    // ===== Spotless: 코드 포맷(Palantir Java Format) =====
+    // 최초 1회 ./gradlew spotlessApply 로 전체 정렬(이후 diff 안정).
+    // CI 에서는 ./gradlew spotlessCheck 로 게이트.
+    spotless {
+        java {
+            target 'src/**/*.java'
+            palantirJavaFormat()
+            removeUnusedImports()
+            importOrder()
+            trimTrailingWhitespace()
+            endWithNewline()
+        }
+    }
 }
 
-// ===== OWASP Dependency-Check 설정 =====
-// 실행: ./gradlew dependencyCheckAggregate  (리포트: build/reports/dependency-check-report.html)
+// ===== OWASP Dependency-Check =====
 dependencyCheck {
     formats = ['HTML', 'JSON']
-    // CVSS 7.0 이상(High/Critical) 발견 시 빌드 실패 → CI 게이트로 활용
     failBuildOnCVSS = 7.0f
     suppressionFile = 'config/dependency-check-suppressions.xml'
     analyzers { assemblyEnabled = false }
 }
 
-// ===== SonarQube 설정 =====
-// 실행: ./gradlew sonar -Dsonar.host.url=... -Dsonar.token=...
+// ===== SonarQube =====
 sonar {
     properties {
         property 'sonar.projectKey', 'si-msa-framework'
         property 'sonar.projectName', 'SI MSA Framework'
         property 'sonar.sourceEncoding', 'UTF-8'
         property 'sonar.java.source', '21'
+        // 멀티모듈 전체의 JaCoCo XML 을 수집
+        property 'sonar.coverage.jacoco.xmlReportPaths',
+                "${rootDir}/**/build/reports/jacoco/test/jacocoTestReport.xml"
     }
 }

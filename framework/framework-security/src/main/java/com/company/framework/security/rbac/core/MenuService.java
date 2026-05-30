@@ -3,7 +3,6 @@ package com.company.framework.security.rbac.core;
 import com.company.framework.security.rbac.domain.Menu;
 import com.company.framework.security.rbac.dto.MenuDto;
 import com.company.framework.security.rbac.mapper.SecurityMapper;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

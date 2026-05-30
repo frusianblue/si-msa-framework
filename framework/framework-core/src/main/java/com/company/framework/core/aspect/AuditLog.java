@@ -11,5 +11,6 @@ import java.lang.annotation.*;
 @Documented
 public @interface AuditLog {
     String action();
+
     String target() default "";
 }

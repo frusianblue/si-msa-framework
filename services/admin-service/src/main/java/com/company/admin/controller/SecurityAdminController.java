@@ -3,11 +3,10 @@ package com.company.admin.controller;
 import com.company.admin.mapper.AdminMapper;
 import com.company.framework.core.response.ApiResponse;
 import com.company.framework.security.rbac.core.SecurityMetadataService;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 import java.util.Map;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/admin/security")

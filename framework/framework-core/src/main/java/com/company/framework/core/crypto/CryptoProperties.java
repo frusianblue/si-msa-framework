@@ -13,8 +13,19 @@ public class CryptoProperties {
     private boolean enabled = true;
     private String aesSecret = "change-me-please-set-framework-crypto-aes-secret";
 
-    public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
-    public String getAesSecret() { return aesSecret; }
-    public void setAesSecret(String aesSecret) { this.aesSecret = aesSecret; }
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public String getAesSecret() {
+        return aesSecret;
+    }
+
+    public void setAesSecret(String aesSecret) {
+        this.aesSecret = aesSecret;
+    }
 }

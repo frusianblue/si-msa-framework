@@ -13,8 +13,19 @@ public class CacheProperties {
     private boolean enabled = true;
     private String spec = "maximumSize=10000,expireAfterWrite=10m";
 
-    public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
-    public String getSpec() { return spec; }
-    public void setSpec(String spec) { this.spec = spec; }
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public String getSpec() {
+        return spec;
+    }
+
+    public void setSpec(String spec) {
+        this.spec = spec;
+    }
 }

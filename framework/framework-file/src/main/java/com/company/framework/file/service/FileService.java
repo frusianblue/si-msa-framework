@@ -9,11 +9,10 @@ import com.company.framework.file.dto.FileMetaDto;
 import com.company.framework.file.mapper.FileMapper;
 import com.company.framework.file.storage.FileStorage;
 import com.company.framework.file.storage.StoredFile;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.io.InputStream;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 업로드 검증(크기/확장자/위험확장자) → 저장소 저장 → 메타 기록.
@@ -38,8 +37,8 @@ public class FileService {
         }
         var cfg = props.getStorage();
         if (file.getSize() > cfg.getMaxSize()) {
-            throw new BusinessException(ErrorCode.Common.INVALID_INPUT,
-                    "허용 크기를 초과했습니다(최대 " + (cfg.getMaxSize() / 1024 / 1024) + "MB).");
+            throw new BusinessException(
+                    ErrorCode.Common.INVALID_INPUT, "허용 크기를 초과했습니다(최대 " + (cfg.getMaxSize() / 1024 / 1024) + "MB).");
         }
         String safeName = SecureUtils.sanitizeFileName(file.getOriginalFilename());
         String ext = extOf(safeName);
@@ -63,14 +62,15 @@ public class FileService {
         meta.setContentType(file.getContentType());
         meta.setSize(file.getSize());
         meta.setStorageType(storage.type());
-        fileMapper.insert(meta);   // 감사필드 자동주입
+        fileMapper.insert(meta); // 감사필드 자동주입
 
         return toDto(meta);
     }
 
     @Transactional(readOnly = true)
     public FileMetadata getMeta(Long id) {
-        return fileMapper.findById(id)
+        return fileMapper
+                .findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.Common.NOT_FOUND, "파일 메타를 찾을 수 없습니다."));
     }
 

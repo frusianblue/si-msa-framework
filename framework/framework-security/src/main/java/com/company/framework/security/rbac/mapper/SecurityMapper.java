@@ -2,10 +2,9 @@ package com.company.framework.security.rbac.mapper;
 
 import com.company.framework.security.rbac.domain.Menu;
 import com.company.framework.security.rbac.domain.Resource;
+import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-
-import java.util.List;
 
 @Mapper
 public interface SecurityMapper {

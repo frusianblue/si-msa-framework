@@ -34,13 +34,13 @@ public class XssRequestWrapper extends HttpServletRequestWrapper {
 
     private String clean(String value) {
         if (value == null) return null;
-        return value
-                .replace("&", "&amp;")
+        return value.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#x27;")
-                .replace("(", "&#40;").replace(")", "&#41;")
+                .replace("(", "&#40;")
+                .replace(")", "&#41;")
                 .replaceAll("(?i)<script", "&lt;script")
                 .replaceAll("(?i)javascript:", "");
     }

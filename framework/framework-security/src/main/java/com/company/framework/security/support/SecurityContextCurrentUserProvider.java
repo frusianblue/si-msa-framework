@@ -1,10 +1,9 @@
 package com.company.framework.security.support;
 
 import com.company.framework.mybatis.support.CurrentUserProvider;
+import java.util.Optional;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-
-import java.util.Optional;
 
 /**
  * 로그인 사용자 ID 를 감사필드(created_by/updated_by)에 공급.

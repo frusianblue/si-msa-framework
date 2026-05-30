@@ -4,7 +4,6 @@ import com.company.framework.core.error.BusinessException;
 import com.company.framework.core.error.ErrorCode;
 import com.company.framework.security.jwt.JwtProvider;
 import com.company.framework.security.token.TokenStore;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -31,9 +30,10 @@ public class LoginService {
     }
 
     public TokenResponse refresh(String refreshToken) {
-        TokenStore.RefreshEntry entry = tokenStore.findRefresh(refreshToken)
+        TokenStore.RefreshEntry entry = tokenStore
+                .findRefresh(refreshToken)
                 .orElseThrow(() -> new BusinessException(ErrorCode.Common.UNAUTHORIZED, "유효하지 않은 refresh token 입니다."));
-        tokenStore.removeRefresh(refreshToken);                 // 회전: 1회용
+        tokenStore.removeRefresh(refreshToken); // 회전: 1회용
         return issue(entry.userId(), entry.roles());
     }
 
@@ -51,6 +51,7 @@ public class LoginService {
         String access = jwtProvider.createAccessToken(userId, roles);
         String refresh = UUID.randomUUID().toString().replace("-", "");
         tokenStore.saveRefresh(refresh, new TokenStore.RefreshEntry(userId, roles), jwtProvider.refreshTtl());
-        return new TokenResponse(access, refresh, "Bearer", jwtProvider.accessTtl().toSeconds(), roles);
+        return new TokenResponse(
+                access, refresh, "Bearer", jwtProvider.accessTtl().toSeconds(), roles);
     }
 }

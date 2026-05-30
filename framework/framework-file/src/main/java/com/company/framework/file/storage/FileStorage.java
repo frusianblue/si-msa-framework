@@ -10,7 +10,10 @@ import java.io.InputStream;
  */
 public interface FileStorage {
     StoredFile store(InputStream content, String originalName, String contentType, long size);
+
     InputStream load(String storedPath);
+
     void delete(String storedPath);
+
     String type();
 }

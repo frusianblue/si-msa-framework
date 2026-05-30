@@ -2,7 +2,6 @@ package com.company.framework.file.storage;
 
 import com.company.framework.core.error.BusinessException;
 import com.company.framework.core.error.ErrorCode;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.*;
@@ -38,7 +37,7 @@ public class FileSystemFileStorage implements FileStorage {
         String relative = datePath + "/" + storedName;
 
         Path target = basePath.resolve(relative).normalize();
-        if (!target.startsWith(basePath)) {                 // 경로조작 방어
+        if (!target.startsWith(basePath)) { // 경로조작 방어
             throw new BusinessException(ErrorCode.Common.INVALID_INPUT, "잘못된 저장 경로입니다.");
         }
         try {
@@ -67,12 +66,17 @@ public class FileSystemFileStorage implements FileStorage {
     public void delete(String storedPath) {
         Path target = basePath.resolve(storedPath).normalize();
         if (target.startsWith(basePath)) {
-            try { Files.deleteIfExists(target); } catch (IOException ignored) { }
+            try {
+                Files.deleteIfExists(target);
+            } catch (IOException ignored) {
+            }
         }
     }
 
     @Override
-    public String type() { return type; }
+    public String type() {
+        return type;
+    }
 
     private String extOf(String name) {
         if (name == null) return "";

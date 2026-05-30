@@ -5,10 +5,9 @@ import com.company.framework.commoncode.dto.CommonCodeForm;
 import com.company.framework.commoncode.service.CommonCodeService;
 import com.company.framework.core.response.ApiResponse;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * 공통코드 API. 조회는 인증 사용자, 변경(CRUD)은 ROLE_ADMIN.

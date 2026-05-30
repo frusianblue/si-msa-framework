@@ -4,6 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
@@ -11,9 +13,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.web.util.ContentCachingResponseWrapper;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 
 /**
  * 요청/응답 본문을 로깅하되, 민감 필드는 마스킹하고 본문 크기를 제한한다.
@@ -27,9 +26,8 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
     private static final int MAX_BODY = 2000;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
 
         if (isSkip(request)) {
             filterChain.doFilter(request, response);
@@ -44,10 +42,17 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         } finally {
             long took = System.currentTimeMillis() - start;
             if (log.isInfoEnabled()) {
-                log.info(">> {} {} body={}", req.getMethod(), req.getRequestURI(),
+                log.info(
+                        ">> {} {} body={}",
+                        req.getMethod(),
+                        req.getRequestURI(),
                         SensitiveDataMasker.mask(body(req.getContentAsByteArray())));
-                log.info("<< {} {} status={} {}ms body={}", req.getMethod(), req.getRequestURI(),
-                        res.getStatus(), took,
+                log.info(
+                        "<< {} {} status={} {}ms body={}",
+                        req.getMethod(),
+                        req.getRequestURI(),
+                        res.getStatus(),
+                        took,
                         SensitiveDataMasker.mask(body(res.getContentAsByteArray())));
             }
             res.copyBodyToResponse();
@@ -58,7 +63,8 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         String uri = req.getRequestURI();
         String ct = req.getContentType();
         return uri.startsWith("/actuator")
-                || uri.contains("/swagger") || uri.contains("/v3/api-docs")
+                || uri.contains("/swagger")
+                || uri.contains("/v3/api-docs")
                 || (ct != null && ct.startsWith("multipart/"));
     }
 

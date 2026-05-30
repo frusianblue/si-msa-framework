@@ -8,10 +8,9 @@ import com.company.framework.core.aspect.AuditLog;
 import com.company.framework.core.response.ApiResponse;
 import com.company.framework.security.rbac.core.SecurityMetadataService;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * URL-권한(리소스) 관리 API. 변경 후 동적 인가 캐시를 즉시 갱신해 무중단 반영.
@@ -43,7 +42,7 @@ public class ResourceAdminController {
         row.setHttpMethod(form.httpMethod() == null ? "ALL" : form.httpMethod());
         row.setDescr(form.descr());
         row.setSortOrder(form.sortOrder() == null ? 0 : form.sortOrder());
-        adminMapper.insertResource(row);   // 감사필드는 인터셉터가 자동 주입
+        adminMapper.insertResource(row); // 감사필드는 인터셉터가 자동 주입
         metadataService.reload();
         return ApiResponse.ok(row, "리소스가 등록되었습니다.");
     }

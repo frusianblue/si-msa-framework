@@ -16,8 +16,7 @@ public class JacksonConfig {
 
     @Bean
     public JsonMapperBuilderCustomizer commonJacksonCustomizer() {
-        return builder -> builder
-                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        return builder -> builder.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 }

@@ -5,6 +5,8 @@ import com.company.framework.core.response.ApiResponse;
 import com.company.framework.file.domain.FileMetadata;
 import com.company.framework.file.dto.FileMetaDto;
 import com.company.framework.file.service.FileService;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -13,9 +15,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/v1/files")
@@ -37,9 +36,10 @@ public class FileController {
     public ResponseEntity<Resource> download(@PathVariable Long id) {
         FileMetadata meta = fileService.getMeta(id);
         Resource body = new InputStreamResource(fileService.download(meta));
-        String encoded = URLEncoder.encode(meta.getOriginalName(), StandardCharsets.UTF_8).replace("+", "%20");
-        String contentType = meta.getContentType() != null ? meta.getContentType()
-                : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        String encoded = URLEncoder.encode(meta.getOriginalName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        String contentType =
+                meta.getContentType() != null ? meta.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
                 .header(HttpHeaders.CONTENT_TYPE, contentType)

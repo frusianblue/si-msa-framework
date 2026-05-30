@@ -11,11 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       refresh-token-validity-seconds: 1209600   # 14일
  */
 @ConfigurationProperties(prefix = "framework.security.jwt")
-public record JwtProperties(
-        String secret,
-        long accessTokenValiditySeconds,
-        long refreshTokenValiditySeconds
-) {
+public record JwtProperties(String secret, long accessTokenValiditySeconds, long refreshTokenValiditySeconds) {
     public JwtProperties {
         if (accessTokenValiditySeconds <= 0) accessTokenValiditySeconds = 1800;
         if (refreshTokenValiditySeconds <= 0) refreshTokenValiditySeconds = 1209600;

@@ -8,13 +8,7 @@ import java.time.Instant;
  * 프로젝트 전 서비스가 동일 포맷을 사용하도록 강제하는 것이 목적.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record ApiResponse<T>(
-        boolean success,
-        String code,
-        String message,
-        T data,
-        Instant timestamp
-) {
+public record ApiResponse<T>(boolean success, String code, String message, T data, Instant timestamp) {
     public static <T> ApiResponse<T> ok(T data) {
         return new ApiResponse<>(true, "OK", "정상 처리되었습니다.", data, Instant.now());
     }

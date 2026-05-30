@@ -1,18 +1,17 @@
 package com.company.user.service;
 
+import com.company.framework.core.aspect.AuditLog;
 import com.company.framework.core.error.BusinessException;
 import com.company.framework.core.error.ErrorCode;
-import com.company.framework.core.aspect.AuditLog;
 import com.company.framework.core.page.PageRequest;
 import com.company.framework.core.page.PageResponse;
 import com.company.user.domain.User;
 import com.company.user.dto.UserCreateRequest;
 import com.company.user.dto.UserResponse;
 import com.company.user.mapper.UserMapper;
+import java.time.LocalDateTime;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
 
 @Service
 public class UserService {
@@ -43,7 +42,8 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public UserResponse get(Long id) {
-        User user = userMapper.findById(id)
+        User user = userMapper
+                .findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.Common.NOT_FOUND, "사용자를 찾을 수 없습니다: " + id));
         return UserResponse.from(user);
     }

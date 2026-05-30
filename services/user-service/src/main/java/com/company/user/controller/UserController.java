@@ -33,8 +33,7 @@ public class UserController {
 
     @GetMapping
     public ApiResponse<PageResponse<UserResponse>> list(
-            @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size) {
+            @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
         return ApiResponse.ok(userService.list(PageRequest.of(page, size)));
     }
 }

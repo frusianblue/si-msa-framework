@@ -6,8 +6,13 @@ package com.company.framework.core.crypto;
  */
 public final class CryptoHolder {
     private static volatile AesCryptoService aes;
+
     private CryptoHolder() {}
-    public static void set(AesCryptoService service) { aes = service; }
+
+    public static void set(AesCryptoService service) {
+        aes = service;
+    }
+
     public static AesCryptoService aes() {
         if (aes == null) throw new IllegalStateException("AES 미초기화: framework.crypto.enabled=true 확인");
         return aes;

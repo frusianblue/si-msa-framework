@@ -2,6 +2,7 @@ package com.company.framework.file.s3;
 
 import com.company.framework.file.config.FileStorageProperties;
 import com.company.framework.file.storage.FileStorage;
+import java.net.URI;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -9,8 +10,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-
-import java.net.URI;
 
 /**
  * framework.file.storage.type=s3 일 때 S3 저장소 활성화.

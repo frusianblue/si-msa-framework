@@ -14,12 +14,29 @@ public class MenuDto {
     private List<MenuDto> children = new ArrayList<>();
 
     public MenuDto(Long id, String name, String url, String icon) {
-        this.id = id; this.name = name; this.url = url; this.icon = icon;
+        this.id = id;
+        this.name = name;
+        this.url = url;
+        this.icon = icon;
     }
 
-    public Long getId() { return id; }
-    public String getName() { return name; }
-    public String getUrl() { return url; }
-    public String getIcon() { return icon; }
-    public List<MenuDto> getChildren() { return children; }
+    public Long getId() {
+        return id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public String getIcon() {
+        return icon;
+    }
+
+    public List<MenuDto> getChildren() {
+        return children;
+    }
 }

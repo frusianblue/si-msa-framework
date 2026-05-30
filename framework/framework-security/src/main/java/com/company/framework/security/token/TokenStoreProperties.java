@@ -11,6 +11,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "framework.security.token-store")
 public class TokenStoreProperties {
     private String type = "memory";
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
 }

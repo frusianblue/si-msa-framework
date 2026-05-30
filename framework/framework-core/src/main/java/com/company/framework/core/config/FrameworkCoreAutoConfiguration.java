@@ -40,19 +40,31 @@ public class FrameworkCoreAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "framework.core", name = "http-logging", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.core",
+            name = "http-logging",
+            havingValue = "true",
+            matchIfMissing = true)
     public HttpLoggingFilter httpLoggingFilter() {
         return new HttpLoggingFilter();
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "framework.core", name = "execution-time-aspect", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.core",
+            name = "execution-time-aspect",
+            havingValue = "true",
+            matchIfMissing = true)
     public ExecutionTimeAspect executionTimeAspect() {
         return new ExecutionTimeAspect();
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "framework.core", name = "audit-aspect", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.core",
+            name = "audit-aspect",
+            havingValue = "true",
+            matchIfMissing = true)
     public AuditLogAspect auditLogAspect() {
         return new AuditLogAspect();
     }

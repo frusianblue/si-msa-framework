@@ -1,9 +1,8 @@
 package com.company.framework.security.auth;
 
 import com.company.framework.core.response.ApiResponse;
-import org.springframework.web.bind.annotation.*;
-
 import java.util.Map;
+import org.springframework.web.bind.annotation.*;
 
 /**
  * 전사 표준 인증 엔드포인트. 인증 방식이 달라도 모든 프로젝트가 동일한 URL/응답을 갖는다.

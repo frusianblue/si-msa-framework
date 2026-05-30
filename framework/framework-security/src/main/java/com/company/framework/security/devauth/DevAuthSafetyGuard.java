@@ -1,11 +1,10 @@
 package com.company.framework.security.devauth;
 
+import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.core.env.Environment;
-
-import java.util.Arrays;
 
 /**
  * dev-auth 오용 방지 안전장치.
@@ -32,15 +31,16 @@ public class DevAuthSafetyGuard implements InitializingBean {
                 .anyMatch(p -> p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
         if (prod) {
             throw new IllegalStateException(
-                "[보안 차단] prod 프로파일에서는 framework.security.dev-auth.enabled=true 를 사용할 수 없습니다. " +
-                "운영 배포 전 dev-auth 를 반드시 비활성화하세요.");
+                    "[보안 차단] prod 프로파일에서는 framework.security.dev-auth.enabled=true 를 사용할 수 없습니다. "
+                            + "운영 배포 전 dev-auth 를 반드시 비활성화하세요.");
         }
-        log.warn("\n" +
-            "============================================================\n" +
-            " ★★★  DEV-AUTH ENABLED — 인증이 우회되고 있습니다  ★★★\n" +
-            "   user-id = {}, roles = {}\n" +
-            "   ※ 로컬 개발 전용. 운영 배포 금지!\n" +
-            "============================================================",
-            props.getUserId(), props.getRoles());
+        log.warn(
+                "\n" + "============================================================\n"
+                        + " ★★★  DEV-AUTH ENABLED — 인증이 우회되고 있습니다  ★★★\n"
+                        + "   user-id = {}, roles = {}\n"
+                        + "   ※ 로컬 개발 전용. 운영 배포 금지!\n"
+                        + "============================================================",
+                props.getUserId(),
+                props.getRoles());
     }
 }

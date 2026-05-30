@@ -7,10 +7,9 @@ import com.company.admin.mapper.AdminMapper;
 import com.company.framework.core.aspect.AuditLog;
 import com.company.framework.core.response.ApiResponse;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin/menus")

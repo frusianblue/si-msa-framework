@@ -11,7 +11,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class InMemoryTokenStore implements TokenStore {
 
     private record Holder<T>(T value, Instant expireAt) {
-        boolean expired() { return Instant.now().isAfter(expireAt); }
+        boolean expired() {
+            return Instant.now().isAfter(expireAt);
+        }
     }
 
     private final ConcurrentHashMap<String, Holder<RefreshEntry>> refresh = new ConcurrentHashMap<>();
@@ -26,7 +28,10 @@ public class InMemoryTokenStore implements TokenStore {
     public Optional<RefreshEntry> findRefresh(String refreshToken) {
         Holder<RefreshEntry> h = refresh.get(refreshToken);
         if (h == null) return Optional.empty();
-        if (h.expired()) { refresh.remove(refreshToken); return Optional.empty(); }
+        if (h.expired()) {
+            refresh.remove(refreshToken);
+            return Optional.empty();
+        }
         return Optional.of(h.value());
     }
 
@@ -44,7 +49,10 @@ public class InMemoryTokenStore implements TokenStore {
     public boolean isBlacklisted(String jti) {
         Instant exp = blacklist.get(jti);
         if (exp == null) return false;
-        if (Instant.now().isAfter(exp)) { blacklist.remove(jti); return false; }
+        if (Instant.now().isAfter(exp)) {
+            blacklist.remove(jti);
+            return false;
+        }
         return true;
     }
 }

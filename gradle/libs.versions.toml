@@ -1,0 +1,39 @@
+# gradle/libs.versions.toml
+# 단일 버전 카탈로그(single source of truth).
+# 사용: alias(libs.plugins.xxx) / libs.versions.xxx.get() / implementation(libs.yyy)
+# 위치: 프로젝트 루트의 gradle/ 디렉터리 (gradle/libs.versions.toml) — Gradle 이 자동 인식.
+
+[versions]
+java                    = "21"
+springBoot              = "4.0.6"
+springCloud             = "2025.1.1"
+mybatisStarter          = "4.0.1"
+jjwt                    = "0.12.6"
+springdoc               = "3.0.3"
+mapstruct               = "1.6.3"
+awsSdk                  = "2.31.0"
+lombokMapstructBinding  = "0.2.0"
+
+# build / quality 플러그인
+dependencyManagement    = "1.1.7"
+owaspDependencyCheck    = "12.1.0"
+sonarqube               = "6.0.1.5171"
+spotless                = "8.5.1"
+
+[libraries]
+mybatis-spring-boot-starter  = { module = "org.mybatis.spring.boot:mybatis-spring-boot-starter", version.ref = "mybatisStarter" }
+mapstruct                    = { module = "org.mapstruct:mapstruct",                              version.ref = "mapstruct" }
+mapstruct-processor          = { module = "org.mapstruct:mapstruct-processor",                    version.ref = "mapstruct" }
+lombok-mapstruct-binding     = { module = "org.projectlombok:lombok-mapstruct-binding",           version.ref = "lombokMapstructBinding" }
+jjwt-api                     = { module = "io.jsonwebtoken:jjwt-api",                              version.ref = "jjwt" }
+jjwt-impl                    = { module = "io.jsonwebtoken:jjwt-impl",                             version.ref = "jjwt" }
+jjwt-jackson                 = { module = "io.jsonwebtoken:jjwt-jackson",                          version.ref = "jjwt" }
+springdoc-openapi-webmvc-ui  = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui",    version.ref = "springdoc" }
+awssdk-bom                   = { module = "software.amazon.awssdk:bom",                            version.ref = "awsSdk" }
+
+[plugins]
+spring-boot                  = { id = "org.springframework.boot",        version.ref = "springBoot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "dependencyManagement" }
+owasp-dependencycheck        = { id = "org.owasp.dependencycheck",       version.ref = "owaspDependencyCheck" }
+sonarqube                    = { id = "org.sonarqube",                   version.ref = "sonarqube" }
+spotless                     = { id = "com.diffplug.spotless",           version.ref = "spotless" }

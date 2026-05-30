@@ -1,12 +1,12 @@
 package com.company.framework.core.crypto;
 
-import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * AES-256-GCM 양방향 암호화. (개인정보 컬럼 암호화 저장용)
@@ -23,8 +23,7 @@ public class AesCryptoService {
 
     public AesCryptoService(String secret) {
         try {
-            byte[] keyBytes = MessageDigest.getInstance("SHA-256")
-                    .digest(secret.getBytes(StandardCharsets.UTF_8));
+            byte[] keyBytes = MessageDigest.getInstance("SHA-256").digest(secret.getBytes(StandardCharsets.UTF_8));
             this.key = new SecretKeySpec(keyBytes, "AES");
         } catch (Exception e) {
             throw new IllegalStateException("AES 키 초기화 실패", e);

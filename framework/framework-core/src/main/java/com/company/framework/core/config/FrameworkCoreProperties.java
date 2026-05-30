@@ -21,14 +21,43 @@ public class FrameworkCoreProperties {
     private boolean executionTimeAspect = true;
     private boolean auditAspect = true;
 
-    public boolean isTrace() { return trace; }
-    public void setTrace(boolean v) { this.trace = v; }
-    public boolean isHttpLogging() { return httpLogging; }
-    public void setHttpLogging(boolean v) { this.httpLogging = v; }
-    public boolean isXss() { return xss; }
-    public void setXss(boolean v) { this.xss = v; }
-    public boolean isExecutionTimeAspect() { return executionTimeAspect; }
-    public void setExecutionTimeAspect(boolean v) { this.executionTimeAspect = v; }
-    public boolean isAuditAspect() { return auditAspect; }
-    public void setAuditAspect(boolean v) { this.auditAspect = v; }
+    public boolean isTrace() {
+        return trace;
+    }
+
+    public void setTrace(boolean v) {
+        this.trace = v;
+    }
+
+    public boolean isHttpLogging() {
+        return httpLogging;
+    }
+
+    public void setHttpLogging(boolean v) {
+        this.httpLogging = v;
+    }
+
+    public boolean isXss() {
+        return xss;
+    }
+
+    public void setXss(boolean v) {
+        this.xss = v;
+    }
+
+    public boolean isExecutionTimeAspect() {
+        return executionTimeAspect;
+    }
+
+    public void setExecutionTimeAspect(boolean v) {
+        this.executionTimeAspect = v;
+    }
+
+    public boolean isAuditAspect() {
+        return auditAspect;
+    }
+
+    public void setAuditAspect(boolean v) {
+        this.auditAspect = v;
+    }
 }

@@ -1,8 +1,7 @@
 package com.company.framework.security.devauth;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 import java.util.List;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * 개발 편의용 인증 우회.
@@ -21,12 +20,35 @@ public class DevAuthProperties {
     private List<String> roles = List.of("ROLE_ADMIN", "ROLE_USER");
     private boolean allowHeaderOverride = true;
 
-    public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
-    public String getUserId() { return userId; }
-    public void setUserId(String userId) { this.userId = userId; }
-    public List<String> getRoles() { return roles; }
-    public void setRoles(List<String> roles) { this.roles = roles; }
-    public boolean isAllowHeaderOverride() { return allowHeaderOverride; }
-    public void setAllowHeaderOverride(boolean v) { this.allowHeaderOverride = v; }
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
+
+    public List<String> getRoles() {
+        return roles;
+    }
+
+    public void setRoles(List<String> roles) {
+        this.roles = roles;
+    }
+
+    public boolean isAllowHeaderOverride() {
+        return allowHeaderOverride;
+    }
+
+    public void setAllowHeaderOverride(boolean v) {
+        this.allowHeaderOverride = v;
+    }
 }

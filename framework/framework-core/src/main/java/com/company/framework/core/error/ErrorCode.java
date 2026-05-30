@@ -7,7 +7,9 @@ import org.springframework.http.HttpStatus;
  */
 public interface ErrorCode {
     String code();
+
     String message();
+
     HttpStatus httpStatus();
 
     enum Common implements ErrorCode {
@@ -28,8 +30,19 @@ public interface ErrorCode {
             this.httpStatus = httpStatus;
         }
 
-        @Override public String code() { return code; }
-        @Override public String message() { return message; }
-        @Override public HttpStatus httpStatus() { return httpStatus; }
+        @Override
+        public String code() {
+            return code;
+        }
+
+        @Override
+        public String message() {
+            return message;
+        }
+
+        @Override
+        public HttpStatus httpStatus() {
+            return httpStatus;
+        }
     }
 }

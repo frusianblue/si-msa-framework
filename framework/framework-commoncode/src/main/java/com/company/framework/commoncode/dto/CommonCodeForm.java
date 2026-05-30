@@ -10,5 +10,4 @@ public record CommonCodeForm(
         Integer sortOrder,
         Boolean useYn,
         String attr1,
-        String attr2
-) {}
+        String attr2) {}

@@ -103,51 +103,57 @@ public class SecurityAutoConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "framework.security.dev-auth", name = "enabled", havingValue = "true")
     public SecurityFilterChain devSecurityFilterChain(HttpSecurity http, DevAuthProperties devProps) throws Exception {
-        http
-            .csrf(AbstractHttpConfigurer::disable)
-            .formLogin(AbstractHttpConfigurer::disable)
-            .httpBasic(AbstractHttpConfigurer::disable)
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-            .addFilterBefore(new DevAuthInjectionFilter(devProps), UsernamePasswordAuthenticationFilter.class);
+        http.csrf(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .addFilterBefore(new DevAuthInjectionFilter(devProps), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
     // ================= 정상 체인 (실제 인증/인가) =================
     @Bean
-    @ConditionalOnProperty(prefix = "framework.security.dev-auth", name = "enabled", havingValue = "false", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.security.dev-auth",
+            name = "enabled",
+            havingValue = "false",
+            matchIfMissing = true)
     @ConditionalOnMissingBean(SecurityFilterChain.class)
-    public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   JwtProvider jwtProvider,
-                                                   TokenStore tokenStore,
-                                                   FrameworkSecurityProperties props,
-                                                   DynamicAuthorizationManager dynamicAuthorizationManager,
-                                                   RestAuthenticationEntryPoint entryPoint,
-                                                   RestAccessDeniedHandler accessDeniedHandler) throws Exception {
-        http
-            .csrf(AbstractHttpConfigurer::disable)
-            .formLogin(AbstractHttpConfigurer::disable)
-            .httpBasic(AbstractHttpConfigurer::disable)
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .headers(headers -> headers
-                .frameOptions(frame -> frame.sameOrigin())
-                .contentTypeOptions(Customizer.withDefaults())
-                .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
-                .referrerPolicy(ref -> ref.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN))
-                .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; frame-ancestors 'self'")))
-            .exceptionHandling(ex -> ex
-                .authenticationEntryPoint(entryPoint)
-                .accessDeniedHandler(accessDeniedHandler))
-            .authorizeHttpRequests(auth -> {
-                auth.requestMatchers("/actuator/**", "/api/*/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll();
-                if (props.isDynamicAuthorization()) {
-                    auth.anyRequest().access(dynamicAuthorizationManager);
-                } else {
-                    auth.anyRequest().authenticated();
-                }
-            })
-            .addFilterBefore(new JwtAuthenticationFilter(jwtProvider, tokenStore),
-                             UsernamePasswordAuthenticationFilter.class);
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            JwtProvider jwtProvider,
+            TokenStore tokenStore,
+            FrameworkSecurityProperties props,
+            DynamicAuthorizationManager dynamicAuthorizationManager,
+            RestAuthenticationEntryPoint entryPoint,
+            RestAccessDeniedHandler accessDeniedHandler)
+            throws Exception {
+        http.csrf(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin())
+                        .contentTypeOptions(Customizer.withDefaults())
+                        .httpStrictTransportSecurity(
+                                hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
+                        .referrerPolicy(ref -> ref.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN))
+                        .contentSecurityPolicy(
+                                csp -> csp.policyDirectives("default-src 'self'; frame-ancestors 'self'")))
+                .exceptionHandling(
+                        ex -> ex.authenticationEntryPoint(entryPoint).accessDeniedHandler(accessDeniedHandler))
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers("/actuator/**", "/api/*/auth/**", "/swagger-ui/**", "/v3/api-docs/**")
+                            .permitAll();
+                    if (props.isDynamicAuthorization()) {
+                        auth.anyRequest().access(dynamicAuthorizationManager);
+                    } else {
+                        auth.anyRequest().authenticated();
+                    }
+                })
+                .addFilterBefore(
+                        new JwtAuthenticationFilter(jwtProvider, tokenStore),
+                        UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

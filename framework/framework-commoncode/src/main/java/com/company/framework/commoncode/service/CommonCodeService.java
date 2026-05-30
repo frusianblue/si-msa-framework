@@ -5,11 +5,10 @@ import com.company.framework.commoncode.dto.CommonCodeDto;
 import com.company.framework.commoncode.dto.CommonCodeForm;
 import com.company.framework.commoncode.mapper.CommonCodeMapper;
 import com.company.framework.commoncode.struct.CommonCodeStructMapper;
+import java.util.List;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 /**
  * 공통코드 조회/관리. 그룹 단위로 캐시(Caffeine)하여 반복 조회 비용을 없앤다.
