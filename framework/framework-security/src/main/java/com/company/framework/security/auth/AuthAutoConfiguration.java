@@ -1,6 +1,7 @@
 package com.company.framework.security.auth;
 
 import com.company.framework.security.jwt.JwtProvider;
+import com.company.framework.security.loginattempt.LoginAttemptService;
 import com.company.framework.security.token.TokenStore;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -18,8 +19,12 @@ public class AuthAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public LoginService loginService(Authenticator authenticator, JwtProvider jwtProvider, TokenStore tokenStore) {
-        return new LoginService(authenticator, jwtProvider, tokenStore);
+    public LoginService loginService(
+            Authenticator authenticator,
+            JwtProvider jwtProvider,
+            TokenStore tokenStore,
+            LoginAttemptService loginAttempts) {
+        return new LoginService(authenticator, jwtProvider, tokenStore, loginAttempts);
     }
 
     @Bean

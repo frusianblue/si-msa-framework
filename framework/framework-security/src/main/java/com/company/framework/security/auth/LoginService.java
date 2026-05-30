@@ -3,6 +3,7 @@ package com.company.framework.security.auth;
 import com.company.framework.core.error.BusinessException;
 import com.company.framework.core.error.ErrorCode;
 import com.company.framework.security.jwt.JwtProvider;
+import com.company.framework.security.loginattempt.LoginAttemptService;
 import com.company.framework.security.token.TokenStore;
 import java.time.Duration;
 import java.time.Instant;
@@ -17,16 +18,30 @@ public class LoginService {
     private final Authenticator authenticator;
     private final JwtProvider jwtProvider;
     private final TokenStore tokenStore;
+    private final LoginAttemptService loginAttempts;
 
-    public LoginService(Authenticator authenticator, JwtProvider jwtProvider, TokenStore tokenStore) {
+    public LoginService(
+            Authenticator authenticator,
+            JwtProvider jwtProvider,
+            TokenStore tokenStore,
+            LoginAttemptService loginAttempts) {
         this.authenticator = authenticator;
         this.jwtProvider = jwtProvider;
         this.tokenStore = tokenStore;
+        this.loginAttempts = loginAttempts;
     }
 
     public TokenResponse login(LoginCommand command) {
-        AuthenticatedUser user = authenticator.authenticate(command);
-        return issue(user.userId(), user.roles());
+        String key = command.loginId();
+        loginAttempts.assertNotLocked(key); // 잠겨 있으면 429(LOGIN_LOCKED)
+        try {
+            AuthenticatedUser user = authenticator.authenticate(command);
+            loginAttempts.reset(key); // 성공 → 카운터 초기화
+            return issue(user.userId(), user.roles());
+        } catch (RuntimeException e) {
+            loginAttempts.recordFailure(key); // 실패 → 카운트(임계치 초과 시 잠금)
+            throw e;
+        }
     }
 
     public TokenResponse refresh(String refreshToken) {
