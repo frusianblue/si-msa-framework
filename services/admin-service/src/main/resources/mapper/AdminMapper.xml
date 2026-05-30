@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.company.admin.mapper.AdminMapper">
+
+    <!-- 리소스 -->
+    <select id="listResources" resultType="com.company.admin.domain.ResourceRow">
+        SELECT id, url_pattern, http_method, descr, sort_order,
+               created_at, created_by, updated_at, updated_by
+        FROM resources ORDER BY sort_order ASC, id ASC
+    </select>
+    <insert id="insertResource" parameterType="com.company.admin.domain.ResourceRow"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO resources (url_pattern, http_method, descr, sort_order, created_at, created_by)
+        VALUES (#{urlPattern}, #{httpMethod}, #{descr}, #{sortOrder}, #{createdAt}, #{createdBy})
+    </insert>
+    <update id="updateResource" parameterType="com.company.admin.domain.ResourceRow">
+        UPDATE resources
+        SET url_pattern=#{urlPattern}, http_method=#{httpMethod}, descr=#{descr}, sort_order=#{sortOrder},
+            updated_at=#{updatedAt}, updated_by=#{updatedBy}
+        WHERE id=#{id}
+    </update>
+    <delete id="deleteResource">
+        DELETE FROM resources WHERE id=#{id}
+    </delete>
+
+    <!-- 메뉴 -->
+    <select id="listMenus" resultType="com.company.admin.domain.MenuRow">
+        SELECT id, parent_id, name, url, icon, sort_order,
+               created_at, created_by, updated_at, updated_by
+        FROM menus ORDER BY sort_order ASC, id ASC
+    </select>
+    <insert id="insertMenu" parameterType="com.company.admin.domain.MenuRow"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO menus (parent_id, name, url, icon, sort_order, created_at, created_by)
+        VALUES (#{parentId}, #{name}, #{url}, #{icon}, #{sortOrder}, #{createdAt}, #{createdBy})
+    </insert>
+    <update id="updateMenu" parameterType="com.company.admin.domain.MenuRow">
+        UPDATE menus
+        SET parent_id=#{parentId}, name=#{name}, url=#{url}, icon=#{icon}, sort_order=#{sortOrder},
+            updated_at=#{updatedAt}, updated_by=#{updatedBy}
+        WHERE id=#{id}
+    </update>
+    <delete id="deleteMenu">
+        DELETE FROM menus WHERE id=#{id}
+    </delete>
+
+    <!-- 역할 매핑 -->
+    <select id="listRoles" resultType="map">
+        SELECT id, role_name AS roleName, descr FROM roles ORDER BY id
+    </select>
+    <insert id="mapRoleResource">
+        INSERT INTO role_resources (role_id, resource_id) VALUES (#{roleId}, #{resourceId})
+    </insert>
+    <delete id="unmapRoleResource">
+        DELETE FROM role_resources WHERE role_id=#{roleId} AND resource_id=#{resourceId}
+    </delete>
+    <insert id="mapRoleMenu">
+        INSERT INTO role_menus (role_id, menu_id) VALUES (#{roleId}, #{menuId})
+    </insert>
+    <delete id="unmapRoleMenu">
+        DELETE FROM role_menus WHERE role_id=#{roleId} AND menu_id=#{menuId}
+    </delete>
+</mapper>

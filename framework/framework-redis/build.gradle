@@ -1,0 +1,7 @@
+// 선택형: Redis 기반 TokenStore 가 필요한 프로젝트만 의존 추가 + token-store.type=redis 설정.
+dependencies {
+    api project(':framework:framework-security')
+    api 'org.springframework.boot:spring-boot-starter-data-redis'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+}

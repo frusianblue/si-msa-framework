@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.company.framework.security.rbac.mapper.SecurityMapper">
+
+    <select id="findRolesByLoginId" resultType="string">
+        SELECT r.role_name
+        FROM users u
+        JOIN user_roles ur ON ur.user_id = u.id
+        JOIN roles r       ON r.id = ur.role_id
+        WHERE u.login_id = #{loginId}
+    </select>
+
+    <select id="findAllResources" resultType="com.company.framework.security.rbac.domain.Resource">
+        SELECT res.id,
+               res.url_pattern,
+               res.http_method,
+               r.role_name,
+               res.sort_order
+        FROM resources res
+        JOIN role_resources rr ON rr.resource_id = res.id
+        JOIN roles r           ON r.id = rr.role_id
+        ORDER BY res.sort_order ASC
+    </select>
+
+    <select id="findMenusByRoles" resultType="com.company.framework.security.rbac.domain.Menu">
+        SELECT DISTINCT m.id, m.parent_id, m.name, m.url, m.icon, m.sort_order
+        FROM menus m
+        JOIN role_menus rm ON rm.menu_id = m.id
+        JOIN roles r       ON r.id = rm.role_id
+        WHERE r.role_name IN
+        <foreach item="role" collection="roles" open="(" separator="," close=")">
+            #{role}
+        </foreach>
+        ORDER BY m.sort_order ASC
+    </select>
+</mapper>

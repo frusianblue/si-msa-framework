@@ -1,0 +1,9 @@
+dependencies {
+    api project(':framework:framework-core')
+    api "org.mybatis.spring.boot:mybatis-spring-boot-starter:${mybatisStarterVersion}"
+    api 'org.springframework.boot:spring-boot-starter-jdbc'
+    // ※ DB 드라이버는 프레임워크가 품지 않는다. 각 서비스가 자기 DB 드라이버를 선언.
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

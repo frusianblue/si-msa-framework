@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.company.framework.file.mapper.FileMapper">
+    <insert id="insert" parameterType="com.company.framework.file.domain.FileMetadata"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO file_metadata (original_name, stored_path, content_type, size, storage_type,
+                                   created_at, created_by)
+        VALUES (#{originalName}, #{storedPath}, #{contentType}, #{size}, #{storageType},
+                #{createdAt}, #{createdBy})
+    </insert>
+    <select id="findById" resultType="com.company.framework.file.domain.FileMetadata">
+        SELECT id, original_name, stored_path, content_type, size, storage_type,
+               created_at, created_by, updated_at, updated_by
+        FROM file_metadata WHERE id = #{id}
+    </select>
+    <delete id="delete">
+        DELETE FROM file_metadata WHERE id = #{id}
+    </delete>
+</mapper>

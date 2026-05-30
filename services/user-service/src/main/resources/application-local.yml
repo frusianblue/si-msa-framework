@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:sidb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  flyway:
+    # 운영 마이그레이션 + 로컬 전용 시드 데이터
+    locations: classpath:db/migration,classpath:db/seed-local
+
+framework:
+  security:
+    jwt:
+      secret: change-this-to-a-very-long-secret-key-at-least-32-bytes!!
+    token-store:
+      type: memory

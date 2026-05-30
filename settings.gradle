@@ -1,0 +1,16 @@
+rootProject.name = 'si-msa-framework'
+
+// ----- 공통 프레임워크 라이브러리 -----
+include 'framework:framework-core'
+include 'framework:framework-mybatis'
+include 'framework:framework-security'
+include 'framework:framework-openapi'   // 선택형: API 문서 필요한 프로젝트만 의존 추가
+include 'framework:framework-redis'        // 선택형: Redis TokenStore
+include 'framework:framework-commoncode'   // 선택형: 공통코드 관리
+include 'framework:framework-file'         // 선택형: 파일 업로드(로컬/NAS)
+include 'framework:framework-file-s3'      // 선택형: S3 저장소
+
+// ----- 업무 / 인프라 서비스 -----
+include 'services:gateway'
+include 'services:user-service'
+include 'services:admin-service'

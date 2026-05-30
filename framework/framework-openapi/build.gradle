@@ -1,0 +1,7 @@
+// 선택형 모듈: API 문서가 필요한 프로젝트만 이 의존성을 추가하면 된다.
+dependencies {
+    api "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+}

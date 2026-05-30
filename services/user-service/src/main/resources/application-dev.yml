@@ -1,0 +1,9 @@
+# 개발 초기: 로그인/권한 없이 바로 개발. (local 과 함께 사용)
+#   ./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,dev'
+framework:
+  security:
+    dev-auth:
+      enabled: true
+      user-id: devadmin
+      roles: [ROLE_ADMIN, ROLE_USER]
+      allow-header-override: true   # 호출마다 X-Dev-Roles 헤더로 권한 변경 가능

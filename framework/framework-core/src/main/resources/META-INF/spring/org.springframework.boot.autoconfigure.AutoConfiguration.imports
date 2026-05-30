@@ -1,0 +1,3 @@
+com.company.framework.core.config.FrameworkCoreAutoConfiguration
+com.company.framework.core.crypto.CryptoAutoConfiguration
+com.company.framework.core.cache.CacheAutoConfiguration

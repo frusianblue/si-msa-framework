@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!--
+      오탐(false positive)이나 검토 후 허용한 취약점을 여기에 등록한다.
+      예:
+      <suppress>
+        <notes>검토 완료: 해당 기능 미사용으로 영향 없음 (담당자/일자)</notes>
+        <cve>CVE-XXXX-XXXXX</cve>
+      </suppress>
+    -->
+</suppressions>

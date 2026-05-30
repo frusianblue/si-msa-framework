@@ -1,0 +1,9 @@
+dependencies {
+    api project(':framework:framework-core')
+    api project(':framework:framework-mybatis')
+    compileOnly 'org.springframework.security:spring-security-core'  // @PreAuthorize (선택)
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

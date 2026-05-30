@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  공통 로깅 설정. 각 서비스의 logback-spring.xml 에서 다음과 같이 포함:
+    <include resource="logback-common.xml"/>
+  - traceId(MDC) 를 모든 로그에 출력 → MSA 추적
+  - 콘솔 + 일자별 롤링 파일(보관 30일)
+  - AUDIT 로거는 별도 파일로 분리 적재
+-->
+<included>
+    <property name="LOG_DIR" value="${LOG_DIR:-./logs}"/>
+    <property name="APP" value="${spring.application.name:-app}"/>
+    <property name="PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [${APP},%X{traceId:-},%X{spanId:-}] [%thread] %logger{36} - %msg%n"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder><pattern>${PATTERN}</pattern></encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${APP}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/${APP}.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder><pattern>${PATTERN}</pattern></encoder>
+    </appender>
+
+    <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${APP}-audit.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/${APP}-audit.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>365</maxHistory>
+        </rollingPolicy>
+        <encoder><pattern>${PATTERN}</pattern></encoder>
+    </appender>
+
+    <!-- 감사 로그는 전용 파일로만 (운영에서는 DB/SIEM 연계 권장) -->
+    <logger name="AUDIT" level="INFO" additivity="false">
+        <appender-ref ref="AUDIT_FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</included>

@@ -1,0 +1,17 @@
+dependencies {
+    api project(':framework:framework-core')      // 캐시(Caffeine), 응답/예외
+    api project(':framework:framework-mybatis')   // DB 접근
+
+    // MapStruct (DTO 변환). 컴파일타임 생성 → 런타임 비용 0
+    implementation "org.mapstruct:mapstruct:${mapstructVersion}"
+    // @PreAuthorize 용. 강결합 회피 위해 compileOnly (보안 모듈 있으면 적용, 없으면 무시)
+    compileOnly 'org.springframework.security:spring-security-core'
+    annotationProcessor "org.mapstruct:mapstruct-processor:${mapstructVersion}"
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor "org.projectlombok:lombok-mapstruct-binding:${lombokMapstructBinding}"
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

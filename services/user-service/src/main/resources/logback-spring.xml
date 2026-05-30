@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- 공통 프레임워크 로깅(traceId 패턴, 롤링, AUDIT 분리) 포함 -->
+    <include resource="logback-common.xml"/>
+</configuration>

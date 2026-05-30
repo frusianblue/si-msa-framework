@@ -1,0 +1,24 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+dependencies {
+    // 공통 프레임워크 3종 (이것만 넣으면 응답/예외/트레이스/보안/MyBatis 자동 적용)
+    implementation project(':framework:framework-core')
+    implementation project(':framework:framework-mybatis')
+    implementation project(':framework:framework-security')
+    implementation project(':framework:framework-openapi')   // 선택형: API 문서
+    implementation project(':framework:framework-commoncode') // 공통코드
+    implementation project(':framework:framework-file')       // 파일 업로드(로컬/NAS)
+    // S3 쓸 환경이면 주석 해제 + storage.type=s3
+    // implementation project(':framework:framework-file-s3')
+    // DB 마이그레이션 (Flyway). PostgreSQL 은 전용 모듈 필요
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
+    runtimeOnly 'org.postgresql:postgresql'
+    runtimeOnly 'com.h2database:h2'   // 로컬/테스트용
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

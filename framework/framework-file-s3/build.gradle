@@ -1,0 +1,8 @@
+// 선택형: S3(또는 MinIO 등 호환) 저장이 필요한 프로젝트만 의존 추가 + storage.type=s3.
+dependencies {
+    api project(':framework:framework-file')
+    api platform("software.amazon.awssdk:bom:${awsSdkVersion}")
+    api 'software.amazon.awssdk:s3'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+}

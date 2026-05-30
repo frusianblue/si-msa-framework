@@ -1,0 +1,16 @@
+// 공통 프레임워크 코어 - 일반 라이브러리(jar). 실행 모듈 아님.
+dependencies {
+    api 'org.springframework.boot:spring-boot-starter-web'
+    api 'org.springframework.boot:spring-boot-starter-validation'
+    api 'org.springframework.boot:spring-boot-starter-actuator'
+    // AOP (Boot 4: starter-aop -> starter-aspectj 로 개명됨)
+    api 'org.springframework.boot:spring-boot-starter-aspectj'
+    api 'org.springframework.boot:spring-boot-starter-cache'
+    api 'com.github.ben-manes.caffeine:caffeine'
+    // 분산추적/관측성 (Micrometer + OTel)
+    api 'io.micrometer:micrometer-tracing-bridge-otel'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

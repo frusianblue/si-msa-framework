@@ -1,0 +1,43 @@
+server:
+  port: 8000
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          # 게이트웨이가 모든 요청에 X-Trace-Id 를 붙여 하위 서비스로 전달
+          default-filters:
+            - AddRequestHeader=X-Gateway, si-msa-gateway
+          routes:
+            - id: user-service
+              uri: lb://user-service          # K8s 환경에서는 http://user-service:8080 로 대체 가능
+              predicates:
+                - Path=/api/v1/users/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: userCb
+                    fallbackUri: forward:/fallback/user
+          # 신뢰 프록시 (X-Forwarded-* 사용 시 필요. 2025.x 부터 기본 비활성)
+          trusted-proxies: "10\\..*|172\\..*|192\\.168\\..*"
+
+# 관측성: 100% 추적 (운영에서는 0.1 등으로 조정)
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true   # K8s liveness/readiness 프로브용
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-}]"

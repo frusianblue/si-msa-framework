@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Gradle Imported" enabled="true">
+        <outputRelativeToContentRoot value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.mapstruct/mapstruct-processor/1.6.3/52e345c907fbf173b376586c7f8b131d53fa5867/mapstruct-processor-1.6.3.jar" />
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok/1.18.46/a5cfe99fdf320e84955ef653f2ce1bf789d11385/lombok-1.18.46.jar" />
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok-mapstruct-binding/0.2.0/2f1cf9ced7b720ba4996c942b816669e63f0fa4f/lombok-mapstruct-binding-0.2.0.jar" />
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.springframework.boot/spring-boot-configuration-processor/4.0.6/85a814e8afbc6c5a6637489760028688bb77860/spring-boot-configuration-processor-4.0.6.jar" />
+        </processorPath>
+        <module name="si-msa-framework.framework.framework-commoncode.main" />
+      </profile>
+      <profile name="Gradle Imported" enabled="true">
+        <outputRelativeToContentRoot value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.springframework.boot/spring-boot-configuration-processor/4.0.6/85a814e8afbc6c5a6637489760028688bb77860/spring-boot-configuration-processor-4.0.6.jar" />
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok/1.18.46/a5cfe99fdf320e84955ef653f2ce1bf789d11385/lombok-1.18.46.jar" />
+        </processorPath>
+        <module name="si-msa-framework.framework.framework-core.main" />
+        <module name="si-msa-framework.framework.framework-openapi.main" />
+        <module name="si-msa-framework.framework.framework-file.main" />
+        <module name="si-msa-framework.framework.framework-security.main" />
+      </profile>
+      <profile name="Gradle Imported" enabled="true">
+        <outputRelativeToContentRoot value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok/1.18.46/a5cfe99fdf320e84955ef653f2ce1bf789d11385/lombok-1.18.46.jar" />
+        </processorPath>
+        <module name="si-msa-framework.services.admin-service.main" />
+        <module name="si-msa-framework.framework.framework-redis.main" />
+        <module name="si-msa-framework.framework.framework-file-s3.main" />
+        <module name="si-msa-framework.framework.framework-mybatis.main" />
+        <module name="si-msa-framework.services.user-service.main" />
+      </profile>
+    </annotationProcessing>
+    <bytecodeTargetLevel target="21" />
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="si-msa-framework.framework" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-commoncode" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-commoncode.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-commoncode.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-core" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-core.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-core.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-file" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-file-s3" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-file-s3.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-file-s3.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-file.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-file.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-mybatis" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-mybatis.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-mybatis.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-openapi" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-openapi.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-openapi.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-redis" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-redis.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-redis.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-security" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-security.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.framework-security.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.framework.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.admin-service" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.admin-service.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.admin-service.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.gateway" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.gateway.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.gateway.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.test" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.user-service" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.user-service.main" options="-parameters -Xlint:all,-processing" />
+      <module name="si-msa-framework.services.user-service.test" options="-parameters -Xlint:all,-processing" />
+    </option>
+  </component>
+</project>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.company.framework.commoncode.mapper.CommonCodeMapper">
+
+    <select id="findByGroup" resultType="com.company.framework.commoncode.domain.CommonCode">
+        SELECT id, group_code, code, code_name, code_value, sort_order, use_yn, attr1, attr2,
+               created_at, created_by, updated_at, updated_by
+        FROM common_code
+        WHERE group_code = #{groupCode} AND use_yn = true
+        ORDER BY sort_order ASC, code ASC
+    </select>
+
+    <select id="findAllGroups" resultType="string">
+        SELECT DISTINCT group_code FROM common_code ORDER BY group_code
+    </select>
+
+    <insert id="insert" parameterType="com.company.framework.commoncode.domain.CommonCode"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO common_code (group_code, code, code_name, code_value, sort_order, use_yn, attr1, attr2,
+                                 created_at, created_by)
+        VALUES (#{groupCode}, #{code}, #{codeName}, #{codeValue}, #{sortOrder}, #{useYn}, #{attr1}, #{attr2},
+                #{createdAt}, #{createdBy})
+    </insert>
+
+    <update id="update" parameterType="com.company.framework.commoncode.domain.CommonCode">
+        UPDATE common_code
+        SET code_name=#{codeName}, code_value=#{codeValue}, sort_order=#{sortOrder},
+            use_yn=#{useYn}, attr1=#{attr1}, attr2=#{attr2},
+            updated_at=#{updatedAt}, updated_by=#{updatedBy}
+        WHERE group_code=#{groupCode} AND code=#{code}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM common_code WHERE group_code=#{groupCode} AND code=#{code}
+    </delete>
+</mapper>
