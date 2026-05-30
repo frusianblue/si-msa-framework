@@ -9,9 +9,8 @@
 Spring Boot 4 / Java 21 / MyBatis 기반 **SI MSA 공통 프레임워크**. 멀티모듈 + "프로젝트별 선택"(옵션 모듈 + `framework.*.enabled` 토글) 설계. 인증/RBAC·토큰스토어·공통코드·파일업로드 공통 기능 구현 완료.
 
 ## 2. 산출물 위치
-- 코드 zip: `/mnt/user-data/outputs/si-msa-framework.zip` (약 161개 파일)
-- 작업 루트: `/home/claude/si-msa-framework/`
-- 문서: `README.md`(전체 가이드), 본 `HANDOFF.md`
+- 저장소: `github.com/frusianblue/si-msa-framework` (멀티모듈 Gradle 프로젝트)
+- 문서: `README.md`(전체 가이드), `STACK.md`(라이브러리/플러그인/버전), 본 `HANDOFF.md`
 - group=`com.company`, version=`1.0.0`
 
 ## 3. 확정 스택 / 버전 (모두 호환 검증 완료)
@@ -43,14 +42,13 @@ services/
   gateway        (Spring Cloud Gateway, reactive, DB 없음)
   user-service   (8080, PostgreSQL, DbAuthenticationProvider, 파일/공통코드 연결)
   admin-service  (8081, 리소스/메뉴 CRUD + reload)
-deploy/          docker / k8s(프로브·HPA·configmap) / cicd(GitHub Actions: OWASP+Sonar)
+deploy/          docker(런타임 Dockerfile/JarLauncher) / k8s(프로브·HPA·configmap) / cicd(Jenkinsfile: Test→품질게이트→Flyway검증→이미지→K8s롤아웃; 구 ci-cd.yml은 레거시)
 ```
 
 ## 5. 빌드 & 실행
+> gradle wrapper(8.14) 저장소 포함 — 별도 gradle 설치 없이 `./gradlew` 사용.
+> 최초 1회 `./gradlew spotlessApply`로 포맷 정렬(이후 diff 안정) 후 `./gradlew build`.
 ```bash
-# 최초 1회: gradle wrapper jar 생성 (배포 시 미포함 — 아래 참고)
-gradle wrapper --gradle-version 8.14
-
 # 로컬 실행 (H2, 실제 로그인)
 ./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local'
 ./gradlew :services:admin-service:bootRun --args='--spring.profiles.active=local'
@@ -75,16 +73,25 @@ gradle wrapper --gradle-version 8.14
 - **Flyway 운영 마이그레이션(`db/migration`)과 dev 시드(`db/seed-local`) 분리** — 시드는 local 프로파일에서만 location 추가.
 
 ## 7. 주의사항 / 알려진 이슈
-- ⚠️ **gradle-wrapper.jar 미포함**: 배포 환경(도메인 차단)에서 생성 불가했음. 인계받으면 `gradle wrapper --gradle-version 8.14` 1회 실행 필요.
-- Boot 4 API 변경 반영됨(되돌리지 말 것): Jackson3 customizer는 `JsonMapperBuilderCustomizer` / AOP 스타터 `spring-boot-starter-aspectj` / Security 7 `AuthorizationManager.authorize()`(`check()` 제거) / Gateway 아티팩트 `spring-cloud-starter-gateway-server-webflux`.
+- ✅ **빌드/품질 도구 적용 완료**: 버전 카탈로그(`gradle/libs.versions.toml`) 단일 소스 + 루트 `ext{}` 브리지, Spotless(Palantir)·JaCoCo·OWASP·Sonar 전 모듈, Jenkins 파이프라인(`deploy/cicd/Jenkinsfile`), 런타임 Dockerfile(JarLauncher). gradle-wrapper(8.14) 저장소 포함(과거 '미포함' 이슈 해소).
+- Boot 4 API 변경 반영됨(되돌리지 말 것): Jackson3 customizer `JsonMapperBuilderCustomizer` / AOP 스타터 `spring-boot-starter-aspectj` / Security 7 `AuthorizationManager.authorize(Supplier<? extends Authentication>, …)`(`check()` 제거, 와일드카드 필수) / Gateway 아티팩트 `spring-cloud-starter-gateway-server-webflux`.
+- 빌드 통과까지 처리한 Boot4/Security7 추가 수정(되돌리지 말 것): `JacksonConfig`는 `DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS`(Jackson3로 이동) / `HttpLoggingFilter`는 `ContentCachingRequestWrapper(request, maxBytes)`(Spring 7, 단일인자 생성자 제거) / `framework-core`는 `compileOnly spring-security-core`(AuditLogAspect의 SecurityContextHolder용) / `AuthController` Javadoc 글롭은 `*/`가 블록주석을 닫지 않도록 표기 주의.
 - framework-core는 security/dao 의존 없음 → `AccessDeniedException`은 RestAccessDeniedHandler가, `DataIntegrityViolationException`은 framework-mybatis advice가 처리.
 - (작업 환경 한정) bash 중괄호 확장 `{a,b}` 미동작 → `for` 루프 사용.
 
-## 8. 미완료 / 다음 후보 <!-- 채우기 -->
+## 8. 진행 상황 / 다음 후보
+완료:
+- [x] 빌드/품질 도구: 버전 카탈로그, Spotless, JaCoCo, OWASP, Sonar
+- [x] CI/배포: Jenkins 파이프라인 / 런타임 Dockerfile(JarLauncher) / Flyway 운영검증 게이트
+- [x] 개발 도구: datasource-proxy 2.0.0, devtools, Testcontainers 의존(@ServiceConnection)
+- [x] Boot4/Security7 마이그레이션 컴파일 수정 (위 7절)
+
+진행/예정:
+- [~] 비밀번호 정책 강화(BCrypt 강제 + 로그인 시도 제한) — framework-security에 코드 준비됨(`password/`, `loginattempt/`). ErrorCode `LOGIN_LOCKED` 추가 + SecurityAutoConfiguration 빈 등록 적용 후 커밋 예정.
 - [ ] 서비스 간 HTTP 통신 (HTTP Interface 클라이언트 + traceId 전파)
-- [ ] Testcontainers 통합테스트 (운영과 동일 PostgreSQL/Redis)
-- [ ] 실 운영 비밀번호 정책 강화(BCrypt 강제, 로그인 시도 제한 등)
-- [ ] <!-- 추가 -->
+- [ ] Testcontainers 통합테스트 작성(스모크 → 운영 동일 PostgreSQL)
+- [ ] admin-service에 user-service의 Flyway 플러그인/개발 의존 동일 적용
+- [ ] (선택) Redis 기반 LoginAttemptService(다중 인스턴스 공유), ben-manes/git-properties/license-report
 
 ## 9. 빠른 검증 (인계 후 동작 확인)
 ```bash

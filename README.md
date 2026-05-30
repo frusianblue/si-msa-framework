@@ -9,7 +9,7 @@ SI 프로젝트용 MSA 공통 프레임워크 스켈레톤.
 | Java | 21 (가상 스레드) |
 | MyBatis | mybatis-spring-boot-starter 4.0.1 |
 | Spring Cloud | 2025.1.1 (Oakwood) — Gateway |
-| 빌드 | Gradle (Kotlin DSL), 멀티모듈 |
+| 빌드 | Gradle 8.14 (Groovy DSL), 멀티모듈 + 버전 카탈로그(`gradle/libs.versions.toml`) |
 
 ## 모듈 구조
 ```
@@ -21,8 +21,9 @@ services/
   gateway             Spring Cloud Gateway (라우팅 + CircuitBreaker)
   user-service        샘플 업무 서비스 (프레임워크 사용 예시)
 deploy/
-  docker/ k8s/ cicd/  Dockerfile(레이어드), K8s 매니페스트(프로브/HPA), GitHub Actions
+  docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
+> 위는 핵심 모듈만 표기한 단순도. 선택 모듈(`framework-openapi/redis/commoncode/file/file-s3`)과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -32,25 +33,35 @@ deploy/
 - Java 21 가상 스레드: `spring.threads.virtual.enabled=true` + `@Async` 가상스레드 executor.
 - 보안: `Authorization: Bearer <JWT>` 무상태 인증. `/actuator/**`, `/api/*/auth/**` 는 permitAll.
 
+## 빌드 / 품질 도구
+- **버전 단일 소스**: `gradle/libs.versions.toml`. 루트 `build.gradle`의 `ext{}` 브리지로 기존 모듈의 `${...Version}` 참조도 그대로 동작(점진 이관). 상세는 `STACK.md`.
+- **Spotless**(Palantir Java Format): 최초 1회 `./gradlew spotlessApply`로 전체 정렬, CI는 `spotlessCheck` 게이트.
+- **JaCoCo**: 테스트 후 커버리지 XML 자동 생성 → SonarQube가 수집.
+- **OWASP Dependency-Check**: CVSS 7.0+ 발견 시 빌드 실패. `./gradlew dependencyCheckAggregate`.
+- **SonarQube**: 정적분석/보안 핫스팟/커버리지.
+- **CI = Jenkins**(`deploy/cicd/Jenkinsfile`): Build&Test(Testcontainers+JaCoCo) → 품질 게이트(Spotless/OWASP/Sonar 병렬) → Flyway Validate(운영DB) → 이미지 빌드/푸시 → K8s 롤아웃. (구 `ci-cd.yml`(GitHub Actions)은 레거시 — 사용 시 정리 권장)
+
 ## 처음 실행하기
 ```bash
-# 1) Gradle wrapper 최초 1회 생성 (로컬에 gradle 설치 필요)
-gradle wrapper --gradle-version 8.14
-
-# 2) 로컬(H2) 프로필로 user-service 기동
+# 1) 로컬(H2) 프로필로 user-service 기동 (gradlew 동봉 — 별도 gradle 설치 불필요)
 ./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local'
 
-# 3) 호출 예시
-curl -X POST localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d '{"loginId":"hong"}'
+# 2) 호출 예시 (실 로그인: loginId + password)
+curl -X POST localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' \
+     -d '{"loginId":"admin","password":"admin123"}'
 curl -X POST localhost:8080/api/v1/users -H 'Content-Type: application/json' \
      -d '{"loginId":"hong","name":"홍길동","email":"hong@test.com","phone":"010-1234-5678"}'
 ```
 
 ## 컨테이너 / 배포
 ```bash
-docker build -f deploy/docker/Dockerfile --build-arg SERVICE=services:user-service -t user-service .
+# 런타임 전용 Dockerfile: jar 는 CI(Jenkins)가 먼저 빌드 → JAR_FILE 로 주입(레이어 추출, JarLauncher 기동)
+./gradlew :services:user-service:bootJar
+docker build -f deploy/docker/Dockerfile \
+  --build-arg JAR_FILE=services/user-service/build/libs/*.jar -t user-service .
 kubectl apply -f deploy/k8s/
 ```
+> 실제 운영 흐름은 `deploy/cicd/Jenkinsfile` 한 곳에서 빌드·테스트·게이트·이미지·롤아웃을 수행한다.
 
 ## 확장 가이드
 - 새 업무 서비스: `services/` 아래 모듈 추가 → `settings.gradle`에 include → `framework-*` 의존.
