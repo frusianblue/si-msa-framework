@@ -18,7 +18,8 @@ public interface ErrorCode {
         UNAUTHORIZED("E0401", "인증이 필요합니다.", HttpStatus.UNAUTHORIZED),
         FORBIDDEN("E0403", "접근 권한이 없습니다.", HttpStatus.FORBIDDEN),
         NOT_FOUND("E0404", "요청한 리소스를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
-        CONFLICT("E0409", "리소스 상태가 충돌합니다.", HttpStatus.CONFLICT);
+        CONFLICT("E0409", "리소스 상태가 충돌합니다.", HttpStatus.CONFLICT),
+        LOGIN_LOCKED("E0429", "로그인 시도가 많습니다. 잠시 후 다시 시도하세요.", HttpStatus.TOO_MANY_REQUESTS);
 
         private final String code;
         private final String message;

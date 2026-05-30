@@ -10,6 +10,12 @@ import com.company.framework.security.handler.RestAuthenticationEntryPoint;
 import com.company.framework.security.jwt.JwtAuthenticationFilter;
 import com.company.framework.security.jwt.JwtProperties;
 import com.company.framework.security.jwt.JwtProvider;
+import com.company.framework.security.loginattempt.InMemoryLoginAttemptService;
+import com.company.framework.security.loginattempt.LoginAttemptProperties;
+import com.company.framework.security.loginattempt.LoginAttemptService;
+import com.company.framework.security.password.PasswordPolicy;
+import com.company.framework.security.password.PasswordProperties;
+import com.company.framework.security.password.PasswordSafetyGuard;
 import com.company.framework.security.rbac.core.DynamicAuthorizationManager;
 import com.company.framework.security.rbac.core.MenuService;
 import com.company.framework.security.rbac.core.SecurityMetadataService;
@@ -45,7 +51,13 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 @AutoConfiguration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties({JwtProperties.class, FrameworkSecurityProperties.class, DevAuthProperties.class})
+@EnableConfigurationProperties({
+    JwtProperties.class,
+    FrameworkSecurityProperties.class,
+    DevAuthProperties.class,
+    PasswordProperties.class,
+    LoginAttemptProperties.class
+})
 @ConditionalOnProperty(prefix = "framework.security", name = "enabled", havingValue = "true", matchIfMissing = true)
 @MapperScan("com.company.framework.security.rbac.mapper")
 @Import(PasswordEncoderConfig.class)
@@ -110,6 +122,23 @@ public class SecurityAutoConfiguration {
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .addFilterBefore(new DevAuthInjectionFilter(devProps), UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public PasswordPolicy passwordPolicy(PasswordProperties props) {
+        return new PasswordPolicy(props);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(LoginAttemptService.class)
+    public LoginAttemptService loginAttemptService(LoginAttemptProperties props) {
+        return new InMemoryLoginAttemptService(props);
+    }
+
+    @Bean
+    public PasswordSafetyGuard passwordSafetyGuard(PasswordProperties props, Environment env) {
+        return new PasswordSafetyGuard(props, env);
     }
 
     // ================= 정상 체인 (실제 인증/인가) =================
