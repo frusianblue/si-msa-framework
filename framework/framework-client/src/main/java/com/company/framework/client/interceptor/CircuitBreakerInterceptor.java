@@ -25,10 +25,8 @@ public class CircuitBreakerInterceptor implements ClientHttpRequestInterceptor {
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
             throws IOException {
         String host = request.getURI().getHost();
-        CircuitBreaker cb = breakers.computeIfAbsent(
-                host,
-                h -> new CircuitBreaker(
-                        props.getFailureThreshold(), props.getWaitDuration().toMillis(), props.getHalfOpenMaxCalls()));
+        CircuitBreaker cb = breakers.computeIfAbsent(host, h -> new CircuitBreaker(
+                props.getFailureThreshold(), props.getWaitDuration().toMillis(), props.getHalfOpenMaxCalls()));
 
         if (!cb.tryAcquire()) {
             throw new CircuitOpenException(host);

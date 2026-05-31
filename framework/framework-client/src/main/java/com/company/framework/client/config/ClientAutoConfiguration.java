@@ -9,10 +9,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
-import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.context.annotation.Bean;
-import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -22,6 +20,10 @@ import org.springframework.web.client.RestClient;
  * 제공: 'frameworkRestClientBuilder' (RestClient.Builder) — 앱은 .baseUrl(...) 만 붙여 사용.
  *   인터셉터 순서(바깥→안): Trace → CircuitBreaker → Retry → Logging.
  * 3단(override): @ConditionalOnMissingBean(name="frameworkRestClientBuilder").
+ *
+ * 타임아웃은 spring-web 의 SimpleClientHttpRequestFactory 로 직접 설정한다
+ * (Boot 4 모듈 분리로 org.springframework.boot.http.client 헬퍼에 기대지 않음).
+ * 더 정교한 팩토리(JDK/Apache HttpClient)가 필요하면 frameworkRestClientBuilder 빈을 직접 등록(override).
  */
 @AutoConfiguration
 @ConditionalOnClass(RestClient.class)
@@ -32,11 +34,9 @@ public class ClientAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(name = "frameworkRestClientBuilder")
     public RestClient.Builder frameworkRestClientBuilder(ClientProperties props) {
-        ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.defaults()
-                .withConnectTimeout(props.getConnectTimeout())
-                .withReadTimeout(props.getReadTimeout());
-        ClientHttpRequestFactory factory =
-                ClientHttpRequestFactoryBuilder.detect().build(settings);
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout((int) props.getConnectTimeout().toMillis());
+        factory.setReadTimeout((int) props.getReadTimeout().toMillis());
 
         RestClient.Builder builder = RestClient.builder().requestFactory(factory);
 
