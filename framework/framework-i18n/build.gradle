@@ -1,0 +1,8 @@
+// 선택형 모듈: i18n(메시지 외부화/다국어). 의존성 추가 + framework.i18n.enabled=true 로만 활성.
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    api project(':framework:framework-core')   // ErrorCode / BusinessException / ApiResponse 사용
+    // web(LocaleResolver, @RestControllerAdvice)은 호스트 앱이 제공 → 컴파일만
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+}
