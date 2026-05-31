@@ -38,7 +38,12 @@ public class AuditController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
         AuditQuery query = new AuditQuery(
-                actor, eventType, result, parseInstant(from, "from"), parseInstant(to, "to"), PageRequest.of(page, size));
+                actor,
+                eventType,
+                result,
+                parseInstant(from, "from"),
+                parseInstant(to, "to"),
+                PageRequest.of(page, size));
         return ApiResponse.ok(queryService.search(query));
     }
 

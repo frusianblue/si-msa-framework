@@ -74,8 +74,7 @@ public class SecureWebAutoConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "framework.secure-web.csrf", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean
-    public DoubleSubmitCsrfFilter doubleSubmitCsrfFilter(
-            SecureWebResponder responder, SecureWebProperties properties) {
+    public DoubleSubmitCsrfFilter doubleSubmitCsrfFilter(SecureWebResponder responder, SecureWebProperties properties) {
         return new DoubleSubmitCsrfFilter(responder, properties.getCsrf());
     }
 }

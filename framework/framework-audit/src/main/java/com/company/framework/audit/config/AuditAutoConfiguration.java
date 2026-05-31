@@ -47,13 +47,21 @@ public class AuditAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "framework.audit", name = "method-audit", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.audit",
+            name = "method-audit",
+            havingValue = "true",
+            matchIfMissing = true)
     public AuditTrailAspect auditTrailAspect(AuditEventSink sink) {
         return new AuditTrailAspect(sink);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "framework.audit", name = "login-audit", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "framework.audit",
+            name = "login-audit",
+            havingValue = "true",
+            matchIfMissing = true)
     public LoginAuditListener loginAuditListener(AuditEventSink sink) {
         return new LoginAuditListener(sink);
     }
