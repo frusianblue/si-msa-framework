@@ -48,6 +48,8 @@ framework:
 3. 이후: excel · batch · notification → 규제특화(pki/mfa/hsm/recon/egov) → observability → 게이트웨이/k8s/CI-CD 멀티서비스화. (상세 순서는 `docs/FRAMEWORK_MODULES.md` 4절)
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
+- **⚠️ 이 스택은 Jackson 3 (`tools.jackson.*`) 이다.** `com.fasterxml.jackson.core/databind` import 금지(클래스패스에 없음) — 특히 `com.fasterxml.jackson.databind.ObjectMapper` 는 컴파일 에러. 예외: 애너테이션(`@JsonInclude` 등)은 Jackson 3 에서도 여전히 `com.fasterxml.jackson.annotation` 패키지라 OK. Jackson 3 쓸 일 있으면 `tools.jackson.databind.*`(매퍼는 `JsonMapper`, 커스터마이저는 `JsonMapperBuilderCustomizer`) 사용. **필터/인터셉터 등 인프라 레벨의 단순 JSON 응답은 Jackson 빈 주입 대신 수기 직렬화**(SecureWebResponder 처럼)가 버전·빈주입에 안 묶여 견고함. (STACK.md 71 참조)
+- **"core 가 노출하니 전이로 다 된다" 가정 주의.** spring-web/servlet/spring-core 는 core 의 `api` 로 전이되지만, 모듈이 직접 쓰는 web 계열은 `compileOnly 'spring-boot-starter-web'` 로 명시하는 편이 안전(audit/secure-web 패턴).
 - **필터에서 BusinessException 던지지 말 것.** 디스패처 이전 필터의 예외는 `@RestControllerAdvice`(GlobalExceptionHandler)가 처리 못 함 → `SecureWebResponder` 로 표준 JSON 을 직접 기록한다.
 - **CSRF 는 Spring Security 와 독립.** 보안 체인이 `csrf().disable()`(stateless JWT)이므로, 본 모듈의 더블서브밋은 그것과 충돌하지 않는 자체 구현. Spring CSRF 를 다시 켜서 중복시키지 말 것.
 - **CSRF 쿠키는 HttpOnly 금지.** 더블서브밋은 JS 가 쿠키를 읽어 헤더로 재전송해야 하므로 의도적으로 HttpOnly 를 안 건다. SameSite=None 쓸 거면 Secure 필수.
@@ -60,7 +62,7 @@ framework:
 1. `framework/framework-<X>/` 생성: `config`(Properties+AutoConfiguration) · 도메인 패키지 · `resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`(FQCN 등록).
 2. `build.gradle`: `api project(':framework:framework-core')`(+필요 시 다른 framework 모듈) + starter 는 `compileOnly`(이미 core 가 노출하면 생략). 새 버전 의존성 지양.
 3. **`settings.gradle` 에 include 추가**(잊지 말 것).
-4. 코드 작성 전 **Boot 4/Spring 7 변경 API 확인**(특히 `HttpHeaders`, `boot.http.client`, `RestClient`/`RestTemplate` 위치, starter-aop→starter-aspectj).
+4. 코드 작성 전 **Boot 4/Spring 7 변경 API 확인**(특히 `HttpHeaders`, `boot.http.client`, `RestClient`/`RestTemplate` 위치, starter-aop→starter-aspectj, **Jackson 3 `tools.jackson.*`**).
 5. 오토컨피그: `@AutoConfiguration` + `@ConditionalOnClass(모듈마커)` + `@ConditionalOnProperty(framework.<x>.enabled=true)` + 빈은 `@ConditionalOnMissingBean`. 3단 impl 은 `store.type`/세부 토글로 분기.
 6. 검증: `./gradlew :framework:framework-<X>:compileJava` (Configuration Cache 꼬이면 `--no-configuration-cache` 또는 `clean`).
 7. 드롭인 배포: 모듈 폴더 + 변경 파일 + **완성 `settings.gradle`** 을 한 zip 에 담아 루트에서 `unzip -o`.
