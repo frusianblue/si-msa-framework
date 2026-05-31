@@ -145,8 +145,13 @@ dependencies {
     implementation project(':framework:framework-mybatis')   // DB 쓰면
     implementation project(':framework:framework-security')  // 인증/권한 필요하면
     implementation project(':framework:framework-openapi')   // API 문서 필요하면(빼면 통째로 제외)
+    implementation project(':framework:framework-idempotency') // 정확히-한번/멱등키(금융)
+    implementation project(':framework:framework-i18n')        // 메시지 외부화/다국어
+    implementation project(':framework:framework-idgen')       // 채번(Snowflake/업무코드)
+    implementation project(':framework:framework-client')      // 외부 API 표준 호출
 }
 ```
+> 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
 
 **2단계 — 프로퍼티 토글(세부):** 포함한 모듈 안에서 기능을 개별 on/off.
 ```yaml
@@ -173,6 +178,48 @@ framework:
     title: "..."
 ```
 모든 토글은 **미설정 시 기본 활성(matchIfMissing)**. 프로젝트 요건에 맞춰 끄기만 하면 된다.
+
+## 공통기능 모듈 — 토대 4종 (2026-05 추가, 선택형)
+
+> 공통 규약(3단 토글): ① 의존성 추가(`@ConditionalOnClass`) → ② `framework.<X>.enabled=true`(`@ConditionalOnProperty`) → ③ 같은 타입 빈 등록 시 `@ConditionalOnMissingBean` 으로 프로젝트가 override. 선택형이라 **기본 false** — 켜야 동작.
+> 전체 모듈 카탈로그·구축순서·사업유형(공공/금융/일반) 프리셋은 `docs/FRAMEWORK_MODULES.md`.
+
+### framework-idempotency (정확히-한번 / 금융 ★)
+```yaml
+framework: { idempotency: { enabled: true, store: { type: redis } } }   # 운영 replicas>=2 면 redis
+```
+```java
+@PostMapping("/api/v1/transfers")
+@Idempotent                                  // Idempotency-Key 헤더로 중복요청 차단(없으면 400, 중복 409)
+public ApiResponse<Void> transfer(@RequestBody TransferRequest req) { ... }
+```
+
+### framework-i18n (메시지 외부화 / 다국어)
+```yaml
+framework: { i18n: { enabled: true, default-locale: ko, error-localization: true } }
+```
+- 서비스 `messages[_en].properties` 에 `error.<코드>` 키만 추가하면 `BusinessException` 메시지가 `Accept-Language` 로 다국어화(키 없으면 기존 `ErrorCode.message()` 폴백).
+- 일반 메시지: `MessageResolver.get("user.welcome", name)`.
+
+### framework-idgen (공통 채번)
+```yaml
+framework: { idgen: { enabled: true, sequence: { table-name: id_sequence, initialize: true } } }
+```
+```java
+long pk = idGenerator.nextLong();                          // Snowflake 분산 PK
+String orderNo = codeGenerator.next("ORD", "yyyyMMdd", 6); // ORD20260531000123 (일자 바뀌면 자동 리셋)
+```
+- DataSource 없는 서비스는 `IdGenerator`(Snowflake)만 등록. 운영 다중 인스턴스는 Snowflake `node-id` 를 인스턴스별로 고정 권장.
+
+### framework-client (외부 API 표준 호출)
+```yaml
+framework: { client: { enabled: true, connect-timeout: 2s, read-timeout: 5s } }
+```
+```java
+RestClient client = frameworkRestClientBuilder.baseUrl("https://api.partner.com").build();
+```
+- 타임아웃 + 재시도(멱등 메서드, POST 제외) + 호스트별 서킷브레이커 + 연계로그(`framework.client.integration`) + `X-Trace-Id` 전파가 기본 적용.
+- 기능별 개별 토글: `retry`/`circuit-breaker`/`logging`/`trace`. 새 외부 의존성 없음(서킷 자체 구현). 더 정교한 정책은 `frameworkRestClientBuilder` 빈 직접 등록으로 override.
 
 ## 추가된 공통 (이번 보강)
 - **보안 예외 표준화**: 401/403 도 `ApiResponse` JSON 으로 통일(`RestAuthenticationEntryPoint`/`RestAccessDeniedHandler`).

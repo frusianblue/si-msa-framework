@@ -2,7 +2,7 @@
 
 > 목적: 무엇을, 왜, 어디에, 어떤 버전으로 쓰는지 한곳에서 추적한다.
 > 단일 버전 소스는 `gradle/libs.versions.toml`. **버전을 바꿀 땐 카탈로그를 고치고 이 표를 갱신**한다.
-> 최종 갱신: 2026-05-30 · 갱신자: <!-- 채우기 -->
+> 최종 갱신: 2026-05-31 · 갱신자: <!-- 채우기 -->
 
 ---
 
@@ -52,6 +52,11 @@
 | `spring-cloud-starter-gateway-server-webflux` | API 게이트웨이(Boot 4 아티팩트) | gateway |
 | `spring-cloud-starter-circuitbreaker-reactor-resilience4j` | 회로차단 | gateway |
 
+> **공통기능 토대 4종(2026-05 추가: idempotency·i18n·idgen·client)은 새 버전 의존성을 추가하지 않는다.**
+> 모두 `framework-core` + (필요 시) `spring-boot-starter-web/jdbc/data-redis` 를 `compileOnly`(호스트 제공)로만 사용하고,
+> 서킷브레이커는 자체 구현. 따라서 `libs.versions.toml` 변경 없음. 향후 messaging(Kafka)/batch 등 BOM 밖 라이브러리가
+> 필요한 모듈을 추가할 때 비로소 이 표에 행을 추가한다.
+
 ## 4. 테스트 / 개발 도구
 | 항목 | 버전 | 용도 | 적용 위치 |
 |---|---|---|---|
@@ -70,6 +75,8 @@
 - **datasource-proxy / p6spy 스타터** — 반드시 `2.0.0+`.
 - **Spring Cloud AWS 미사용** — Jackson2 의존 회피 위해 AWS SDK v2 직접 사용.
 - Docker 이미지: 레이어 추출 후 엔트리포인트는 `org.springframework.boot.loader.launch.JarLauncher` (구 `java -jar` 대체).
+- **Spring 7 `HttpHeaders`** — `MultiValueMap` 미구현. `containsKey→containsHeader`, `keySet→headerNames()`, `forEach/entrySet` 제거. 헤더 다루는 코드 주의.
+- **Boot 4 모듈 분리** — `org.springframework.boot.http.client.*` 는 starter-web 컴파일 경로에 없을 수 있음 → RestClient 타임아웃은 spring-web `SimpleClientHttpRequestFactory` 로. `RestTemplateBuilder` 는 `org.springframework.boot.restclient` 모듈.
 
 ## 6. 추천 후보 (미적용 — 필요 시 도입)
 | 항목 | 종류 | 용도 | 판단 |

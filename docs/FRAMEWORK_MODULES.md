@@ -7,6 +7,13 @@
 
 ---
 
+## 0. 진행 현황 (2026-05-31)
+- ✅ **토대**: framework-idempotency · framework-i18n · framework-idgen · framework-client (선택형, 3단 토글 적용)
+- ⏭️ **다음**: 보안 완성(비번 만료/이력·동시로그인·framework-audit) → 금융 핵심(messaging+Outbox·datasource)
+- 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
+
+---
+
 ## 1. 표준 토글 규약 (모든 모듈 공통 — 이 3단을 반드시 따른다)
 
 | 단계 | 무엇을 켜고 끄나 | 메커니즘 | 효과 |
@@ -56,9 +63,9 @@ public class XxxAutoConfiguration {
 
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
-| framework-i18n | MessageSource·에러메시지 외부화·다국어 | `framework.i18n.enabled` | [선택]→코어승격 권장 | 공통 |
-| framework-idgen | 채번(Sequence/Table/Snowflake) | `framework.idgen.enabled` + `type` | [선택] | 공통 |
-| framework-client | 외부 API 표준 클라이언트(타임아웃·재시도·서킷·연계로그) | `framework.client.enabled` | [선택] | 공통 |
+| ✅ framework-i18n | MessageSource·에러메시지 외부화·다국어 | `framework.i18n.enabled` | [선택]→코어승격 권장 | 공통 |
+| ✅ framework-idgen | 채번(Sequence/Table/Snowflake) | `framework.idgen.enabled` + `type` | [선택] | 공통 |
+| ✅ framework-client | 외부 API 표준 클라이언트(타임아웃·재시도·서킷·연계로그) | `framework.client.enabled` | [선택] | 공통 |
 
 ### 2.3 신규 — 보안 완성 (ISMS-P·보안성 심의 대비, 공통 필수)
 
@@ -81,7 +88,7 @@ public class XxxAutoConfiguration {
 
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
-| **framework-idempotency** | **정확히-한번/멱등키**(중복요청·중복결제 차단) | `framework.idempotency.enabled` + `store.type=redis\|jdbc` | [선택] | 금 ★ |
+| ✅ **framework-idempotency** | **정확히-한번/멱등키**(중복요청·중복결제 차단) | `framework.idempotency.enabled` + `store.type=redis\|jdbc` | [선택] | 금 ★ |
 | framework-messaging | Kafka + **Outbox** 패턴(이벤트 유실/중복 방지) | `framework.messaging.enabled` | [선택] | 금 ★ |
 | framework-datasource | 멀티DS + 읽기/쓰기 분리 라우팅 | `framework.datasource.routing.enabled` | [선택] | 금/공 |
 | framework-saga | 분산 트랜잭션/보상(Saga) | `framework.saga.enabled` | [선택] | 금 |
