@@ -43,8 +43,9 @@ public class IdgenAutoConfiguration {
         long node = props.getSnowflake().getNodeId();
         if (node < 0) {
             node = deriveNodeId();
-            log.info("[idgen] snowflake node-id 미지정 → HOSTNAME 기반 자동 산출: {} "
-                    + "(엄격 유일성 필요 시 인스턴스별 node-id 명시 권장)", node);
+            log.info(
+                    "[idgen] snowflake node-id 미지정 → HOSTNAME 기반 자동 산출: {} " + "(엄격 유일성 필요 시 인스턴스별 node-id 명시 권장)",
+                    node);
         }
         return new SnowflakeIdGenerator(node, props.getSnowflake().getEpoch());
     }
@@ -68,7 +69,9 @@ public class IdgenAutoConfiguration {
         public SequenceStore sequenceStore(
                 JdbcTemplate jdbcTemplate, PlatformTransactionManager txManager, IdgenProperties props) {
             JdbcTableSequenceStore store = new JdbcTableSequenceStore(
-                    jdbcTemplate, new TransactionTemplate(txManager), props.getSequence().getTableName());
+                    jdbcTemplate,
+                    new TransactionTemplate(txManager),
+                    props.getSequence().getTableName());
             if (props.getSequence().isInitialize()) {
                 store.initSchema();
             }

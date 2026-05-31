@@ -35,7 +35,10 @@ public class I18nWebAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    @ConditionalOnProperty(prefix = "framework.i18n", name = "error-localization", havingValue = "true",
+    @ConditionalOnProperty(
+            prefix = "framework.i18n",
+            name = "error-localization",
+            havingValue = "true",
             matchIfMissing = true)
     public I18nExceptionAdvice i18nExceptionAdvice(ErrorMessageResolver resolver) {
         return new I18nExceptionAdvice(resolver);

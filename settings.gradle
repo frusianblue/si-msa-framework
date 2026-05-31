@@ -4,7 +4,7 @@ rootProject.name = 'si-msa-framework'
 include 'framework:framework-core'
 include 'framework:framework-mybatis'
 include 'framework:framework-security'
-include 'framework:framework-openapi'   // 선택형: API 문서 필요한 프로젝트만 의존 추가
+include 'framework:framework-openapi'      // 선택형: API 문서 필요한 프로젝트만 의존 추가
 include 'framework:framework-redis'        // 선택형: Redis TokenStore
 include 'framework:framework-commoncode'   // 선택형: 공통코드 관리
 include 'framework:framework-file'         // 선택형: 파일 업로드(로컬/NAS)
