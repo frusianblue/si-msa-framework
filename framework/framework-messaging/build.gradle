@@ -1,0 +1,23 @@
+// 선택형 모듈: 신뢰성 메시지 발행 — Transactional Outbox 패턴.
+//   - 비즈니스 트랜잭션과 같은 DB 트랜잭션 안에서 outbox_event 에 INSERT(원자성 보장) → 별도 릴레이가 Kafka 로 발행.
+//   - Kafka 가 죽어 있어도 이벤트 유실 없음(at-least-once), 트랜잭션 롤백 시 유령 이벤트 없음.
+// 새 버전 의존성 0: spring-kafka 는 Spring Boot BOM 이 버전 관리(STACK.md 3.2) → 버전 미명시. libs.versions.toml 무변경.
+dependencies {
+    // ApiResponse/에러 포맷 + Jackson 3(tools.jackson.databind.json.JsonMapper) 전이 노출.
+    api project(':framework:framework-core')
+
+    // 이 모듈이 "카프카 발행 능력"을 제공하므로 의존 서비스에 전이(api). 버전은 Boot BOM 위임.
+    api 'org.springframework.kafka:spring-kafka'
+
+    // JdbcTemplate/PlatformTransactionManager/TransactionTemplate(spring-jdbc/spring-tx). 런타임은 호스트가 제공
+    // (framework-mybatis 나 framework-datasource 가 DataSource/트랜잭션매니저를 이미 노출) → compileOnly.
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+}
