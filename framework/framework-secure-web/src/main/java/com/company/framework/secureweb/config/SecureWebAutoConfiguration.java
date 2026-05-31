@@ -5,7 +5,6 @@ import com.company.framework.secureweb.headers.SecurityHeadersFilter;
 import com.company.framework.secureweb.injection.InjectionScreeningFilter;
 import com.company.framework.secureweb.path.PathTraversalFilter;
 import com.company.framework.secureweb.support.SecureWebResponder;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -37,8 +36,8 @@ public class SecureWebAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public SecureWebResponder secureWebResponder(ObjectMapper objectMapper) {
-        return new SecureWebResponder(objectMapper);
+    public SecureWebResponder secureWebResponder() {
+        return new SecureWebResponder();
     }
 
     @Bean
