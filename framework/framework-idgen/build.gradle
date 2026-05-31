@@ -1,0 +1,8 @@
+// 선택형 모듈: 공통 채번(Snowflake + 업무코드). framework.idgen.enabled=true 로만 활성.
+// 업무코드(CodeGenerator)는 DataSource 가 있을 때만 자동 등록(없으면 Snowflake 만).
+dependencies {
+    api project(':framework:framework-core')
+    // jdbc/tx 는 호스트 앱이 제공(MyBatis 서비스엔 이미 있음) → 컴파일만
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+}
