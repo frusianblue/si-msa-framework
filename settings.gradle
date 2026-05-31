@@ -9,7 +9,10 @@ include 'framework:framework-redis'        // 선택형: Redis TokenStore
 include 'framework:framework-commoncode'   // 선택형: 공통코드 관리
 include 'framework:framework-file'         // 선택형: 파일 업로드(로컬/NAS)
 include 'framework:framework-file-s3'      // 선택형: S3 저장소
-include 'framework:framework-idempotency'  // 선택형: 멱등성(정확히-한번) — 신규
+include 'framework:framework-idempotency'  // 선택형: 멱등성(정확히-한번)
+include 'framework:framework-i18n'         // 선택형: 메시지 외부화/다국어
+include 'framework:framework-idgen'        // 선택형: 공통 채번(Snowflake/업무코드)
+include 'framework:framework-client'       // 선택형: 외부 API 표준 호출(타임아웃/재시도/서킷/연계로그)
 
 // ----- 업무 / 인프라 서비스 -----
 include 'services:gateway'
