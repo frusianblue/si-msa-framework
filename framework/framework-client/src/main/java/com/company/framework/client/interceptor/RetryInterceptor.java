@@ -25,7 +25,8 @@ public class RetryInterceptor implements ClientHttpRequestInterceptor {
 
     public RetryInterceptor(ClientProperties.Retry props) {
         this.props = props;
-        this.retryableMethods = props.getMethods().stream().map(HttpMethod::valueOf).collect(java.util.stream.Collectors.toSet());
+        this.retryableMethods =
+                props.getMethods().stream().map(HttpMethod::valueOf).collect(java.util.stream.Collectors.toSet());
         this.retryableStatuses = Set.copyOf(props.getRetryOnStatus());
     }
 
@@ -39,7 +40,8 @@ public class RetryInterceptor implements ClientHttpRequestInterceptor {
         while (true) {
             try {
                 ClientHttpResponse response = execution.execute(request, body);
-                if (attempt < props.getMaxAttempts() && retryableStatuses.contains(response.getStatusCode().value())) {
+                if (attempt < props.getMaxAttempts()
+                        && retryableStatuses.contains(response.getStatusCode().value())) {
                     response.close();
                     sleepBackoff(++attempt, request);
                     continue;

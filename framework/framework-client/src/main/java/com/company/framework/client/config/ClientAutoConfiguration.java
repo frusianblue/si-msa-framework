@@ -35,7 +35,8 @@ public class ClientAutoConfiguration {
         ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.defaults()
                 .withConnectTimeout(props.getConnectTimeout())
                 .withReadTimeout(props.getReadTimeout());
-        ClientHttpRequestFactory factory = ClientHttpRequestFactoryBuilder.detect().build(settings);
+        ClientHttpRequestFactory factory =
+                ClientHttpRequestFactoryBuilder.detect().build(settings);
 
         RestClient.Builder builder = RestClient.builder().requestFactory(factory);
 
