@@ -35,8 +35,8 @@ public class ClientAutoConfiguration {
     @ConditionalOnMissingBean(name = "frameworkRestClientBuilder")
     public RestClient.Builder frameworkRestClientBuilder(ClientProperties props) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout((int) props.getConnectTimeout().toMillis());
-        factory.setReadTimeout((int) props.getReadTimeout().toMillis());
+        factory.setConnectTimeout(props.getConnectTimeout());
+        factory.setReadTimeout(props.getReadTimeout());
 
         RestClient.Builder builder = RestClient.builder().requestFactory(factory);
 

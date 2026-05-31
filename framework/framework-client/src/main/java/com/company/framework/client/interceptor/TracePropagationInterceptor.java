@@ -15,7 +15,7 @@ public class TracePropagationInterceptor implements ClientHttpRequestInterceptor
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
             throws IOException {
         String traceId = MDC.get(MdcTraceFilter.TRACE_ID);
-        if (traceId != null && !request.getHeaders().containsKey(MdcTraceFilter.TRACE_HEADER)) {
+        if (traceId != null && !request.getHeaders().containsHeader(MdcTraceFilter.TRACE_HEADER)) {
             request.getHeaders().add(MdcTraceFilter.TRACE_HEADER, traceId);
         }
         return execution.execute(request, body);

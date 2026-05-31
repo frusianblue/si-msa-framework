@@ -2,8 +2,10 @@ package com.company.framework.client.interceptor;
 
 import com.company.framework.client.config.ClientProperties;
 import java.io.IOException;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
@@ -30,13 +32,8 @@ public class IntegrationLoggingInterceptor implements ClientHttpRequestIntercept
         try {
             ClientHttpResponse response = execution.execute(request, body);
             long ms = (System.nanoTime() - start) / 1_000_000;
-            log.info(
-                    "[OUT] {} {} -> {} ({}ms){}",
-                    request.getMethod(),
-                    request.getURI(),
-                    response.getStatusCode().value(),
-                    ms,
-                    headersFor(request));
+            log.info("[OUT] {} {} -> {} ({}ms){}", request.getMethod(), request.getURI(),
+                    response.getStatusCode().value(), ms, headersFor(request));
             return response;
         } catch (IOException e) {
             long ms = (System.nanoTime() - start) / 1_000_000;
@@ -49,14 +46,14 @@ public class IntegrationLoggingInterceptor implements ClientHttpRequestIntercept
         if (!props.isIncludeHeaders()) {
             return "";
         }
+        HttpHeaders headers = request.getHeaders();
         StringBuilder sb = new StringBuilder(" headers={");
-        request.getHeaders().forEach((name, values) -> {
+        for (String name : headers.headerNames()) { // Spring 7: keySet/forEach 제거 → headerNames()
             boolean masked = props.getMaskedHeaders().stream().anyMatch(name::equalsIgnoreCase);
-            sb.append(name)
-                    .append("=")
-                    .append(masked ? "***" : String.join(",", values))
-                    .append(" ");
-        });
+            List<String> values = headers.get(name);
+            String shown = masked ? "***" : (values == null ? "" : String.join(",", values));
+            sb.append(name).append("=").append(shown).append(" ");
+        }
         return sb.append("}").toString();
     }
 }
