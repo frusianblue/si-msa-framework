@@ -9,9 +9,11 @@
 
 ## 0. 진행 현황 (2026-05-31)
 - ✅ **토대**: framework-idempotency · framework-i18n · framework-idgen · framework-client (선택형, 3단 토글 적용)
-- ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc)
+- ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc|kafka)
 - ✅ **framework-secure-web**: 보안헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋(필터 계층, XSS 본문은 core)
-- ⏭️ **다음**: 금융 핵심 — framework-messaging(Kafka+Outbox) · framework-datasource(읽기/쓰기 분리)
+- ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅) · framework-messaging(Transactional Outbox + Kafka 릴레이) · audit↔messaging 연동(`store.type=kafka`)
+- ⏭️ **다음**: 업무 생산성 — framework-excel · framework-batch · framework-notification (또는 messaging 소비자측 멱등 소비)
+- ℹ️ **DB 범위 정리(2026-05-31)**: 읽기/쓰기 분리(primary/replica)까지 완료. *서로 다른 독립 DB 다중 연결*(DB별 SqlSessionFactory/tx매니저/@MapperScan)은 **미구현 — 필요 시 추가**. 분산 원자성은 XA 대신 Outbox/Saga로.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
 ---
@@ -75,7 +77,7 @@ public class XxxAutoConfiguration {
 |---|---|---|---|---|
 | ✅ framework-security (확장) | 비번 **만료·변경주기·이력(직전 N개 재사용 금지)** | `framework.security.password.{expiry,history}.enabled` | [코어] | 공통 |
 | ✅ framework-security (확장) | **동시(중복) 로그인 제어** | `framework.security.concurrent-session.enabled` | [코어] | 공통 |
-| ✅ framework-audit | 접속/감사 로그 **DB 적재·조회** 표준(현 AOP 영속화) | `framework.audit.enabled` + `store.type=logging\|jdbc` | [선택] | 공통 |
+| ✅ framework-audit | 접속/감사 로그 **DB 적재·조회** 표준(현 AOP 영속화) + **kafka 싱크**(messaging Outbox 발행) | `framework.audit.enabled` + `store.type=logging\|jdbc\|kafka` | [선택] | 공통 |
 | ✅ framework-secure-web | 보안헤더·경로조작·인젝션 스크리닝·CSRF 더블서브밋(SQLi 등, XSS는 core) | `framework.secure-web.enabled` (+`headers`/`path-traversal`/`injection`/`csrf`) | [선택] | 공통 |
 
 ### 2.4 신규 — 업무 생산성 (업무개발자 직접 사용)
@@ -91,8 +93,8 @@ public class XxxAutoConfiguration {
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
 | ✅ **framework-idempotency** | **정확히-한번/멱등키**(중복요청·중복결제 차단) | `framework.idempotency.enabled` + `store.type=redis\|jdbc` | [선택] | 금 ★ |
-| framework-messaging | Kafka + **Outbox** 패턴(이벤트 유실/중복 방지) | `framework.messaging.enabled` | [선택] | 금 ★ |
-| framework-datasource | 멀티DS + 읽기/쓰기 분리 라우팅 | `framework.datasource.routing.enabled` | [선택] | 금/공 |
+| ✅ framework-messaging | Kafka + **Outbox** 패턴(이벤트 유실/중복 방지). 발행자(DB 적재)와 릴레이(SKIP LOCKED, 다중인스턴스 안전) 토글 분리 | `framework.messaging.enabled` (+`outbox.relay.enabled`) | [선택] | 금 ★ |
+| ✅ framework-datasource | **읽기/쓰기 분리 라우팅**(primary/replica). *독립 다중 DB(별도 SqlSessionFactory/tx매니저)는 미구현 — 추후* | `framework.datasource.routing.enabled` | [선택] | 금/공 |
 | framework-saga | 분산 트랜잭션/보상(Saga) | `framework.saga.enabled` | [선택] | 금 |
 
 ### 2.6 신규 — 규제 특화 (해당 사업만 켬)
@@ -150,7 +152,8 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
 # application-finance.yml  (금융 풀세트)
 framework:
   idempotency: { enabled: true,  store: { type: redis } }
-  messaging:   { enabled: true }
+  messaging:   { enabled: true, outbox: { relay: { enabled: true } } }
+  datasource:  { routing: { enabled: true } }   # primary/replica 읽기·쓰기 분리
   audit:       { enabled: true,  store: { type: jdbc } }
   mfa:         { enabled: true }
   pki:         { enabled: true }
