@@ -1,0 +1,22 @@
+// 선택형 모듈: 읽기/쓰기 분리 라우팅 DataSource.
+//   - @Transactional(readOnly = true) 트랜잭션은 READ(복제) 노드로, 그 외는 WRITE(주) 노드로 라우팅.
+//   - 라우팅 결정이 readOnly 플래그 확정 이후에 일어나도록 LazyConnectionDataSourceProxy 로 감싼다.
+// 새 외부 의존성 0(버전 0): jdbc/Hikari/spring-tx 는 호스트 앱(또는 framework-mybatis)이 이미 제공 → compileOnly.
+//   spring-jdbc(AbstractRoutingDataSource/LazyConnectionDataSourceProxy) · spring-tx(TransactionSynchronizationManager)
+//   · HikariCP(HikariConfig/HikariDataSource) · Boot DataSourceAutoConfiguration(before 순서 참조) 전부 starter-jdbc 안.
+// 루트 build.gradle 이 java-library/dependency-management/spotless/jacoco 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // 표준 응답/에러 포맷이 필요해질 때를 위해 core 유지(현재 라우팅 로직 자체는 core 미사용이나 규약상 베이스 의존).
+    api project(':framework:framework-core')
+
+    // 라우팅에 필요한 jdbc/tx/Hikari API + Boot DataSourceAutoConfiguration(@AutoConfiguration before 참조).
+    // 런타임은 호스트가 제공(드래그인 방지) → compileOnly.
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+}

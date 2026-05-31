@@ -15,6 +15,7 @@ include 'framework:framework-idgen'        // 선택형: 공통 채번(Snowflake
 include 'framework:framework-client'       // 선택형: 외부 API 표준 호출(타임아웃/재시도/서킷/연계로그)
 include 'framework:framework-audit'        // 선택형: 감사/접속 로그 표준 적재·조회(logging/jdbc)
 include 'framework:framework-secure-web'   // 선택형: 웹 보안 필터(보안헤더/경로조작/인젝션/CSRF)
+include 'framework:framework-datasource'   // 선택형: 읽기/쓰기 분리 라우팅 DataSource
 
 // ----- 업무 / 인프라 서비스 -----
 include 'services:gateway'
