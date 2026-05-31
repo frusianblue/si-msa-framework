@@ -43,7 +43,8 @@ public class PasswordLifecycleService {
         for (String oldHash : historyStore.recentEncoded(userId, count)) {
             if (oldHash != null && passwordEncoder.matches(rawPassword, oldHash)) {
                 throw new BusinessException(
-                        ErrorCode.Common.INVALID_INPUT, "최근 사용한 비밀번호 " + count + "개는 다시 사용할 수 없습니다.");
+                        ErrorCode.Common.INVALID_INPUT,
+                        "최근 사용한 비밀번호 " + count + "개는 다시 사용할 수 없습니다.");
             }
         }
     }
@@ -66,9 +67,7 @@ public class PasswordLifecycleService {
     /** 만료 예정 시각. 이력/만료 미설정이면 empty. */
     public Optional<Instant> expiresAt(String userId) {
         if (!props.getExpiry().isEnabled() || userId == null) return Optional.empty();
-        return historyStore
-                .lastChangedAt(userId)
-                .map(t -> t.plus(props.getExpiry().getMaxAge()));
+        return historyStore.lastChangedAt(userId).map(t -> t.plus(props.getExpiry().getMaxAge()));
     }
 
     /** 만료 임박(경고 구간 진입) 여부. 클라이언트에 '곧 만료' 배너를 띄우는 용도. */

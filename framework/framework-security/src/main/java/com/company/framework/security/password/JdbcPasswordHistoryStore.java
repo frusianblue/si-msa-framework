@@ -49,8 +49,6 @@ public class JdbcPasswordHistoryStore implements PasswordHistoryStore {
                 "SELECT created_at FROM password_history WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
                 (rs, n) -> rs.getTimestamp("created_at"),
                 userId);
-        return rows.isEmpty() || rows.get(0) == null
-                ? Optional.empty()
-                : Optional.of(rows.get(0).toInstant());
+        return rows.isEmpty() || rows.get(0) == null ? Optional.empty() : Optional.of(rows.get(0).toInstant());
     }
 }

@@ -10,8 +10,7 @@ import java.util.List;
 public interface ConcurrentSessionService {
 
     /** 활성 세션 1건. */
-    record ActiveSession(
-            String userId, String sessionId, String accessJti, String refreshToken, long issuedAtEpochMs) {}
+    record ActiveSession(String userId, String sessionId, String accessJti, String refreshToken, long issuedAtEpochMs) {}
 
     /**
      * 신규 세션 등록 + 한도 적용.

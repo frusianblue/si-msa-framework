@@ -129,15 +129,14 @@ public class LoginService {
         String refresh = UUID.randomUUID().toString().replace("-", "");
         applyConcurrentSessionLimit(userId, refresh, jwtProvider.getJti(access)); // 한도 적용(거부 시 예외, 그 전엔 미저장)
         tokenStore.saveRefresh(refresh, new TokenStore.RefreshEntry(userId, roles), jwtProvider.refreshTtl());
-        return new TokenResponse(
-                access, refresh, "Bearer", jwtProvider.accessTtl().toSeconds(), roles);
+        return new TokenResponse(access, refresh, "Bearer", jwtProvider.accessTtl().toSeconds(), roles);
     }
 
     /** 동시 로그인 제어. 등록(필요 시 한도 적용) 후, 강제 로그아웃 대상 토큰을 무효화한다. */
     private void applyConcurrentSessionLimit(String userId, String sessionId, String accessJti) {
         if (concurrentSessions == null || concurrentProperties == null || !concurrentProperties.isEnabled()) return;
-        List<ConcurrentSessionService.ActiveSession> evicted =
-                concurrentSessions.register(new ConcurrentSessionService.ActiveSession(
+        List<ConcurrentSessionService.ActiveSession> evicted = concurrentSessions.register(
+                new ConcurrentSessionService.ActiveSession(
                         userId, sessionId, accessJti, sessionId, System.currentTimeMillis()));
         for (ConcurrentSessionService.ActiveSession old : evicted) {
             tokenStore.removeRefresh(old.refreshToken());

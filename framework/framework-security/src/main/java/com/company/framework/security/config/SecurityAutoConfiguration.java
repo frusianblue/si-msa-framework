@@ -1,10 +1,6 @@
 package com.company.framework.security.config;
 
 import com.company.framework.mybatis.support.CurrentUserProvider;
-import com.company.framework.security.concurrent.ConcurrentSessionProperties;
-import com.company.framework.security.concurrent.ConcurrentSessionService;
-import com.company.framework.security.concurrent.InMemoryConcurrentSessionService;
-import com.company.framework.security.concurrent.JdbcConcurrentSessionService;
 import com.company.framework.security.crypto.PasswordEncoderConfig;
 import com.company.framework.security.devauth.DevAuthInjectionFilter;
 import com.company.framework.security.devauth.DevAuthProperties;
@@ -17,13 +13,19 @@ import com.company.framework.security.jwt.JwtProvider;
 import com.company.framework.security.loginattempt.InMemoryLoginAttemptService;
 import com.company.framework.security.loginattempt.LoginAttemptProperties;
 import com.company.framework.security.loginattempt.LoginAttemptService;
-import com.company.framework.security.password.InMemoryPasswordHistoryStore;
-import com.company.framework.security.password.JdbcPasswordHistoryStore;
-import com.company.framework.security.password.PasswordHistoryStore;
-import com.company.framework.security.password.PasswordLifecycleService;
 import com.company.framework.security.password.PasswordPolicy;
 import com.company.framework.security.password.PasswordProperties;
 import com.company.framework.security.password.PasswordSafetyGuard;
+import com.company.framework.security.password.PasswordHistoryStore;
+import com.company.framework.security.password.InMemoryPasswordHistoryStore;
+import com.company.framework.security.password.JdbcPasswordHistoryStore;
+import com.company.framework.security.password.PasswordLifecycleService;
+import com.company.framework.security.concurrent.ConcurrentSessionProperties;
+import com.company.framework.security.concurrent.ConcurrentSessionService;
+import com.company.framework.security.concurrent.InMemoryConcurrentSessionService;
+import com.company.framework.security.concurrent.JdbcConcurrentSessionService;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import com.company.framework.security.rbac.core.DynamicAuthorizationManager;
 import com.company.framework.security.rbac.core.MenuService;
 import com.company.framework.security.rbac.core.SecurityMetadataService;
@@ -40,14 +42,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -155,7 +155,10 @@ public class SecurityAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(PasswordHistoryStore.class)
-    @ConditionalOnProperty(prefix = "framework.security.password.history.store", name = "type", havingValue = "jdbc")
+    @ConditionalOnProperty(
+            prefix = "framework.security.password.history.store",
+            name = "type",
+            havingValue = "jdbc")
     public PasswordHistoryStore jdbcPasswordHistoryStore(JdbcTemplate jdbcTemplate) {
         return new JdbcPasswordHistoryStore(jdbcTemplate);
     }
@@ -181,7 +184,10 @@ public class SecurityAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(ConcurrentSessionService.class)
-    @ConditionalOnProperty(prefix = "framework.security.concurrent-session.store", name = "type", havingValue = "jdbc")
+    @ConditionalOnProperty(
+            prefix = "framework.security.concurrent-session.store",
+            name = "type",
+            havingValue = "jdbc")
     public ConcurrentSessionService jdbcConcurrentSessionService(
             JdbcTemplate jdbcTemplate, ConcurrentSessionProperties props) {
         return new JdbcConcurrentSessionService(jdbcTemplate, props);

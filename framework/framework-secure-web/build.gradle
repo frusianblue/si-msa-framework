@@ -1,0 +1,17 @@
+// 선택형 모듈: 웹 보안 필터(보안 헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋).
+// XSS 본문 이스케이프는 framework-core 담당. 본 모듈은 그 외 시큐어코딩/심의 항목을 필터 계층에서 보강.
+// 새 외부 의존성 0(버전 0): web/jackson 은 호스트 앱이 제공 → 컴파일만(드래그인 방지).
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // ApiResponse/ErrorCode(표준 에러 본문) 사용. (core 가 spring-web 도 전이 노출)
+    api project(':framework:framework-core')
+
+    // 컴파일에 필요한 web/servlet + jackson(ObjectMapper) 확보. 런타임은 호스트가 제공하므로 compileOnly.
+    // (core 전이로 spring-web 은 잡히지만 jackson-databind 는 전이되지 않아 명시 필요 — audit 모듈과 동일 패턴)
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
