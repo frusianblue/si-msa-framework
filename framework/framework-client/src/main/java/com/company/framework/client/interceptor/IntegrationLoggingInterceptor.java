@@ -32,8 +32,13 @@ public class IntegrationLoggingInterceptor implements ClientHttpRequestIntercept
         try {
             ClientHttpResponse response = execution.execute(request, body);
             long ms = (System.nanoTime() - start) / 1_000_000;
-            log.info("[OUT] {} {} -> {} ({}ms){}", request.getMethod(), request.getURI(),
-                    response.getStatusCode().value(), ms, headersFor(request));
+            log.info(
+                    "[OUT] {} {} -> {} ({}ms){}",
+                    request.getMethod(),
+                    request.getURI(),
+                    response.getStatusCode().value(),
+                    ms,
+                    headersFor(request));
             return response;
         } catch (IOException e) {
             long ms = (System.nanoTime() - start) / 1_000_000;
