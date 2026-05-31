@@ -149,6 +149,8 @@ dependencies {
     implementation project(':framework:framework-i18n')        // 메시지 외부화/다국어
     implementation project(':framework:framework-idgen')       // 채번(Snowflake/업무코드)
     implementation project(':framework:framework-client')      // 외부 API 표준 호출
+    implementation project(':framework:framework-audit')       // 접속/감사 로그 적재·조회(ISMS-P)
+    implementation project(':framework:framework-secure-web')  // 웹 보안 필터(헤더/경로조작/인젝션/CSRF)
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
@@ -220,6 +222,45 @@ RestClient client = frameworkRestClientBuilder.baseUrl("https://api.partner.com"
 ```
 - 타임아웃 + 재시도(멱등 메서드, POST 제외) + 호스트별 서킷브레이커 + 연계로그(`framework.client.integration`) + `X-Trace-Id` 전파가 기본 적용.
 - 기능별 개별 토글: `retry`/`circuit-breaker`/`logging`/`trace`. 새 외부 의존성 없음(서킷 자체 구현). 더 정교한 정책은 `frameworkRestClientBuilder` 빈 직접 등록으로 override.
+
+## 보안 완성 모듈 (2026-05 추가, 선택형 · ISMS-P/보안성 심의)
+
+> 동일 3단 토글 규약. 모두 **기본 false** — 켜야 동작.
+
+### framework-security 확장 (비번 만료/이력 · 동시로그인)
+```yaml
+framework:
+  security:
+    password:
+      expiry:  { enabled: true, max-age: 90d, warn-before: 14d }   # 변경주기 만료
+      history: { enabled: true, count: 3, store: { type: jdbc } }  # 직전 N개 재사용 금지
+    concurrent-session: { enabled: true, max-sessions: 1, strategy: EVICT_OLDEST, store: { type: jdbc } }
+```
+- 업무코드가 비번 변경 시점에 `PasswordLifecycleService` 를 호출(재사용 검사/이력 기록). 기능 off 면 no-op, 이력 없는 레거시 사용자는 강제 만료 안 함.
+- 동시로그인: 초과 시 `EVICT_OLDEST`(기존 토큰 블랙리스트) 또는 `REJECT`(409). jdbc store 면 `security-extras-postgres.sql`(password_history·active_sessions) 적용.
+
+### framework-audit (접속/감사 로그 적재·조회)
+```yaml
+framework: { audit: { enabled: true, store: { type: jdbc } } }   # logging(기본·인프라0) | jdbc(조회 API)
+```
+```java
+@AuditLog(action = "TRANSFER")   // core 어노테이션 → audit 이 표준 적재(메서드 감사)
+public void transfer(...) { ... }
+```
+- 로그인 성공/실패/로그아웃은 `LoginAuditEvent` 로 자동 적재(security→audit 단방향 이벤트). jdbc 면 `GET /api/v1/audit/logs?actor=&eventType=&from=&to=&page=&size=` + `audit-log-postgres.sql`. kafka 싱크는 framework-messaging 도입 후.
+
+### framework-secure-web (웹 보안 필터)
+```yaml
+framework:
+  secure-web:
+    enabled: true
+    headers: { enabled: true, frame-options: DENY, content-security-policy: "default-src 'self'" }
+    path-traversal: { enabled: true }
+    injection: { enabled: true, mode: log-only }                  # 오탐 관찰 후 block 전환
+    csrf: { enabled: true, protect-paths: [/api/admin/**] }       # 쿠키인증/폼 보호 경로만
+```
+- 필터 순서: path → injection → csrf → headers → (core) xss. 거부는 표준 `ApiResponse` JSON. XSS **본문** 이스케이프는 core 담당(중복 아님).
+- CSRF 는 Spring Security(csrf disable, stateless JWT)와 독립적인 더블서브밋. 인젝션 스크리닝은 보조 방어 — 본 방어는 파라미터화 쿼리(MyBatis `#{}`).
 
 ## 추가된 공통 (이번 보강)
 - **보안 예외 표준화**: 401/403 도 `ApiResponse` JSON 으로 통일(`RestAuthenticationEntryPoint`/`RestAccessDeniedHandler`).

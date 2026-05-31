@@ -52,9 +52,9 @@
 | `spring-cloud-starter-gateway-server-webflux` | API 게이트웨이(Boot 4 아티팩트) | gateway |
 | `spring-cloud-starter-circuitbreaker-reactor-resilience4j` | 회로차단 | gateway |
 
-> **공통기능 토대 4종(2026-05 추가: idempotency·i18n·idgen·client)은 새 버전 의존성을 추가하지 않는다.**
-> 모두 `framework-core` + (필요 시) `spring-boot-starter-web/jdbc/data-redis` 를 `compileOnly`(호스트 제공)로만 사용하고,
-> 서킷브레이커는 자체 구현. 따라서 `libs.versions.toml` 변경 없음. 향후 messaging(Kafka)/batch 등 BOM 밖 라이브러리가
+> **공통기능 토대 4종(2026-05: idempotency·i18n·idgen·client) + 보안 완성(framework-audit·framework-secure-web, framework-security 확장)은 새 버전 의존성을 추가하지 않는다.**
+> 모두 `framework-core`/`framework-security` + (필요 시) `spring-boot-starter-web/jdbc/data-redis` 를 `compileOnly`(호스트 제공)로만 사용하고,
+> 서킷브레이커는 자체 구현, 거부 응답 JSON 은 수기 직렬화(Jackson 비의존). 따라서 `libs.versions.toml` 변경 없음. 향후 messaging(Kafka)/batch 등 BOM 밖 라이브러리가
 > 필요한 모듈을 추가할 때 비로소 이 표에 행을 추가한다.
 
 ## 4. 테스트 / 개발 도구
@@ -68,7 +68,7 @@
 
 ## 5. Boot 4 호환 주의 (되돌리지 말 것)
 - **Gradle 8.14+** 필수 (Boot 4 Gradle 플러그인 요구사항).
-- **Jackson 3** (`tools.jackson.*`) — 커스터마이저는 `JsonMapperBuilderCustomizer`.
+- **Jackson 3** (`tools.jackson.*`) — 커스터마이저는 `JsonMapperBuilderCustomizer`, 매퍼는 `JsonMapper`. ⚠️ `com.fasterxml.jackson.core/databind` import 금지(클래스패스에 없음 → 컴파일 에러; 특히 `com.fasterxml.jackson.databind.ObjectMapper`). 단 **애너테이션**(`@JsonInclude` 등)은 Jackson 3 에서도 `com.fasterxml.jackson.annotation` 패키지 유지 → OK. 필터/인프라 레벨의 단순 JSON 응답은 Jackson 빈 주입 대신 수기 직렬화가 견고(`SecureWebResponder` 사례).
 - **Spring Security 7** — `AuthorizationManager.authorize()` (구 `check()` 제거).
 - **Gateway** 아티팩트 `spring-cloud-starter-gateway-server-webflux`.
 - **Spring Cloud 2025.1.x(Oakwood)** — 2025.0.x 는 Boot 4 비호환.
