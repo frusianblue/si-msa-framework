@@ -30,8 +30,13 @@ public class IntegrationLoggingInterceptor implements ClientHttpRequestIntercept
         try {
             ClientHttpResponse response = execution.execute(request, body);
             long ms = (System.nanoTime() - start) / 1_000_000;
-            log.info("[OUT] {} {} -> {} ({}ms){}", request.getMethod(), request.getURI(),
-                    response.getStatusCode().value(), ms, headersFor(request));
+            log.info(
+                    "[OUT] {} {} -> {} ({}ms){}",
+                    request.getMethod(),
+                    request.getURI(),
+                    response.getStatusCode().value(),
+                    ms,
+                    headersFor(request));
             return response;
         } catch (IOException e) {
             long ms = (System.nanoTime() - start) / 1_000_000;
@@ -47,9 +52,11 @@ public class IntegrationLoggingInterceptor implements ClientHttpRequestIntercept
         StringBuilder sb = new StringBuilder(" headers={");
         request.getHeaders().forEach((name, values) -> {
             boolean masked = props.getMaskedHeaders().stream().anyMatch(name::equalsIgnoreCase);
-            sb.append(name).append("=").append(masked ? "***" : String.join(",", values)).append(" ");
+            sb.append(name)
+                    .append("=")
+                    .append(masked ? "***" : String.join(",", values))
+                    .append(" ");
         });
         return sb.append("}").toString();
     }
-
 }
