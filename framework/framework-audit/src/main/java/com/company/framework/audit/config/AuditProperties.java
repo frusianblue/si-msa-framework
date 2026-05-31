@@ -10,7 +10,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     method-audit: true          # @AuditLog 메서드 적재 on/off
  *     login-audit: true           # 로그인 성공/실패/로그아웃 적재 on/off
  *     store:
- *       type: logging             # 3단 토글: logging(인프라0) | jdbc(영속·조회API) [kafka 예정]
+ *       type: logging             # 3단 토글: logging(인프라0) | jdbc(영속·조회API) | kafka(messaging Outbox 발행)
+ *     kafka:
+ *       topic: audit-events       # store.type=kafka 일 때 발행 토픽 (framework-messaging 의존 필요)
  */
 @ConfigurationProperties(prefix = "framework.audit")
 public class AuditProperties {
@@ -19,6 +21,7 @@ public class AuditProperties {
     private boolean methodAudit = true;
     private boolean loginAudit = true;
     private final Store store = new Store();
+    private final Kafka kafka = new Kafka();
 
     public static class Store {
         private String type = "logging";
@@ -29,6 +32,19 @@ public class AuditProperties {
 
         public void setType(String type) {
             this.type = type;
+        }
+    }
+
+    /** store.type=kafka 일 때 발행 설정. (framework-messaging 의존 필요) */
+    public static class Kafka {
+        private String topic = "audit-events";
+
+        public String getTopic() {
+            return topic;
+        }
+
+        public void setTopic(String topic) {
+            this.topic = topic;
         }
     }
 
@@ -58,5 +74,9 @@ public class AuditProperties {
 
     public Store getStore() {
         return store;
+    }
+
+    public Kafka getKafka() {
+        return kafka;
     }
 }

@@ -8,8 +8,11 @@ import com.company.framework.audit.query.AuditQueryService;
 import com.company.framework.audit.query.JdbcAuditQueryService;
 import com.company.framework.audit.sink.AuditEventSink;
 import com.company.framework.audit.sink.JdbcAuditEventSink;
+import com.company.framework.audit.sink.KafkaAuditEventSink;
 import com.company.framework.audit.sink.LoggingAuditEventSink;
+import com.company.framework.messaging.outbox.OutboxEventPublisher;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,16 +24,27 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * 감사 모듈 오토컨피그.
  * 1단(모듈): @ConditionalOnClass(AuditEvent) — 이 모듈을 의존성에 넣어야 활성.
  * 2단(기능): framework.audit.enabled=true (+ method-audit/login-audit 세부 토글).
- * 3단(구현): store.type=logging(기본·인프라0) | jdbc(영속·조회API). [kafka 는 framework-messaging 도입 시]
+ * 3단(구현): store.type=logging(기본·인프라0) | jdbc(영속·조회API) | kafka(messaging Outbox 발행).
  *
  * 싱크 선택은 @Bean 정의 순서(위→아래)와 @ConditionalOnMissingBean 으로 결정:
- *   jdbc(type=jdbc) 우선 → 그 외 모든 경우 logging 으로 우아하게 축소(kafka 미구현 포함).
+ *   kafka(type=kafka & messaging 존재) → jdbc(type=jdbc) → 그 외 모두 logging 으로 우아하게 축소.
+ *   (type=kafka 인데 messaging 미의존이면 kafka 싱크가 비활성 → 다음 후보로 폴백.)
  */
-@AutoConfiguration
+@AutoConfiguration(afterName = "com.company.framework.messaging.config.MessagingAutoConfiguration")
 @ConditionalOnClass(AuditEvent.class)
 @ConditionalOnProperty(prefix = "framework.audit", name = "enabled", havingValue = "true")
 @EnableConfigurationProperties(AuditProperties.class)
 public class AuditAutoConfiguration {
+
+    @Bean
+    @ConditionalOnClass(OutboxEventPublisher.class)
+    @ConditionalOnProperty(prefix = "framework.audit.store", name = "type", havingValue = "kafka")
+    @ConditionalOnBean(OutboxEventPublisher.class)
+    @ConditionalOnMissingBean(AuditEventSink.class)
+    public AuditEventSink kafkaAuditEventSink(OutboxEventPublisher outboxEventPublisher, AuditProperties properties) {
+        return new KafkaAuditEventSink(
+                outboxEventPublisher, properties.getKafka().getTopic());
+    }
 
     @Bean
     @ConditionalOnClass(JdbcTemplate.class)

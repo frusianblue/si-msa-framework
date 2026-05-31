@@ -6,6 +6,8 @@ dependencies {
     // jdbc/web 는 호스트 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지)
     compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
     compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    // store.type=kafka 일 때만 쓰는 선택 경로 → 컴파일만. 카프카 감사를 쓰려면 서비스가 messaging 도 함께 의존해야 함.
+    compileOnly project(':framework:framework-messaging')
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
