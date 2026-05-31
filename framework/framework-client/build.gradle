@@ -1,0 +1,7 @@
+// 선택형 모듈: 외부 API 표준 호출(RestClient). 타임아웃/재시도/서킷/연계로그/트레이스전파.
+// 새 외부 의존성 없음(서킷브레이커 자체 구현). framework.client.enabled=true 로만 활성.
+dependencies {
+    api project(':framework:framework-core')   // MdcTraceFilter 상수(트레이스) 재사용
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'   // RestClient/인터셉터: 호스트 제공
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+}
