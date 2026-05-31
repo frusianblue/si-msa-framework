@@ -9,7 +9,8 @@
 
 ## 0. 진행 현황 (2026-05-31)
 - ✅ **토대**: framework-idempotency · framework-i18n · framework-idgen · framework-client (선택형, 3단 토글 적용)
-- ⏭️ **다음**: 보안 완성(비번 만료/이력·동시로그인·framework-audit) → 금융 핵심(messaging+Outbox·datasource)
+- ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc)
+- ⏭️ **다음**: framework-secure-web(CSRF/시큐어코딩) → 금융 핵심(messaging+Outbox·datasource)
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
 ---
@@ -71,9 +72,9 @@ public class XxxAutoConfiguration {
 
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
-| framework-security (확장) | 비번 **만료·변경주기·이력(직전 N개 재사용 금지)** | `framework.security.password.{expiry,history}.enabled` | [코어] | 공통 |
-| framework-security (확장) | **동시(중복) 로그인 제어** | `framework.security.concurrent-session.enabled` | [코어] | 공통 |
-| framework-audit | 접속/감사 로그 **DB 적재·조회** 표준(현 AOP 영속화) | `framework.audit.enabled` + `store.type=jdbc\|kafka` | [선택] | 공통 |
+| ✅ framework-security (확장) | 비번 **만료·변경주기·이력(직전 N개 재사용 금지)** | `framework.security.password.{expiry,history}.enabled` | [코어] | 공통 |
+| ✅ framework-security (확장) | **동시(중복) 로그인 제어** | `framework.security.concurrent-session.enabled` | [코어] | 공통 |
+| ✅ framework-audit | 접속/감사 로그 **DB 적재·조회** 표준(현 AOP 영속화) | `framework.audit.enabled` + `store.type=logging\|jdbc` | [선택] | 공통 |
 | framework-secure-web | CSRF·시큐어코딩 필터(SQLi/경로조작 등, XSS는 core) | `framework.secure-web.enabled` | [선택] | 공통 |
 
 ### 2.4 신규 — 업무 생산성 (업무개발자 직접 사용)

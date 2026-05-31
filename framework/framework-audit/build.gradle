@@ -1,0 +1,13 @@
+// 선택형 모듈: 감사/접속 로그 표준 적재·조회. 의존성 추가 + framework.audit.enabled=true 로만 활성.
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // @AuditLog(core), LoginAuditEvent(security), SecurityContext, JdbcTemplate(security→mybatis 경유) 사용
+    api project(':framework:framework-security')
+    // jdbc/web 는 호스트 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지)
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

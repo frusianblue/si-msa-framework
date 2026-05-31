@@ -37,11 +37,13 @@ public class AuthController {
     @PostMapping("/logout")
     public ApiResponse<Void> logout(
             @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestBody(required = false) Map<String, String> body) {
+            @RequestBody(required = false) Map<String, String> body,
+            HttpServletRequest request) {
         String accessToken =
                 (authorization != null && authorization.startsWith("Bearer ")) ? authorization.substring(7) : null;
         String refreshToken = body == null ? null : body.get("refreshToken");
-        loginService.logout(accessToken, refreshToken);
+        String clientIp = ClientIpResolver.resolve(request, loginAttemptProperties.getClientIpHeader());
+        loginService.logout(accessToken, refreshToken, clientIp);
         return ApiResponse.ok(null, "로그아웃 되었습니다.");
     }
 }

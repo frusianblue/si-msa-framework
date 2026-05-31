@@ -1,6 +1,10 @@
 package com.company.framework.security.config;
 
 import com.company.framework.mybatis.support.CurrentUserProvider;
+import com.company.framework.security.concurrent.ConcurrentSessionProperties;
+import com.company.framework.security.concurrent.ConcurrentSessionService;
+import com.company.framework.security.concurrent.InMemoryConcurrentSessionService;
+import com.company.framework.security.concurrent.JdbcConcurrentSessionService;
 import com.company.framework.security.crypto.PasswordEncoderConfig;
 import com.company.framework.security.devauth.DevAuthInjectionFilter;
 import com.company.framework.security.devauth.DevAuthProperties;
@@ -13,6 +17,10 @@ import com.company.framework.security.jwt.JwtProvider;
 import com.company.framework.security.loginattempt.InMemoryLoginAttemptService;
 import com.company.framework.security.loginattempt.LoginAttemptProperties;
 import com.company.framework.security.loginattempt.LoginAttemptService;
+import com.company.framework.security.password.InMemoryPasswordHistoryStore;
+import com.company.framework.security.password.JdbcPasswordHistoryStore;
+import com.company.framework.security.password.PasswordHistoryStore;
+import com.company.framework.security.password.PasswordLifecycleService;
 import com.company.framework.security.password.PasswordPolicy;
 import com.company.framework.security.password.PasswordProperties;
 import com.company.framework.security.password.PasswordSafetyGuard;
@@ -32,12 +40,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -56,7 +66,8 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
     FrameworkSecurityProperties.class,
     DevAuthProperties.class,
     PasswordProperties.class,
-    LoginAttemptProperties.class
+    LoginAttemptProperties.class,
+    ConcurrentSessionProperties.class
 })
 @ConditionalOnProperty(prefix = "framework.security", name = "enabled", havingValue = "true", matchIfMissing = true)
 @MapperScan("com.company.framework.security.rbac.mapper")
@@ -128,6 +139,52 @@ public class SecurityAutoConfiguration {
     @ConditionalOnMissingBean
     public PasswordPolicy passwordPolicy(PasswordProperties props) {
         return new PasswordPolicy(props);
+    }
+
+    // ===== 비밀번호 수명주기(만료/이력) — ISMS-P. 기능은 PasswordProperties.expiry/history 로 토글 =====
+    @Bean
+    @ConditionalOnMissingBean(PasswordHistoryStore.class)
+    @ConditionalOnProperty(
+            prefix = "framework.security.password.history.store",
+            name = "type",
+            havingValue = "memory",
+            matchIfMissing = true)
+    public PasswordHistoryStore inMemoryPasswordHistoryStore() {
+        return new InMemoryPasswordHistoryStore();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(PasswordHistoryStore.class)
+    @ConditionalOnProperty(prefix = "framework.security.password.history.store", name = "type", havingValue = "jdbc")
+    public PasswordHistoryStore jdbcPasswordHistoryStore(JdbcTemplate jdbcTemplate) {
+        return new JdbcPasswordHistoryStore(jdbcTemplate);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public PasswordLifecycleService passwordLifecycleService(
+            PasswordHistoryStore historyStore, PasswordEncoder passwordEncoder, PasswordProperties props) {
+        return new PasswordLifecycleService(historyStore, passwordEncoder, props);
+    }
+
+    // ===== 동시(중복) 로그인 제어 — ISMS-P. 기능은 framework.security.concurrent-session.enabled 로 토글 =====
+    @Bean
+    @ConditionalOnMissingBean(ConcurrentSessionService.class)
+    @ConditionalOnProperty(
+            prefix = "framework.security.concurrent-session.store",
+            name = "type",
+            havingValue = "memory",
+            matchIfMissing = true)
+    public ConcurrentSessionService inMemoryConcurrentSessionService(ConcurrentSessionProperties props) {
+        return new InMemoryConcurrentSessionService(props);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ConcurrentSessionService.class)
+    @ConditionalOnProperty(prefix = "framework.security.concurrent-session.store", name = "type", havingValue = "jdbc")
+    public ConcurrentSessionService jdbcConcurrentSessionService(
+            JdbcTemplate jdbcTemplate, ConcurrentSessionProperties props) {
+        return new JdbcConcurrentSessionService(jdbcTemplate, props);
     }
 
     @Bean

@@ -65,6 +65,10 @@ public class JwtProvider {
         return parse(token).getId();
     }
 
+    public String getSubject(String token) {
+        return parse(token).getSubject();
+    }
+
     public Instant getExpiresAt(String token) {
         return parse(token).getExpiration().toInstant();
     }
