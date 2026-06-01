@@ -51,7 +51,7 @@ framework:
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
 - **POI 는 Boot BOM 미관리** → `libs.versions.toml [versions] poi` 로 버전 고정 필수(spring-kafka 와 반대 케이스). 루트 ext `poiVersion` 브리지로 모듈 build.gradle 의 `${poiVersion}` 동작(springdoc/awsSdk 패턴 동일).
 - **POI 타입 비노출 원칙**: `poi-ooxml` 은 `implementation`(api 아님). 모듈 공개 API 는 자체 타입(ExcelExporter/ExcelTemplate/...)만. → 소비 서비스 build.gradle 에 POI 직접 추가 불필요.
-- **SXSSF 는 `close()` 가 아니라 `dispose()`** 로 끝내야 디스크 임시파일까지 제거(누수 방지). exporter 는 finally 에서 dispose 한다.
+- **SXSSF 종료는 `close()`**(try-with-resources). POI 5.5+ 에서 `dispose()` 는 **deprecated** — `close()` 가 시트 writer flush + 디스크 임시파일 삭제를 함께 수행한다(예전엔 dispose 가 필요했으나 역전됨). exporter 는 try-with-resources 로 close.
 - **SXSSF autoSizeColumn 금지**(트래킹 켜야 동작 + 비용 큼) → 너비는 컬럼 정의의 명시값만 반영.
 - **읽기 셀 타입은 effectiveType 로**: FORMULA 셀은 `getCachedFormulaResultType()` 로 환산 후 분기. 날짜는 `DateUtil.isCellDateFormatted` 확인 후 `getLocalDateTimeCellValue()`(숫자 시리얼 오인 방지).
 - **양식 불일치(헤더 누락 등)는 행별 오류가 아니라 하드 실패**(BusinessException). 값 오류만 수집. 둘을 섞지 말 것(사용자 안내 메시지가 달라짐).
