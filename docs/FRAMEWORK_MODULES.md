@@ -12,7 +12,7 @@
 - ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc|kafka)
 - ✅ **framework-secure-web**: 보안헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋(필터 계층, XSS 본문은 core)
 - ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅) · framework-messaging(Transactional Outbox + Kafka 릴레이) · audit↔messaging 연동(`store.type=kafka`)
-- ⏭️ **다음**: 업무 생산성 — ✅ framework-excel 완료 · 다음 framework-batch · framework-notification (또는 messaging 소비자측 멱등 소비)
+- ⏭️ **다음**: 업무 생산성 — ✅ framework-excel · ✅ framework-batch 완료 · 다음 framework-notification (또는 messaging 소비자측 멱등 소비)
 - ℹ️ **DB 범위 정리(2026-05-31)**: 읽기/쓰기 분리(primary/replica)까지 완료. *서로 다른 독립 DB 다중 연결*(DB별 SqlSessionFactory/tx매니저/@MapperScan)은 **미구현 — 필요 시 추가**. 분산 원자성은 XA 대신 Outbox/Saga로.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
@@ -85,7 +85,7 @@ public class XxxAutoConfiguration {
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
 | ✅ framework-excel | POI 업/다운로드: **다운로드 SXSSF 스트리밍**(대용량 일정메모리)·**업로드 양식검증**(헤더/타입/필수/길이·패턴, 행별 오류수집). POI 타입 비노출(implementation) | `framework.excel.enabled` (+`export.window-size`/`import.max-rows`) | [선택] | 공통 |
-| framework-batch | Spring Batch + 스케줄러(Quartz) | `framework.batch.enabled`,`framework.scheduler.enabled` | [선택] | 공통 |
+| ✅ framework-batch | **Spring Batch 6 실행**(JobLaunchSupport: JobOperator 래핑+run.id 재실행보장)·**표준 로깅 리스너**·**Quartz cron 스케줄**(yaml 선언만으로 Job 기동) | `framework.batch.enabled`,`framework.scheduler.enabled` | [선택] | 공통 |
 | framework-notification | 메일/SMS/알림톡 추상화(채널 type) | `framework.notification.enabled` + `channels.{mail,sms}.enabled` | [선택] | 공통 |
 
 ### 2.5 신규 — 데이터/연계 (금융 핵심 ★)

@@ -1,0 +1,22 @@
+// 선택형 모듈: 배치 표준 — Spring Batch(실행/리스너) + Quartz(cron 스케줄).
+//   - JobLaunchSupport: JobOperator 래핑 + 매 실행 고유 run.id 부여(파라미터 없는 Job 도 재실행 가능) + 체크예외 → 런타임 래핑.
+//   - LoggingJobExecutionListener: 시작/종료/상태/소요시간 표준 로깅(감사 친화). 앱이 JobBuilder.listener(...) 로 부착.
+//   - 스케줄러: framework.scheduler.jobs[*].{name,cron} 선언만으로 Quartz 가 Spring Batch Job 을 cron 으로 기동(보일러플레이트 0).
+// 새 외부 의존성 0(버전 0): spring-boot-starter-batch / -quartz 는 Boot BOM 관리(STACK.md 3.2) → 버전 미명시. libs.versions.toml 무변경.
+//   batch/quartz 타입을 소비 서비스가 직접 쓰므로(Job/Step 정의, @Bean Job) api 로 전이.
+dependencies {
+    // ApiResponse/에러 포맷. (현재 직접 사용은 적으나 규약상 베이스 의존)
+    api project(':framework:framework-core')
+
+    // 배치 능력 전이(api): 소비 서비스가 Job/Step/ItemReader 등을 직접 정의한다.
+    api 'org.springframework.boot:spring-boot-starter-batch'
+    // Quartz 스케줄러 전이: QuartzJobBean/Scheduler. Boot 가 Scheduler 자동구성(기본 RAM JobStore).
+    api 'org.springframework.boot:spring-boot-starter-quartz'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.batch:spring-batch-test'
+}
