@@ -33,6 +33,11 @@ public class InMemoryIdempotencyStore implements IdempotencyStore {
         return Optional.ofNullable(e.result());
     }
 
+    @Override
+    public void remove(String key) {
+        map.remove(key);
+    }
+
     private void sweep() {
         Instant now = Instant.now();
         map.entrySet().removeIf(en -> en.getValue().expiresAt().isBefore(now));

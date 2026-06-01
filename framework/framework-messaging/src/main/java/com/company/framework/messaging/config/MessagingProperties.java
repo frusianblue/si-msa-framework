@@ -1,5 +1,6 @@
 package com.company.framework.messaging.config;
 
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -32,6 +33,7 @@ public class MessagingProperties {
 
     private final Outbox outbox = new Outbox();
     private final Kafka kafka = new Kafka();
+    private final Consumer consumer = new Consumer();
 
     public boolean isEnabled() {
         return enabled;
@@ -47,6 +49,10 @@ public class MessagingProperties {
 
     public Kafka getKafka() {
         return kafka;
+    }
+
+    public Consumer getConsumer() {
+        return consumer;
     }
 
     public static class Outbox {
@@ -150,6 +156,43 @@ public class MessagingProperties {
 
         public void setRetries(int retries) {
             this.retries = retries;
+        }
+    }
+
+    /**
+     * 소비자측 멱등 소비 설정. {@code framework.messaging.consumer.enabled=true} + framework-idempotency 의존 시 활성.
+     * 발행측({@code messaging.enabled})과 독립 — 순수 소비 서비스는 consumer 만 켜면 된다.
+     */
+    public static class Consumer {
+        /** 멱등 소비 활성(IdempotentEventProcessor 빈 제공). */
+        private boolean enabled = false;
+        /** 멱등 키 보관 기간(중복 판정 윈도). 재시도 주기보다 충분히 길게, 무한은 회피. */
+        private Duration ttl = Duration.ofHours(24);
+        /** 멱등 저장소 키 접두어. */
+        private String keyPrefix = "evt:";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getTtl() {
+            return ttl;
+        }
+
+        public void setTtl(Duration ttl) {
+            this.ttl = ttl;
+        }
+
+        public String getKeyPrefix() {
+            return keyPrefix;
+        }
+
+        public void setKeyPrefix(String keyPrefix) {
+            this.keyPrefix = keyPrefix;
         }
     }
 }

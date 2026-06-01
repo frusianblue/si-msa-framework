@@ -1,1 +1,2 @@
 com.company.framework.messaging.config.MessagingAutoConfiguration
+com.company.framework.messaging.config.MessagingConsumerAutoConfiguration

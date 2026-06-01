@@ -9,6 +9,10 @@ dependencies {
     // 이 모듈이 "카프카 발행 능력"을 제공하므로 의존 서비스에 전이(api). 버전은 Boot BOM 위임.
     api 'org.springframework.kafka:spring-kafka'
 
+    // 소비자측 멱등 소비(IdempotentEventProcessor)는 IdempotencyStore SPI 를 쓴다. 선택 의존 → compileOnly.
+    //   소비 서비스가 framework-idempotency 를 함께 의존해야 컨슈머 자동구성이 활성(@ConditionalOnClass/Bean).
+    compileOnly project(':framework:framework-idempotency')
+
     // JdbcTemplate/PlatformTransactionManager/TransactionTemplate(spring-jdbc/spring-tx). 런타임은 호스트가 제공
     // (framework-mybatis 나 framework-datasource 가 DataSource/트랜잭션매니저를 이미 노출) → compileOnly.
     compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
@@ -20,4 +24,5 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
     testImplementation 'org.springframework.kafka:spring-kafka-test'
+    testImplementation project(':framework:framework-idempotency')
 }

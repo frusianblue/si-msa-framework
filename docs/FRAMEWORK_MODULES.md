@@ -11,7 +11,7 @@
 - ✅ **토대**: framework-idempotency · framework-i18n · framework-idgen · framework-client (선택형, 3단 토글 적용)
 - ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc|kafka)
 - ✅ **framework-secure-web**: 보안헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋(필터 계층, XSS 본문은 core)
-- ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅) · framework-messaging(Transactional Outbox + Kafka 릴레이) · audit↔messaging 연동(`store.type=kafka`)
+- ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅) · framework-messaging(Transactional Outbox + Kafka 릴레이 **+ 소비자측 멱등 소비**) · audit↔messaging 연동(`store.type=kafka`)
 - ⏭️ **다음**: 업무 생산성 **3종 완료**(✅ framework-excel · ✅ framework-batch · ✅ framework-notification) → 다음 후보: messaging 소비자측 멱등 소비, 또는 규제특화/관측(observability)
 - ℹ️ **DB 범위 정리(2026-05-31)**: 읽기/쓰기 분리(primary/replica)까지 완료. *서로 다른 독립 DB 다중 연결*(DB별 SqlSessionFactory/tx매니저/@MapperScan)은 **미구현 — 필요 시 추가**. 분산 원자성은 XA 대신 Outbox/Saga로.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
@@ -93,7 +93,7 @@ public class XxxAutoConfiguration {
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
 | ✅ **framework-idempotency** | **정확히-한번/멱등키**(중복요청·중복결제 차단) | `framework.idempotency.enabled` + `store.type=redis\|jdbc` | [선택] | 금 ★ |
-| ✅ framework-messaging | Kafka + **Outbox** 패턴(이벤트 유실/중복 방지). 발행자(DB 적재)와 릴레이(SKIP LOCKED, 다중인스턴스 안전) 토글 분리 | `framework.messaging.enabled` (+`outbox.relay.enabled`) | [선택] | 금 ★ |
+| ✅ framework-messaging | Kafka + **Outbox**(발행: 유실/중복 방지) **+ 소비자측 멱등 소비**(`IdempotentEventProcessor`: `x-event-id` 헤더로 중복 배달 1회 처리, 실패 시 키 해제→재배달 재처리). 멱등 저장소는 framework-idempotency(redis 권장) | `framework.messaging.enabled`(+`outbox.relay.enabled`)·`framework.messaging.consumer.enabled` | [선택] | 금 ★ |
 | ✅ framework-datasource | **읽기/쓰기 분리 라우팅**(primary/replica). *독립 다중 DB(별도 SqlSessionFactory/tx매니저)는 미구현 — 추후* | `framework.datasource.routing.enabled` | [선택] | 금/공 |
 | framework-saga | 분산 트랜잭션/보상(Saga) | `framework.saga.enabled` | [선택] | 금 |
 

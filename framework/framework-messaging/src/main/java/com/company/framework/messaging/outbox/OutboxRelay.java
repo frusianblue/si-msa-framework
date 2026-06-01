@@ -1,5 +1,6 @@
 package com.company.framework.messaging.outbox;
 
+import com.company.framework.messaging.MessagingHeaders;
 import com.company.framework.messaging.config.MessagingProperties;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -121,11 +122,12 @@ public class OutboxRelay implements SmartLifecycle {
 
     private void send(OutboxEvent e) throws Exception {
         ProducerRecord<String, String> record = new ProducerRecord<>(e.topic(), e.partitionKey(), e.payload());
-        record.headers().add("x-event-id", e.eventId().getBytes(StandardCharsets.UTF_8));
-        record.headers().add("x-event-type", e.eventType().getBytes(StandardCharsets.UTF_8));
-        record.headers().add("x-aggregate-type", e.aggregateType().getBytes(StandardCharsets.UTF_8));
+        record.headers().add(MessagingHeaders.X_EVENT_ID, e.eventId().getBytes(StandardCharsets.UTF_8));
+        record.headers().add(MessagingHeaders.X_EVENT_TYPE, e.eventType().getBytes(StandardCharsets.UTF_8));
+        record.headers()
+                .add(MessagingHeaders.X_AGGREGATE_TYPE, e.aggregateType().getBytes(StandardCharsets.UTF_8));
         if (e.headers() != null) {
-            record.headers().add("x-headers", e.headers().getBytes(StandardCharsets.UTF_8));
+            record.headers().add(MessagingHeaders.X_HEADERS, e.headers().getBytes(StandardCharsets.UTF_8));
         }
         // 동기 발행: 성공(ack)을 확인한 뒤에야 PUBLISHED 로 표시 → at-least-once 보장.
         kafkaTemplate.send(record).get(relay.getSendTimeoutMs(), TimeUnit.MILLISECONDS);

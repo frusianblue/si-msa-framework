@@ -34,4 +34,10 @@ public class RedisIdempotencyStore implements IdempotencyStore {
     public Optional<String> findResult(String key) {
         return Optional.ofNullable(redis.opsForValue().get(RESULT + key));
     }
+
+    @Override
+    public void remove(String key) {
+        redis.delete(LOCK + key);
+        redis.delete(RESULT + key);
+    }
 }
