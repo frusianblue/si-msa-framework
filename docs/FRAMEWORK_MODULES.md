@@ -11,8 +11,9 @@
 - ✅ **토대**: framework-idempotency · framework-i18n · framework-idgen · framework-client (선택형, 3단 토글 적용)
 - ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc|kafka)
 - ✅ **framework-secure-web**: 보안헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋(필터 계층, XSS 본문은 core)
-- ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅) · framework-messaging(Transactional Outbox + Kafka 릴레이 **+ 소비자측 멱등 소비**) · audit↔messaging 연동(`store.type=kafka`)
-- ⏭️ **다음**: 업무 생산성 **3종 완료**(✅ framework-excel · ✅ framework-batch · ✅ framework-notification) → 다음 후보: messaging 소비자측 멱등 소비, 또는 규제특화/관측(observability)
+- ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅) · framework-messaging(Transactional Outbox + Kafka 릴레이 **+ 소비자측 멱등 소비**, `x-event-id`↔framework-idempotency) · audit↔messaging 연동(`store.type=kafka`)
+- ✅ **업무 생산성**: framework-excel(POI 스트리밍/양식검증) · framework-batch(Batch6+Quartz) · framework-notification(메일/SMS/알림톡)
+- ⏭️ **다음 후보**: 규제특화(pki/mfa/hsm/recon/egov, 해당 사업만) 또는 관측(observability — 분산추적은 core 에 보유, 메트릭/로그 표준화) · (선택) idempotency JdbcIdempotencyStore
 - ℹ️ **DB 범위 정리(2026-05-31)**: 읽기/쓰기 분리(primary/replica)까지 완료. *서로 다른 독립 DB 다중 연결*(DB별 SqlSessionFactory/tx매니저/@MapperScan)은 **미구현 — 필요 시 추가**. 분산 원자성은 XA 대신 Outbox/Saga로.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
