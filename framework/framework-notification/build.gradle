@@ -1,0 +1,18 @@
+// 선택형 모듈: 알림 채널 추상화 — 메일/SMS/알림톡을 하나의 NotificationService 로 발송.
+//   - 채널별 NotificationSender 구현을 채널 토글로 켜고, NotificationService 가 ChannelType 으로 라우팅.
+//   - 메일: Spring JavaMailSender(Boot 자동구성, spring.mail.host 필요).
+//   - SMS/알림톡: 벤더 어댑터 SPI(SmsClient/AlimtalkClient) + 기본 로깅 구현(실발송X). 서비스가 벤더 빈으로 @ConditionalOnMissingBean 교체.
+// 새 외부 의존성 0(버전 0): spring-boot-starter-mail 은 Boot BOM 관리(STACK.md 3.2). libs.versions.toml 무변경.
+dependencies {
+    // ApiResponse/에러 포맷(NotificationException 은 자체 정의지만 규약상 베이스 의존).
+    api project(':framework:framework-core')
+
+    // 메일 채널: JavaMailSender + jakarta.mail. 채널 토글로만 동작하므로 전이(api)로 호스트에 메일 능력 제공.
+    api 'org.springframework.boot:spring-boot-starter-mail'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

@@ -50,6 +50,7 @@
 | `org.springframework.kafka:spring-kafka` | 신뢰성 발행(Transactional Outbox 릴레이) — Boot BOM 관리(버전 미명시) | framework-messaging(선택) |
 | `spring-boot-starter-batch` | 배치 실행/리스너(Spring Batch 6 — Boot 4) — Boot BOM 관리 | framework-batch(선택) |
 | `spring-boot-starter-quartz` | Quartz cron 스케줄러(기본 RAM JobStore) — Boot BOM 관리 | framework-batch(선택) |
+| `spring-boot-starter-mail` | 메일 채널(JavaMailSender, jakarta.mail) — Boot BOM 관리 | framework-notification(선택) |
 | `spring-boot-starter-flyway` + `flyway-database-postgresql` | DB 마이그레이션(PG 10+) | 서비스 |
 | `org.postgresql:postgresql` | 운영 DB 드라이버(프레임워크는 미포함) | 각 서비스 |
 | `com.h2database:h2` | 로컬/테스트 DB | 각 서비스 |
