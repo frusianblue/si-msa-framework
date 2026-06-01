@@ -25,6 +25,7 @@ allprojects {
         mapstructVersion       = libs.versions.mapstruct.get()
         awsSdkVersion          = libs.versions.awsSdk.get()
         lombokMapstructBinding = libs.versions.lombokMapstructBinding.get()
+        poiVersion             = libs.versions.poi.get()
     }
 }
 

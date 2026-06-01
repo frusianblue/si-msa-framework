@@ -1,0 +1,22 @@
+// 선택형 모듈: Excel 업/다운로드 표준 — Apache POI 기반.
+//   - 다운로드(export): SXSSF 스트리밍(rowAccessWindowSize) 으로 대용량도 일정 메모리로 생성. 임시파일 자동 정리(dispose).
+//   - 업로드(import): 템플릿(양식) 정의에 맞춰 헤더/타입/필수/길이/패턴을 검증, 행별 오류를 수집해 반환(양식검증).
+// 새 외부 의존성 1: Apache POI 는 Boot BOM 이 관리하지 않음 → libs.versions.toml(poi) + 루트 ext(poiVersion) 로 버전 고정.
+//   POI 타입은 이 모듈 내부 구현 디테일이므로 implementation(전이 금지) — 소비 서비스는 프레임워크 타입(ExcelExporter/ExcelTemplate)만 의존.
+// 루트 build.gradle 이 java-library/dependency-management/spotless/jacoco 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // 표준 응답/에러 포맷(BusinessException/ErrorCode). 양식 불일치 등 하드 실패를 표준 예외로 던진다.
+    api project(':framework:framework-core')
+
+    // Apache POI: xlsx(XSSF/SXSSF) + xls(HSSF) 모두 poi-ooxml 한 줄로 전이(poi 본체 포함). 내부 구현 → implementation.
+    implementation "org.apache.poi:poi-ooxml:${poiVersion}"
+
+    // 업로드 핸들러에서 MultipartFile 등을 받기 위한 web API (선택) — 런타임은 호스트(starter-web)가 제공.
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
