@@ -12,4 +12,9 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // 오토컨피그 introspection 이 @Bean 시그니처의 모든 타입을 로드 → main 의 compileOnly 3종을 test 에 재선언
+    //   (JdbcTemplate=jdbc, AuditController=web, OutboxEventPublisher=messaging). 클래스 존재만 필요(빈 생성 X).
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation project(':framework:framework-messaging')
 }

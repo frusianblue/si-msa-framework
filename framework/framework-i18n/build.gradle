@@ -5,4 +5,7 @@ dependencies {
     // web(LocaleResolver, @RestControllerAdvice)은 호스트 앱이 제공 → 컴파일만
     compileOnly 'org.springframework.boot:spring-boot-starter-web'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // I18nWebAutoConfiguration(LocaleResolver/I18nExceptionAdvice=web) introspection + WebApplicationContextRunner 용
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
 }

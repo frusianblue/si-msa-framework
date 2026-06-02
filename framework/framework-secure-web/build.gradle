@@ -14,4 +14,6 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // SecureWebAutoConfiguration: servlet 필터/FilterRegistrationBean introspection + WebApplicationContextRunner 용
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
 }

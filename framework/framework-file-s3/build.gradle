@@ -5,4 +5,5 @@ dependencies {
     api 'software.amazon.awssdk:s3'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }

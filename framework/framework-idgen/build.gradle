@@ -5,4 +5,7 @@ dependencies {
     // jdbc/tx 는 호스트 앱이 제공(MyBatis 서비스엔 이미 있음) → 컴파일만
     compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // CodeGeneratorConfiguration 의 @Bean 시그니처(JdbcTemplate/PlatformTransactionManager) introspection → jdbc 재선언
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
 }
