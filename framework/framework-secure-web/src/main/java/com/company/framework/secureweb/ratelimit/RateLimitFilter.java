@@ -81,10 +81,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             response.setHeader("Retry-After", String.valueOf(retryAfterSeconds()));
         }
         if (log.isDebugEnabled()) {
-            log.debug(
-                    "rate limit exceeded key={} path={}",
-                    PathSupport.forLog(key),
-                    PathSupport.forLog(path));
+            log.debug("rate limit exceeded key={} path={}", PathSupport.forLog(key), PathSupport.forLog(path));
         }
         responder.writeError(response, RateLimitErrorCode.RATE_LIMITED, RateLimitErrorCode.RATE_LIMITED.message());
     }

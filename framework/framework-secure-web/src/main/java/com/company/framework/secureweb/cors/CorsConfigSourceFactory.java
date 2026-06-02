@@ -40,9 +40,8 @@ public final class CorsConfigSourceFactory {
         cc.setMaxAge(cfg.getMaxAgeSeconds());
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        String pattern = (cfg.getPathPattern() == null || cfg.getPathPattern().isBlank())
-                ? "/**"
-                : cfg.getPathPattern();
+        String pattern =
+                (cfg.getPathPattern() == null || cfg.getPathPattern().isBlank()) ? "/**" : cfg.getPathPattern();
         source.registerCorsConfiguration(pattern, cc);
         return source;
     }
