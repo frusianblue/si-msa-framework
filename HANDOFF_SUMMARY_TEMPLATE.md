@@ -18,26 +18,28 @@
 - 데이터/연계(금융): `framework-datasource`(읽기/쓰기 분리) · `framework-messaging`(Outbox 발행+릴레이 **+ 소비자측 멱등 소비**)
 - 업무 생산성: `framework-excel`(POI 스트리밍/양식검증) · `framework-batch`(Batch6+Quartz) · `framework-notification`(메일/SMS/알림톡)
 - 규제특화: `framework-mfa`(2단계 인증 — TOTP/OTP + 복구코드, **외부 의존성 0**, security 에 `MfaGate` nullable SPI)
+- 운영/관측: `framework-observability`(공통 메트릭 태그 `MeterRegistryCustomizer` · Boot4 네이티브 구조화 JSON 로그 · 메트릭/트레이스 OTLP 익스포터 표준 — 전부 토글·기본 off, **외부 의존성 0**: 레지스트리/익스포터는 호스트 `runtimeOnly` opt-in)
 
-**다음 후보** (택1): 관측(observability — 분산추적은 core 보유, 메트릭/로그 표준화·대시보드) · 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · idempotency `JdbcIdempotencyStore`(현재 memory/redis만) · 게이트웨이/k8s/CI-CD 멀티서비스화.
+**다음 후보** (택1): 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · idempotency `JdbcIdempotencyStore`(현재 memory/redis만) · **그릇 정비**(게이트웨이 폴백·CORS·rate-limit / k8s 멀티서비스·observability ServiceMonitor 실배포 / CI-CD 멀티모듈 파이프라인).
 
 **절대 되돌리지 말 것(고정 함정)**
 - **Jackson 3**: `tools.jackson.*` 사용, `com.fasterxml.jackson.databind/core` import 금지(애너테이션 `com.fasterxml.jackson.annotation.*` 만 OK). 정적 JSON 유틸은 `JsonUtils`(`JacksonConfig` 규칙 미러).
-- **JUnit Platform launcher**: `spring-boot-starter-test` 가 `junit-platform-launcher` 를 전이하지 않음 + Gradle 9 자동주입 없음 → 루트 `subprojects` 에 `testRuntimeOnly 'org.junit.platform:junit-platform-launcher'` 일괄(없으면 테스트 있는 모듈에서 "OutputDirectoryCreator not available … unaligned versions" 로 발견 단계 실패). **새 모듈에 첫 테스트 넣을 때 재확인.**
+- **JUnit Platform launcher**: `spring-boot-starter-test` 가 `junit-platform-launcher` 를 전이하지 않음 + Gradle 9 자동주입 없음 → 루트 `subprojects` 에 `testRuntimeOnly 'org.junit.platform:junit-platform-launcher'` 일괄(없으면 테스트 있는 모듈에서 "OutputDirectoryCreator not available … unaligned versions" 로 발견 단계 실패). **새 모듈에 첫 테스트 넣을 때 재확인.** 런처와 별개로 **테스트 API 는 모듈마다 `testImplementation 'org.springframework.boot:spring-boot-starter-test'`**(JUnit5+AssertJ, BOM 버전) 선언 필수 — 누락 시 `package org.junit.jupiter.api does not exist`/`org.assertj … does not exist` 로 테스트 컴파일 실패(메인 컴파일과 무관).
 - **Boot 4 autoconfigure 패키지 분리**: jdbc/batch/quartz/mail 등 `org.springframework.boot.<module>.autoconfigure.*`. `@AutoConfiguration(afterName=…)` 에 정확한 FQCN(공식 소스로 확인).
 - **Spring Batch 6**: 패키지 이동(`core.job` / `core.job.parameters` / `core.launch` / `core.listener`), `JobLauncher`→`JobOperator`. 배치 메타테이블 필요.
 - **Spring 7 메일 = `jakarta.mail.*`**(javax 아님). JavaMailSender 빈은 `spring.mail.host` 설정 시에만.
 - **POI**: BOM 밖(`libs.versions.toml` 핀), `implementation`(비노출), 종료는 `close()`(dispose deprecated).
 - **소비자 멱등**: 인메모리는 멀티 인스턴스에서 무력 → **redis 필수**. `x-event-id` 단일 소스(`MessagingHeaders`). 키 선점~핸들러 완료 전 크래시 시 TTL 까지 재배달 스킵 가능(at-least-once 한계).
 - **MFA**: security 에 `MfaGate` nullable SPI · `LoginService` 9-arg(기존 생성자 유지) · `AuthController#login` 반환형 `ApiResponse<Object>` · 챌린지 store 멀티=redis 필수.
+- **관측(observability)**: `MeterRegistryCustomizer` = Boot4 `org.springframework.boot.micrometer.metrics.autoconfigure`(3.x `actuate.autoconfigure.metrics` 아님; `MeterRegistry/Tag` 는 `io.micrometer.core.instrument.*` 유지). 구조화 로그는 빈 아님 → `EnvironmentPostProcessor`(ConfigData 이후·로깅 초기화 전, `order=LOWEST`, `addLast`=앱 값 우선; 등록은 `META-INF/spring.factories` 의 `EnvironmentPostProcessor` 키, `.imports` 아님). OTLP 트레이스 키 이중: 브리지(core)=`management.otlp.tracing.endpoint`, 신규 스타터=`management.opentelemetry.tracing.export.otlp.endpoint`; 메트릭=`management.otlp.metrics.export.{enabled,url}`(메트릭 OTLP 레지스트리+OTel 메트릭 브리지 동시=중복). 레지스트리/익스포터는 클래스 직접 참조 없이 런타임 classpath → 호스트 runtimeOnly opt-in(모듈 새 의존성 0).
 - **SI 유틸 주의**: 외국인등록번호 2020-10 이후 체크섬 폐지(형식만) · 음력/대체공휴일은 `HolidayUtils` 주입식(`Set<LocalDate> extraHolidays`) · 범용 `StringUtils/CollectionUtils` 재발명 금지(Spring 표준).
 - 필터에서 `BusinessException` 금지(디스패처 이전) → 수기 JSON. 트랜잭션매니저 새로 정의 금지(Boot 위임). 모듈 간 의존 단방향(이벤트로 디커플). bash `{a,b}` 미동작→`for`(기본 셸 sh).
 
 **검증 한계**: 작성 환경은 Maven Central/Gradle 배포 차단 → **gradle 컴파일 미검증**. 받는 쪽에서 항상 `./gradlew :framework:framework-<X>:compileJava` + `./gradlew spotlessApply`. (정적 점검: 괄호 균형·패키지=디렉터리·Jackson2 import 0 는 작성 시 수행.) 단, **틀리면 조용히 잘못되는 알고리즘**(체크섬/포맷/한글 조합 등)은 이 환경 순수 JDK(source-launch)로 실제 실행 검증 후 박는다.
 
 **모듈 추가/확장 레시피**
-1. 신규 `framework/framework-<X>/`(config: Properties+AutoConfiguration · 도메인 패키지 · `META-INF/spring/…AutoConfiguration.imports` FQCN). 확장이면 기존 모듈에 패키지 추가 + imports 에 새 autoconfig 줄.
-2. `build.gradle`: 능력 전이=`api` · 내부구현=`implementation` · 호스트/선택 의존=`compileOnly`(+test 에 동일 모듈). **BOM 밖 새 라이브러리만** `libs.versions.toml`+루트 `ext` 핀.
+1. 신규 `framework/framework-<X>/`(config: Properties+AutoConfiguration · 도메인 패키지 · `META-INF/spring/…AutoConfiguration.imports` FQCN). **컨텍스트 이전(로깅/액추에이터 초기화 전) 동작이 필요하면 `EnvironmentPostProcessor` + `META-INF/spring.factories`**(observability 사례). 확장이면 기존 모듈에 패키지 추가 + imports 에 새 autoconfig 줄.
+2. `build.gradle`: 능력 전이=`api` · 내부구현=`implementation` · 호스트/선택 의존=`compileOnly`. **테스트 넣으면 `testImplementation 'org.springframework.boot:spring-boot-starter-test'` 도**(JUnit5+AssertJ; 루트 launcher 는 실행 런처일 뿐 API 아님). "클래스 직접 참조 없이 런타임 classpath 로만" 동작하는 레지스트리/익스포터류는 모듈이 안 받고 호스트가 `runtimeOnly` opt-in. **BOM 밖 새 라이브러리만** `libs.versions.toml`+루트 `ext` 핀.
 3. `settings.gradle`(신규 모듈) / `imports`(새 autoconfig) 등록 — 누락 주의.
 4. 코드 전 **Boot4/Spring7/Jackson3 + 외부 라이브러리 API 를 공식 소스(GitHub raw)로 확정**(메이저 버전업=패키지 이동 잦음).
 5. 오토컨피그: `@AutoConfiguration(afterName=관련 autoconfig)` + `@ConditionalOnClass/Property` + 빈 `@ConditionalOnMissingBean`. 선택 의존 연계는 `@ConditionalOnClass(타 모듈 마커)`+`@ConditionalOnBean`(+compileOnly). 교체형 SPI 는 `@ConditionalOnMissingBean(타입)` 으로 기본구현.

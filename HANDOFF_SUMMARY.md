@@ -20,14 +20,14 @@
   - `config/ObservabilityEnvironmentPostProcessor`(EPP, `spring.factories` 등록) → 구조화 로그·액추에이터 노출·k8s 프로브·OTLP 익스포터 표준값을 **로깅 초기화 전**에 `addLast`(최저 우선순위, 앱 값 우선)로 주입.
   - `metrics/ObservabilityTags`(순수 JDK 태그 해석) + `ObservabilityTagsTest`(JUnit5+AssertJ, 5케이스).
   - resources: autoconfig `.imports`(1줄) + `META-INF/spring.factories`(EPP).
-  - `framework/framework-observability/build.gradle` = `api project(core)` + configuration-processor(끝).
+  - `framework/framework-observability/build.gradle` = `api project(core)` + configuration-processor + **`testImplementation spring-boot-starter-test`**(테스트 API).
 - **등록/배포**: `settings.gradle` 에 `include 'framework:framework-observability'`. k8s `deploy/k8s/observability.yaml`(ServiceMonitor·annotation 스크레이프·actuator ConfigMap·health 프로브).
 - **문서**: 모듈 `README.md` 신규 · 루트 `README.md`(운영/관측 절) · `HANDOFF.md`(1·6·7절) · `docs/FRAMEWORK_MODULES.md`(0·2.7·4절) · `STACK.md`(5절, 새 라이브러리 0/FQCN 이동/이중 OTLP 키). **카탈로그/libs.versions.toml 무변경**.
 
 ## 현재 상태 (적용/검증)
 - 정적 점검 통과: 패키지=디렉터리, 괄호 균형, **`com.fasterxml` 0건**, Boot4 FQCN(`org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer`).
 - **공통태그 해석 로직 순수 JDK 실행검증 완료(5/5)**: 표준3태그·공백→unknown·trim·extra append/순서·extra override·불량 항목 무시.
-- ⚠️ **gradle 컴파일 미검증**(작성 환경 Maven Central 차단). 받는 쪽: `./gradlew :framework:framework-observability:compileJava :framework:framework-observability:test` + `./gradlew spotlessApply`. (launcher 픽스 이미 루트 적용됨 → 새 모듈 테스트 정상 실행 예상)
+- ⚠️ **gradle 컴파일 미검증**(작성 환경 Maven Central 차단). 받는 쪽: `./gradlew :framework:framework-observability:compileJava :framework:framework-observability:test` + `./gradlew spotlessApply`. (루트 launcher 픽스는 *실행 런처*만 제공 → 모듈에 `testImplementation spring-boot-starter-test` 필요. **초안에서 이 줄 누락→테스트 컴파일 19건 에러, 추가로 해소**.)
 - 공식 소스로 확정한 사실: Boot4 구조화 로그 네이티브(`logging.structured.format`), `MeterRegistryCustomizer` 패키지 이동, 메트릭 OTLP(`management.otlp.metrics.export.{enabled,url}`), 트레이스 OTLP 브리지 키(`management.otlp.tracing.endpoint`) vs 신규 스타터 키.
 
 ## 켜는 법
@@ -45,11 +45,12 @@
 - **구조화 로그는 빈 아님 → EPP**: `logging.structured.*` 는 로깅 시스템이 컨텍스트보다 먼저 읽음 → `EnvironmentPostProcessor`(ConfigData 이후·로깅 초기화 전, order=LOWEST)가 `addLast` 로 표준값 주입(앱 값 우선). EPP 등록은 `META-INF/spring.factories`(오토컨피그 `.imports` 아님).
 - **OTLP 트레이스 키 이중 컨벤션**: 브리지 방식(core)=`management.otlp.tracing.endpoint`(+`opentelemetry-exporter-otlp`), 신규 스타터=`management.opentelemetry.tracing.export.otlp.endpoint`. 메트릭 OTLP=`management.otlp.metrics.export.{enabled,url}`. 메트릭 OTLP 레지스트리+OTel 메트릭 브리지 동시 사용 시 중복 — 한쪽만.
 - **관측도 새 의존성 0**: build.gradle 은 `api project(core)`+configuration-processor 만(레지스트리/익스포터 클래스 직접 참조 0). 호스트가 runtimeOnly opt-in. 카탈로그/STACK 무변경.
+- **테스트 API 는 모듈마다 선언**: 루트 `subprojects` 는 `junit-platform-launcher`(실행 런처)만 제공. 테스트가 import 하는 JUnit5/AssertJ API 는 모듈 `build.gradle` 의 `testImplementation 'org.springframework.boot:spring-boot-starter-test'`(BOM 버전)로 직접 받아야 함. 누락 시 `package org.junit.jupiter.api does not exist`/`org.assertj … does not exist` 컴파일 실패(메인과 무관).
 - (기존) util vs support 구분 · 외국인번호 형식만 · 음력/대체공휴일 주입식 · JsonUtils=Jackson3 · JUnit launcher 루트 적용 · 범용 유틸 재발명 금지 · MFA SPI(9-arg)/`ApiResponse<Object>` · Jackson3 전역 · 신규 모듈 settings/imports 등록 · BOM 밖만 카탈로그 핀.
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
 1. 신규: `framework/framework-<X>/`(config Properties+AutoConfiguration · 도메인 패키지 · imports FQCN). 빈 없는 순수 유틸은 `core/util` 에 클래스만. **컨텍스트 이전 동작이 필요하면 EPP + `spring.factories`**(관측 사례).
-2. `build.gradle`: 능력전이=`api`, 내부구현=`implementation`, 호스트/선택=`compileOnly`(+test). **레지스트리/익스포터처럼 "클래스 직접 참조 없이 런타임 classpath 로만" 동작하면 모듈은 받지 않고 호스트가 `runtimeOnly` opt-in.** BOM 밖 새 라이브러리만 카탈로그+ext 핀.
+2. `build.gradle`: 능력전이=`api`, 내부구현=`implementation`, 호스트/선택=`compileOnly`(+test). **테스트 넣으면 `testImplementation 'org.springframework.boot:spring-boot-starter-test'` 도(JUnit5+AssertJ).** 레지스트리/익스포터처럼 "클래스 직접 참조 없이 런타임 classpath 로만" 동작하면 모듈은 받지 않고 호스트가 `runtimeOnly` opt-in. BOM 밖 새 라이브러리만 카탈로그+ext 핀.
 3. `settings.gradle`(신규 모듈) / `imports`(새 autoconfig) 등록 잊지 말 것.
 4. 코드 전 **Boot4/Spring7/Jackson3 + 외부 API 를 공식 소스(GitHub raw/공식 API 문서)로 확정**(특히 Boot4 패키지 이동·이중 프로퍼티 키). 틀리면 조용히 잘못되는 알고리즘은 순수 JDK 로 실제 실행 검증.
 5. 오토컨피그: `@AutoConfiguration(afterName=…)` + `@ConditionalOnClass/Property` + 빈 `@ConditionalOnMissingBean`. (커스터마이저류는 Boot 가 모아 적용 → afterName 불요)

@@ -30,7 +30,7 @@
 ## 4. 모듈 추가 레시피 (요약)
 1. `framework/framework-<X>/`(config Properties+AutoConfiguration · 도메인 패키지 · imports FQCN). 컨텍스트 이전 동작 필요하면 **EPP + `spring.factories`**(관측 사례).
 2. `build.gradle`: 능력전이=api · 내부구현=implementation · 호스트/선택=compileOnly(+test). "클래스 직접 참조 없이 런타임 classpath 로만" 동작하면 **호스트가 runtimeOnly opt-in**(모듈은 안 받음). BOM 밖만 카탈로그 핀.
-3. `settings.gradle`(신규 모듈)·`imports`(새 autoconfig) 등록 — 누락 주의. launcher 는 루트에서 이미 적용(추가 불필요).
+3. `settings.gradle`(신규 모듈)·`imports`(새 autoconfig) 등록 — 누락 주의. **테스트를 넣으면 모듈 `build.gradle` 에 `testImplementation 'org.springframework.boot:spring-boot-starter-test'` 도 같이**(JUnit5+AssertJ API). 루트 `subprojects` 가 깔아주는 `junit-platform-launcher` 는 *실행 런처*일 뿐 테스트 API 가 아님 — 빠지면 `package org.junit.jupiter.api does not exist` 로 테스트 컴파일 실패.
 4. 오토컨피그: `@AutoConfiguration(afterName=…)` + `@ConditionalOnClass/Property` + 빈 `@ConditionalOnMissingBean`. (커스터마이저류는 Boot 가 모아 적용 → afterName 불요)
 5. 검증: `compileJava`(+`test`)(+`spotlessApply`). 알고리즘성 로직은 순수 JDK 실행검증.
 6. 드롭인 zip(변경 파일 전부 + settings/imports/문서) → 루트 `unzip -o`.
