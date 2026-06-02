@@ -59,6 +59,14 @@ subprojects {
         finalizedBy tasks.named('jacocoTestReport')
     }
 
+    // Gradle 9 + 최신 JUnit Platform 조합에서는 junit-platform-launcher 가 자동 주입되지 않는다.
+    // 누락 시 테스트가 있는 모듈에서 "OutputDirectoryCreator not available ... unaligned versions of
+    // junit-platform-engine and junit-platform-launcher" 로 테스트 발견(discover) 단계에서 통째로 실패한다.
+    // 전 모듈 공통으로 testRuntime 에 launcher 를 깔아둔다(버전은 Spring Boot BOM 이 관리 → 엔진과 자동 정렬).
+    dependencies {
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
     // ===== JaCoCo: 커버리지 -> Sonar 가 XML 을 읽어감 =====
     jacocoTestReport {
         dependsOn tasks.named('test')
