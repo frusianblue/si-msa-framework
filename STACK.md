@@ -47,7 +47,7 @@
 | `micrometer-tracing-bridge-otel` | 분산추적(traceId/spanId) | framework-core, gateway |
 | `spring-boot-starter-security` | 인증/인가 | framework-security |
 | `spring-boot-starter-data-redis` | Redis TokenStore + 로그인 시도 잠금 저장소(다중 인스턴스 공유) | framework-redis(선택) |
-| `org.springframework.kafka:spring-kafka` | 신뢰성 발행(Transactional Outbox 릴레이) — Boot BOM 관리(버전 미명시) | framework-messaging(선택) |
+| `org.springframework.kafka:spring-kafka` | 신뢰성 발행(Transactional Outbox 릴레이) + saga 리플라이 소비(`ConsumerRecord`) — Boot BOM 관리(버전 미명시) | framework-messaging(선택) · framework-saga(선택, compileOnly) |
 | `spring-boot-starter-batch` | 배치 실행/리스너(Spring Batch 6 — Boot 4) — Boot BOM 관리 | framework-batch(선택) |
 | `spring-boot-starter-quartz` | Quartz cron 스케줄러(기본 RAM JobStore) — Boot BOM 관리 | framework-batch(선택) |
 | `spring-boot-starter-mail` | 메일 채널(JavaMailSender, jakarta.mail) — Boot BOM 관리 | framework-notification(선택) |
@@ -63,6 +63,8 @@
 > 필요한 모듈을 추가할 때 비로소 이 표에 행을 추가한다.
 >
 > **멱등성 확장(2026-06: JDBC 스토어 + 응답 재생)도 새 의존성 0.** `JdbcIdempotencyStore` 는 `spring-boot-starter-jdbc`(compileOnly), 재생 필터/래퍼는 `spring-boot-starter-web`(compileOnly, `ContentCachingResponseWrapper`/`OncePerRequestFilter`)만 쓰고 재생 저장은 수기 고정 셰이프(`status\ncontentType\nbase64(body)`, Jackson 비의존). 테스트는 `spring-boot-starter-jdbc`/`-web`(testImplementation, **compileOnly 는 test 로 전이 안 됨**) + H2(testRuntimeOnly) — 모두 Boot BOM 관리라 카탈로그 무변경.
+>
+> **framework-saga(2026-06: 경량 오케스트레이션)도 새 의존성 0.** `api framework-core`(JsonMapper=Jackson3) + `compileOnly framework-messaging`(OutboxEventPublisher) + `compileOnly spring-kafka`(ConsumerRecord, **비전이→의존 서비스가 messaging/kafka 재선언**) + `compileOnly spring-boot-starter-jdbc`(JdbcTemplate/TransactionTemplate). Jackson 읽기는 `readValue(.,Map/Object.class)` 만(JsonNode 메서드명 회피). 순수 코어(상태머신)는 Spring/Jackson 무의존 분리 → JDK 단독 검증. 모두 Boot BOM 관리라 `libs.versions.toml` 무변경.
 
 ## 4. 테스트 / 개발 도구
 | 항목 | 버전 | 용도 | 적용 위치 |

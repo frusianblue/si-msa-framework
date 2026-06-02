@@ -24,7 +24,7 @@ deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web`(보안완성) · `framework-datasource/messaging`(데이터·연계) · `framework-excel/batch/notification`(업무 생산성).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification`(업무 생산성).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -314,6 +314,29 @@ framework:
 ```
 - 발행: 비즈니스 트랜잭션과 같은 트랜잭션에서 `outbox_event` INSERT(원자성) → 릴레이가 Kafka 로 at-least-once 발행. `OutboxEventPublisher.publish(...)`.
 - 소비: `IdempotentEventProcessor.process(record, env -> {...})` — 발행측이 실은 `x-event-id` 헤더로 중복 배달 1회 처리(실패 시 키 해제→재배달 재처리). **소비 서비스는 framework-idempotency 도 의존**해야 하며, 멀티 인스턴스면 `store.type=redis`.
+
+### framework-saga (경량 오케스트레이션 Saga · 금융)
+messaging Outbox 위에 **오케스트레이션만** 얹는다(전송·신뢰성·멱등 소비는 messaging 재사용). 단계 커맨드를 Outbox 로 발행(상태변경과 한 트랜잭션), 참여 서비스 리플라이로 전진/완료, 실패 시 **역순 보상**. 상태는 JDBC 영속(재기동 복구).
+```yaml
+framework:
+  messaging:
+    enabled: true
+    outbox: { relay: { enabled: true } }   # Kafka 발행 워커(어느 인스턴스군이든 1곳 이상)
+  saga:
+    enabled: true
+    reply-topic: saga-replies               # 참여 서비스가 회신할 토픽
+    step-timeout: 60s
+    recovery: { enabled: true }             # 스턱/재기동 복구 폴러(PostgreSQL SKIP LOCKED)
+```
+```groovy
+// 의존: compileOnly 는 비전이 → messaging 도 명시
+implementation project(':framework:framework-saga')
+implementation project(':framework:framework-messaging')
+```
+- DDL `db/saga/saga-postgres.sql`(`saga_instance`/`saga_step`)을 서비스 마이그레이션으로 복사.
+- 정의: `@Bean SagaDefinition.named("OrderSaga").step(name, cmdTopic, cmdType[, compTopic, compType])...build()`.
+- 시작/리플라이: `sagaOrchestrator.start("OrderSaga", ctxJson)` · `@KafkaListener(topics="saga-replies")` 에서 `sagaReplyConsumer.handle(record)`.
+- 참여 서비스: 커맨드 처리 후 `x-saga-reply-topic` 으로 `x-saga-id/step/phase` + `x-saga-outcome` 회신(자신의 Outbox 권장). **`(saga-id, step)` 기준 멱등 필수**(복구 재구동 시 재배달). 상세는 `framework/framework-saga/README.md`.
 
 ### framework-excel (POI 업/다운로드)
 ```yaml

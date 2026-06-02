@@ -12,8 +12,11 @@ public class SagaRegistry {
     public SagaRegistry() {}
 
     public SagaRegistry(Collection<SagaDefinition> initial) {
+        // 생성자에서는 오버라이드 가능한 register(this::register) 호출을 피해 필드를 직접 채운다([this-escape] 회피).
         if (initial != null) {
-            initial.forEach(this::register);
+            for (SagaDefinition def : initial) {
+                definitions.put(def.name(), def);
+            }
         }
     }
 

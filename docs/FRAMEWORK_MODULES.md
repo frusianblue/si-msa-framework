@@ -17,7 +17,9 @@
 - ✅ **운영/관측**: framework-observability(공통 메트릭 태그 `MeterRegistryCustomizer` · Boot4 네이티브 구조화 JSON 로그 · 메트릭/트레이스 OTLP 익스포터 표준, 전부 토글·기본 off). **외부 의존성 0개**(레지스트리/익스포터는 호스트 runtimeOnly opt-in, Boot BOM 관리). k8s 샘플 `deploy/k8s/observability.yaml`
 - ✅ **SI 공통 유틸 보강(2026-06-02)**: `framework-core/util` 에 검증(`KoreanRegNoUtils`·`ValidationUtils`)·날짜/영업일(`DateUtils`·`HolidayUtils`)·금액(`MoneyUtils`)·한글(`HangulUtils`)·해시(`HashUtils`)·JSON(`JsonUtils`) 신규 + `MaskingUtils` 확장. 빈/오토컨피그 없는 순수 정적, **새 외부 의존성 0**(JSON 만 Jackson 3). 회귀 테스트 `CoreUtilsTest`. + **빌드 인프라 픽스**: 루트 `subprojects` 에 `testRuntimeOnly junit-platform-launcher` 추가(Gradle 9 에서 테스트 발견 단계 실패 방지, 전 모듈 공통).
 - ✅ **멱등성 확장(2026-06-03)**: framework-idempotency 에 **JDBC 스토어**(`store.type=jdbc`, 영속·다중 인스턴스 공유, DDL `db/idempotency-postgres.sql`) + **응답 재생(replay) 모드**(`replay.enabled`, 중복 시 409 대신 저장 응답 재생, 기본 off=하위호환). **외부 의존성 0개**(jdbc/web=compileOnly, H2=test-scope). 코덱·선점·재생 분기 순수 JDK 실행검증.
-- ⏭️ **다음 후보**: 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · **그릇 정비**(게이트웨이/k8s 멀티서비스/CI-CD) · (선택) 멱등 재생 페이로드 지문(payload hash)
+- ✅ **CORS/Rate-Limit(2026-06-03)**: 게이트웨이=전역 1선(globalcors + Redis RequestRateLimiter), framework-secure-web=직접 노출 서비스의 2선(Spring CorsFilter 옵트인 + 파드-로컬 토큰버킷). 게이트웨이 빌드 통과(런타임 점검 보류).
+- ✅ **분산 트랜잭션 오케스트레이션(2026-06-03)**: **framework-saga 신설** — 경량 오케스트레이션 엔진(중앙 상태 + 역순 보상). 단계 커맨드/리플라이는 **기존 messaging Outbox 재사용**(상태변경과 한 트랜잭션=원자적), 상태는 **JDBC 영속**(DDL `db/saga/saga-postgres.sql`), **스턱/재기동 복구 폴러**(`FOR UPDATE SKIP LOCKED`, 옵트인). 전송·멱등 소비는 messaging 담당, 본 모듈은 오케스트레이션만 더함. 상태머신 순수 JDK **15/15** 실행검증, gradle 컴파일 통과(this-escape 경고 1건 수정). **새 외부 의존성 0**(kafka/jdbc=compileOnly, Boot BOM 관리).
+- ⏭️ **다음 후보**: 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · **그릇 정비**(게이트웨이 런타임 점검·k8s 멀티서비스/CI-CD) · (선택) 멱등 재생 페이로드 지문(payload hash) · (선택) saga 단계별 타임아웃/보상 재시도·실DB(H2/PostgreSQL) 통합테스트
 - ℹ️ **DB 범위 정리(2026-05-31)**: 읽기/쓰기 분리(primary/replica)까지 완료. *서로 다른 독립 DB 다중 연결*(DB별 SqlSessionFactory/tx매니저/@MapperScan)은 **미구현 — 필요 시 추가**. 분산 원자성은 XA 대신 Outbox/Saga로.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
@@ -100,7 +102,7 @@ public class XxxAutoConfiguration {
 | ✅ **framework-idempotency** | **정확히-한번/멱등키**(중복요청·중복결제 차단) + **응답 재생**(중복 시 저장 응답 재생) | `framework.idempotency.enabled` + `store.type=memory\|redis\|jdbc` (+`replay.enabled`) | [선택] | 금 ★ |
 | ✅ framework-messaging | Kafka + **Outbox**(발행: 유실/중복 방지) **+ 소비자측 멱등 소비**(`IdempotentEventProcessor`: `x-event-id` 헤더로 중복 배달 1회 처리, 실패 시 키 해제→재배달 재처리). 멱등 저장소는 framework-idempotency(redis 권장) | `framework.messaging.enabled`(+`outbox.relay.enabled`)·`framework.messaging.consumer.enabled` | [선택] | 금 ★ |
 | ✅ framework-datasource | **읽기/쓰기 분리 라우팅**(primary/replica). *독립 다중 DB(별도 SqlSessionFactory/tx매니저)는 미구현 — 추후* | `framework.datasource.routing.enabled` | [선택] | 금/공 |
-| framework-saga | 분산 트랜잭션/보상(Saga) | `framework.saga.enabled` | [선택] | 금 |
+| ✅ framework-saga | **경량 오케스트레이션 Saga**(중앙 상태 + 실패 시 역순 보상). 단계 커맨드/리플라이는 **messaging Outbox 재사용**(상태변경과 한 트랜잭션=원자적), 상태 **JDBC 영속**(재기동 복구), **스턱 복구 폴러**(`SKIP LOCKED`, 옵트인). 전송·멱등 소비는 messaging, 본 모듈은 오케스트레이션만. 리플라이는 앱 `@KafkaListener`→`SagaReplyConsumer`. **참여자 멱등 키=`(saga-id, step)`** | `framework.saga.enabled`(+`recovery.enabled`) | [선택] | 금 ★ |
 
 ### 2.6 신규 — 규제 특화 (해당 사업만 켬)
 
@@ -133,7 +135,7 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
        ├── client ──── messaging/saga(연계)
        └── observability   (전 모듈 횡단)
 ```
-원칙: 상위(토대)는 하위를 모른다. 순환 금지. impl 모듈(redis 등)이 추상(security/idempotency)을 의존.
+원칙: 상위(토대)는 하위를 모른다. 순환 금지. impl 모듈(redis 등)이 추상(security/idempotency)을 의존. **saga 는 messaging(Outbox) 위에 오케스트레이션만 얹는다**(전송/멱등 소비 재사용, compileOnly 비전이라 의존 서비스가 messaging 도 명시).
 
 ---
 
