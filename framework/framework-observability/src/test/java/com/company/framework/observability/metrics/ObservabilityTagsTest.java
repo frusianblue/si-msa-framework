@@ -13,8 +13,9 @@ class ObservabilityTagsTest {
     @DisplayName("표준 3태그를 채우고 입력 순서를 보존한다")
     void fillsStandardTags() {
         Map<String, String> tags = ObservabilityTags.commonTags("user-service", "prod", "1.2.3", null);
-        assertThat(tags).containsExactly(
-                Map.entry("service", "user-service"), Map.entry("env", "prod"), Map.entry("version", "1.2.3"));
+        assertThat(tags)
+                .containsExactly(
+                        Map.entry("service", "user-service"), Map.entry("env", "prod"), Map.entry("version", "1.2.3"));
     }
 
     @Test

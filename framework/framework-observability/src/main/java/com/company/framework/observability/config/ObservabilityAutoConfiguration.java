@@ -50,8 +50,8 @@ public class ObservabilityAutoConfiguration {
         String envName = firstNonBlank(props.getEnv(), firstActiveProfile(env));
         String version = props.getVersion();
 
-        Map<String, String> resolved =
-                ObservabilityTags.commonTags(service, envName, version, props.getMetrics().getExtraTags());
+        Map<String, String> resolved = ObservabilityTags.commonTags(
+                service, envName, version, props.getMetrics().getExtraTags());
         List<Tag> tags = resolved.entrySet().stream()
                 .map(e -> Tag.of(e.getKey(), e.getValue()))
                 .toList();

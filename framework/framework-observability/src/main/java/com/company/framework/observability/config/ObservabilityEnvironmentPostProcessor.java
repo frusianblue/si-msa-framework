@@ -74,7 +74,9 @@ public class ObservabilityEnvironmentPostProcessor implements EnvironmentPostPro
         // 3) 메트릭 OTLP push (기본 off). 켜면 호스트가 micrometer-registry-otlp 를 runtimeOnly 로 추가해야 함.
         if (props.getMetrics().getOtlp().isEnabled()) {
             defaults.put("management.otlp.metrics.export.enabled", Boolean.TRUE);
-            defaults.put("management.otlp.metrics.export.url", props.getMetrics().getOtlp().getUrl());
+            defaults.put(
+                    "management.otlp.metrics.export.url",
+                    props.getMetrics().getOtlp().getUrl());
         }
 
         // 4) 트레이스 OTLP export (기본 off, 브리지 방식 키).
@@ -82,7 +84,9 @@ public class ObservabilityEnvironmentPostProcessor implements EnvironmentPostPro
         //    신규 공식 스타터(spring-boot-starter-opentelemetry)를 쓰면 키가
         //    management.opentelemetry.tracing.export.otlp.endpoint 이므로 그 경우엔 이 토글 대신 직접 설정(README 참고).
         if (props.getTracing().getOtlp().isEnabled()) {
-            defaults.put("management.otlp.tracing.endpoint", props.getTracing().getOtlp().getEndpoint());
+            defaults.put(
+                    "management.otlp.tracing.endpoint",
+                    props.getTracing().getOtlp().getEndpoint());
         }
 
         if (!defaults.isEmpty()) {
