@@ -36,15 +36,15 @@
 - 예) `KoreanRegNoUtils.isValidBusinessNo("124-81-00998")` · `MoneyUtils.toKoreanAmount(50000)`("일금 오만원정") · `HangulUtils.matchesChosung("사과","ㅅㄱ")` · `HolidayUtils.nextBusinessDay(d, extraHolidays)`(음력/대체공휴일은 특일정보 API/사내표에서 주입).
 
 ## 바로 다음 할 일 (Next)
-1. 받는 쪽 `compileJava`+`test`+`spotlessApply` 확인(특히 JsonUtils 의 Jackson3 import). 음력/대체공휴일 적재 소스 결정(공공데이터포털 특일정보 API → `Set<LocalDate>` 캐싱).
-2. **다음 묶음 선택**(이전 세션 후보 유효): **관측(observability)** — core 에 micrometer-tracing-otel 보유, 메트릭/로그 표준화·대시보드 / **규제특화 잔여**(pki/hsm/recon/egov, 해당 사업만) / **JdbcIdempotencyStore**(현재 memory/redis만) / 게이트웨이·k8s·CI-CD 멀티서비스화.
-   - (선택) 한글 `korToEng`(역변환) 추가, 날짜 유틸에 한국 분기/반기 헬퍼 등 유틸 추가 보강.
+1. 받는 쪽 `compileJava`+`test`+`spotlessApply` 확인. **JUnit launcher 픽스 적용 완료**(루트 `subprojects` 에 `testRuntimeOnly junit-platform-launcher`) → `CoreUtilsTest` 정상 실행됨. 음력/대체공휴일 적재 소스 결정(공공데이터포털 특일정보 API → `Set<LocalDate>` 캐싱).
+2. **다음 묶음 = 관측(observability)** 1순위 — core 에 micrometer-tracing-otel 보유, 메트릭/구조화로그/익스포터 표준화. **착수 시트 `NEXT_SESSION_KICKOFF.md` 그대로 사용**(목표·결정사항·레시피 미리 채움). 차순위: 규제특화 잔여(pki/hsm/recon/egov) · JdbcIdempotencyStore · 게이트웨이/k8s/CI-CD.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
 - **`util` vs `support` 구분**: `core/util`=상태없는 순수 정적 헬퍼(컨텍스트 무의존) → SI 공통 유틸 자리. `<module>/support`=모듈전용·컨텍스트결합 헬퍼. **core 에 support 없음** — 범용 유틸을 support 로 만들지 말 것. util 은 빈 없음 → `imports` 무변경.
 - **외국인등록번호**: 2020-10 이후 검증번호(체크섬) 폐지 → `isValidForeignerNo` 는 **형식만** 검증(체크섬 적용 금지).
 - **음력/대체공휴일**: 양력 변환표 필요 → `HolidayUtils` 가 자동계산하지 않고 `extraHolidays` 주입식. 자동 고정은 양력 고정공휴일+주말만.
 - **JsonUtils 는 Jackson 3 전용**(`tools.jackson.*`). `com.fasterxml.*` import 금지(주석 언급은 무방). 직렬화 실패는 `BusinessException`(INTERNAL_ERROR/INVALID_INPUT)로 변환.
+- **JUnit Platform launcher 필수(Gradle 9, 전 모듈)**: `spring-boot-starter-test` 가 `junit-platform-launcher` 를 전이 안 함 + Gradle 9 자동주입 없음 → 루트 `subprojects { dependencies { testRuntimeOnly 'org.junit.platform:junit-platform-launcher' } }`. 누락 시 테스트 있는 모듈에서 "OutputDirectoryCreator not available … unaligned versions" 로 **발견 단계 실패**(어서션 이전). core 에 테스트가 없어 잠복하다 `CoreUtilsTest` 로 표면화 → 픽스 완료. 새 모듈 첫 테스트 때 재확인.
 - **범용 유틸 재발명 금지**: `StringUtils`/`CollectionUtils`/`ObjectUtils` 는 Spring·Commons 사용. 공통엔 한국·도메인·스택(Jackson3) 특화만.
 - (기존) MFA=security nullable SPI(`MfaGate`)·`LoginService` 9-arg·`AuthController` `ApiResponse<Object>` · 챌린지 store redis(멀티) · 새 모듈/변경은 `settings.gradle`/`imports` 등록 · BOM 밖 새 라이브러리만 카탈로그 핀 · Jackson3 전역 · Spring7 메일 jakarta.
 

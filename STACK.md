@@ -66,6 +66,7 @@
 | 항목 | 버전 | 용도 | 적용 위치 |
 |---|---|---|---|
 | `spring-boot-starter-test` | BOM | JUnit5/AssertJ/Mockito | 전 모듈 test |
+| `org.junit.platform:junit-platform-launcher` | BOM | **테스트 발견(launcher) — Gradle 9 에서 필수**(starter-test 가 전이 안 함) | 전 모듈 testRuntime(루트 subprojects 일괄) |
 | `spring-boot-testcontainers` | BOM | 실 PostgreSQL 통합테스트(@ServiceConnection) | 서비스 test |
 | `org.testcontainers:junit-jupiter` / `postgresql` | BOM | 컨테이너 기동/PG 모듈 | 서비스 test |
 | `spring-security-test` | BOM | 보안 테스트 | framework-security test |
@@ -73,6 +74,7 @@
 
 ## 5. Boot 4 호환 주의 (되돌리지 말 것)
 - **Gradle 8.14+** 필수 (Boot 4 Gradle 플러그인 요구사항).
+- **JUnit Platform launcher 명시 필수(Gradle 9)** — `spring-boot-starter-test` 는 `junit-platform-launcher` 를 전이하지 않고, Gradle 9 + 최신 JUnit Platform 에서는 `useJUnitPlatform()` 도 자동 주입하지 않는다. 누락 시 테스트가 있는 모듈에서 `OutputDirectoryCreator not available ... unaligned versions of junit-platform-engine and junit-platform-launcher` 로 **테스트 발견 단계에서 실패**(어서션 이전). → 루트 `build.gradle` 의 `subprojects { dependencies { testRuntimeOnly 'org.junit.platform:junit-platform-launcher' } }` 로 일괄 적용(버전은 Boot BOM).
 - **Jackson 3** (`tools.jackson.*`) — 커스터마이저는 `JsonMapperBuilderCustomizer`, 매퍼는 `JsonMapper`. ⚠️ `com.fasterxml.jackson.core/databind` import 금지(클래스패스에 없음 → 컴파일 에러; 특히 `com.fasterxml.jackson.databind.ObjectMapper`). 단 **애너테이션**(`@JsonInclude` 등)은 Jackson 3 에서도 `com.fasterxml.jackson.annotation` 패키지 유지 → OK. 필터/인프라 레벨의 단순 JSON 응답은 Jackson 빈 주입 대신 수기 직렬화가 견고(`SecureWebResponder` 사례).
 - **Spring Security 7** — `AuthorizationManager.authorize()` (구 `check()` 제거).
 - **Gateway** 아티팩트 `spring-cloud-starter-gateway-server-webflux`.

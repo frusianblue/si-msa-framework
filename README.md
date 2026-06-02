@@ -38,6 +38,7 @@ deploy/
 - **버전 단일 소스**: `gradle/libs.versions.toml`. 루트 `build.gradle`의 `ext{}` 브리지로 기존 모듈의 `${...Version}` 참조도 그대로 동작(점진 이관). 상세는 `STACK.md`.
 - **Spotless**(Palantir Java Format): 최초 1회 `./gradlew spotlessApply`로 전체 정렬, CI는 `spotlessCheck` 게이트.
 - **JaCoCo**: 테스트 후 커버리지 XML 자동 생성 → SonarQube가 수집.
+- **테스트 실행(JUnit5)**: 루트 `subprojects`에서 `testRuntimeOnly junit-platform-launcher`를 일괄 제공한다(Gradle 9 + 최신 JUnit Platform은 launcher를 자동 주입하지 않아, 없으면 테스트가 있는 모듈에서 "OutputDirectoryCreator not available … unaligned versions"로 발견 단계 실패). 새 모듈에 테스트를 추가해도 별도 의존성 추가는 불필요.
 - **OWASP Dependency-Check**: CVSS 7.0+ 발견 시 빌드 실패. `./gradlew dependencyCheckAggregate`.
 - **SonarQube**: 정적분석/보안 핫스팟/커버리지.
 - **CI = Jenkins**(`deploy/cicd/Jenkinsfile`): Build&Test(Testcontainers+JaCoCo) → 품질 게이트(Spotless/OWASP/Sonar 병렬) → Flyway Validate(운영DB) → 이미지 빌드/푸시 → K8s 롤아웃. (구 `ci-cd.yml`(GitHub Actions)은 레거시 — 사용 시 정리 권장)

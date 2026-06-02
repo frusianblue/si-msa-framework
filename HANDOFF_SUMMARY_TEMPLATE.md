@@ -7,29 +7,33 @@
 
 ---
 
-## A. 고정 베이스라인 (현재까지 완료 — 2026-06-01 기준)
+## A. 고정 베이스라인 (현재까지 완료 — 2026-06-02 기준)
 
 > 새 세션 시작 시 "지금 어디까지 왔는지" 즉시 파악용. 새 모듈을 끝낼 때마다 이 목록에 한 줄 추가.
 
 **완료 모듈 (전부 선택형, 기본 off `framework.<module>.enabled=false`)**
-- 코어/기본: `framework-core` · `framework-mybatis` · `framework-security`(JWT/RBAC/비번정책·만료·이력·동시로그인) · `framework-openapi` · `framework-redis` · `framework-commoncode` · `framework-file`(+`framework-file-s3`)
+- 코어/기본: `framework-core`(+ **SI 공통 유틸 `core/util`**: 검증·마스킹·날짜/영업일·금액·한글·해시·JSON — 빈 없는 정적) · `framework-mybatis` · `framework-security`(JWT/RBAC/비번정책·만료·이력·동시로그인) · `framework-openapi` · `framework-redis` · `framework-commoncode` · `framework-file`(+`framework-file-s3`)
 - 토대 4종: `framework-idempotency`(memory|redis, **SPI 에 `remove` 있음**) · `framework-i18n` · `framework-idgen` · `framework-client`
 - 보안 완성(ISMS-P): `framework-audit`(logging|jdbc|kafka) · `framework-secure-web`
 - 데이터/연계(금융): `framework-datasource`(읽기/쓰기 분리) · `framework-messaging`(Outbox 발행+릴레이 **+ 소비자측 멱등 소비**)
 - 업무 생산성: `framework-excel`(POI 스트리밍/양식검증) · `framework-batch`(Batch6+Quartz) · `framework-notification`(메일/SMS/알림톡)
+- 규제특화: `framework-mfa`(2단계 인증 — TOTP/OTP + 복구코드, **외부 의존성 0**, security 에 `MfaGate` nullable SPI)
 
-**다음 후보** (택1): 규제특화(pki/mfa/hsm/recon/egov, 해당 사업만) · 관측(observability — 분산추적은 core 보유, 메트릭/로그 표준화·대시보드) · idempotency `JdbcIdempotencyStore`(현재 memory/redis만) · 게이트웨이/k8s/CI-CD 멀티서비스화.
+**다음 후보** (택1): 관측(observability — 분산추적은 core 보유, 메트릭/로그 표준화·대시보드) · 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · idempotency `JdbcIdempotencyStore`(현재 memory/redis만) · 게이트웨이/k8s/CI-CD 멀티서비스화.
 
 **절대 되돌리지 말 것(고정 함정)**
-- **Jackson 3**: `tools.jackson.*` 사용, `com.fasterxml.jackson.databind/core` import 금지(애너테이션 `com.fasterxml.jackson.annotation.*` 만 OK).
+- **Jackson 3**: `tools.jackson.*` 사용, `com.fasterxml.jackson.databind/core` import 금지(애너테이션 `com.fasterxml.jackson.annotation.*` 만 OK). 정적 JSON 유틸은 `JsonUtils`(`JacksonConfig` 규칙 미러).
+- **JUnit Platform launcher**: `spring-boot-starter-test` 가 `junit-platform-launcher` 를 전이하지 않음 + Gradle 9 자동주입 없음 → 루트 `subprojects` 에 `testRuntimeOnly 'org.junit.platform:junit-platform-launcher'` 일괄(없으면 테스트 있는 모듈에서 "OutputDirectoryCreator not available … unaligned versions" 로 발견 단계 실패). **새 모듈에 첫 테스트 넣을 때 재확인.**
 - **Boot 4 autoconfigure 패키지 분리**: jdbc/batch/quartz/mail 등 `org.springframework.boot.<module>.autoconfigure.*`. `@AutoConfiguration(afterName=…)` 에 정확한 FQCN(공식 소스로 확인).
 - **Spring Batch 6**: 패키지 이동(`core.job` / `core.job.parameters` / `core.launch` / `core.listener`), `JobLauncher`→`JobOperator`. 배치 메타테이블 필요.
 - **Spring 7 메일 = `jakarta.mail.*`**(javax 아님). JavaMailSender 빈은 `spring.mail.host` 설정 시에만.
 - **POI**: BOM 밖(`libs.versions.toml` 핀), `implementation`(비노출), 종료는 `close()`(dispose deprecated).
 - **소비자 멱등**: 인메모리는 멀티 인스턴스에서 무력 → **redis 필수**. `x-event-id` 단일 소스(`MessagingHeaders`). 키 선점~핸들러 완료 전 크래시 시 TTL 까지 재배달 스킵 가능(at-least-once 한계).
-- 필터에서 `BusinessException` 금지(디스패처 이전) → 수기 JSON. 트랜잭션매니저 새로 정의 금지(Boot 위임). 모듈 간 의존 단방향(이벤트로 디커플). bash `{a,b}` 미동작→`for`.
+- **MFA**: security 에 `MfaGate` nullable SPI · `LoginService` 9-arg(기존 생성자 유지) · `AuthController#login` 반환형 `ApiResponse<Object>` · 챌린지 store 멀티=redis 필수.
+- **SI 유틸 주의**: 외국인등록번호 2020-10 이후 체크섬 폐지(형식만) · 음력/대체공휴일은 `HolidayUtils` 주입식(`Set<LocalDate> extraHolidays`) · 범용 `StringUtils/CollectionUtils` 재발명 금지(Spring 표준).
+- 필터에서 `BusinessException` 금지(디스패처 이전) → 수기 JSON. 트랜잭션매니저 새로 정의 금지(Boot 위임). 모듈 간 의존 단방향(이벤트로 디커플). bash `{a,b}` 미동작→`for`(기본 셸 sh).
 
-**검증 한계**: 작성 환경은 Maven Central/Gradle 배포 차단 → **gradle 컴파일 미검증**. 받는 쪽에서 항상 `./gradlew :framework:framework-<X>:compileJava` + `./gradlew spotlessApply`. (정적 점검: 괄호 균형·패키지=디렉터리·Jackson2 import 0 는 작성 시 수행.)
+**검증 한계**: 작성 환경은 Maven Central/Gradle 배포 차단 → **gradle 컴파일 미검증**. 받는 쪽에서 항상 `./gradlew :framework:framework-<X>:compileJava` + `./gradlew spotlessApply`. (정적 점검: 괄호 균형·패키지=디렉터리·Jackson2 import 0 는 작성 시 수행.) 단, **틀리면 조용히 잘못되는 알고리즘**(체크섬/포맷/한글 조합 등)은 이 환경 순수 JDK(source-launch)로 실제 실행 검증 후 박는다.
 
 **모듈 추가/확장 레시피**
 1. 신규 `framework/framework-<X>/`(config: Properties+AutoConfiguration · 도메인 패키지 · `META-INF/spring/…AutoConfiguration.imports` FQCN). 확장이면 기존 모듈에 패키지 추가 + imports 에 새 autoconfig 줄.
