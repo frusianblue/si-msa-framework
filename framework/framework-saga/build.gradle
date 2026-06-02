@@ -1,0 +1,28 @@
+// 선택형 모듈: 분산 트랜잭션 오케스트레이션(Saga).
+//   - 중앙 코디네이터가 단계 커맨드를 기존 Transactional Outbox 로 발행(상태변경과 한 트랜잭션 → 원자적),
+//     참여 서비스 리플라이로 전진/완료, 실패 시 완료 단계를 역순 보상. 상태는 JDBC 영속(재기동/스턱 복구).
+//   - 전송/신뢰성은 framework-messaging(Outbox+멱등소비)을 재사용하고, 이 모듈은 "오케스트레이션"만 더한다.
+// 새 버전 의존성 0: spring-kafka/jdbc 는 Boot BOM 이 버전 관리 → 버전 미명시. libs.versions.toml 무변경.
+dependencies {
+    // ApiResponse/에러 포맷 + Jackson 3(tools.jackson.databind.json.JsonMapper) 전이 노출.
+    api project(':framework:framework-core')
+
+    // 커맨드 발행에 OutboxEventPublisher 사용. 호스트 서비스가 messaging 을 함께 의존/활성(@ConditionalOnClass).
+    //   compileOnly 는 비전이 → 의존 서비스 build.gradle 에 framework-messaging 을 명시해야 한다.
+    compileOnly project(':framework:framework-messaging')
+
+    // 리플라이 소비 헬퍼(SagaReplyConsumer)의 ConsumerRecord. compileOnly 비전이 → 명시.
+    compileOnly 'org.springframework.kafka:spring-kafka'
+
+    // JdbcTemplate/PlatformTransactionManager/TransactionTemplate. 런타임은 호스트가 제공
+    // (framework-datasource/mybatis 가 DataSource/트랜잭션매니저 노출) → compileOnly.
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation project(':framework:framework-messaging')
+    testImplementation 'org.springframework.kafka:spring-kafka'
+}
