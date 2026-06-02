@@ -14,4 +14,5 @@ dependencies {
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'com.h2database:h2'  // 활성 경로 슬라이스(임베디드 DB) 검증용
 }
