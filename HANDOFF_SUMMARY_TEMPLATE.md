@@ -7,20 +7,20 @@
 
 ---
 
-## A. 고정 베이스라인 (현재까지 완료 — 2026-06-02 기준)
+## A. 고정 베이스라인 (현재까지 완료 — 2026-06-03 기준)
 
 > 새 세션 시작 시 "지금 어디까지 왔는지" 즉시 파악용. 새 모듈을 끝낼 때마다 이 목록에 한 줄 추가.
 
 **완료 모듈 (전부 선택형, 기본 off `framework.<module>.enabled=false`)**
 - 코어/기본: `framework-core`(+ **SI 공통 유틸 `core/util`**: 검증·마스킹·날짜/영업일·금액·한글·해시·JSON — 빈 없는 정적) · `framework-mybatis` · `framework-security`(JWT/RBAC/비번정책·만료·이력·동시로그인) · `framework-openapi` · `framework-redis` · `framework-commoncode` · `framework-file`(+`framework-file-s3`)
-- 토대 4종: `framework-idempotency`(memory|redis, **SPI 에 `remove` 있음**) · `framework-i18n` · `framework-idgen` · `framework-client`
+- 토대 4종: `framework-idempotency`(memory|redis|**jdbc**, **SPI 에 `remove` 있음**, **응답 재생 replay 모드**) · `framework-i18n` · `framework-idgen` · `framework-client`
 - 보안 완성(ISMS-P): `framework-audit`(logging|jdbc|kafka) · `framework-secure-web`
-- 데이터/연계(금융): `framework-datasource`(읽기/쓰기 분리) · `framework-messaging`(Outbox 발행+릴레이 **+ 소비자측 멱등 소비**)
+- 데이터/연계(금융): `framework-datasource`(읽기/쓰기 분리 **+ 독립 다중 DB** — 둘은 상호배타) · `framework-messaging`(Outbox 발행+릴레이 **+ 소비자측 멱등 소비**) · `framework-saga`(경량 오케스트레이션 — 중앙 상태 + 역순 보상, messaging Outbox 재사용)
 - 업무 생산성: `framework-excel`(POI 스트리밍/양식검증) · `framework-batch`(Batch6+Quartz) · `framework-notification`(메일/SMS/알림톡)
 - 규제특화: `framework-mfa`(2단계 인증 — TOTP/OTP + 복구코드, **외부 의존성 0**, security 에 `MfaGate` nullable SPI)
 - 운영/관측: `framework-observability`(공통 메트릭 태그 `MeterRegistryCustomizer` · Boot4 네이티브 구조화 JSON 로그 · 메트릭/트레이스 OTLP 익스포터 표준 — 전부 토글·기본 off, **외부 의존성 0**: 레지스트리/익스포터는 호스트 `runtimeOnly` opt-in)
 
-**다음 후보** (택1): 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · idempotency `JdbcIdempotencyStore`(현재 memory/redis만) · **그릇 정비**(게이트웨이 폴백·CORS·rate-limit / k8s 멀티서비스·observability ServiceMonitor 실배포 / CI-CD 멀티모듈 파이프라인).
+**다음 후보** (택1): 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · **그릇 정비**(게이트웨이 폴백·CORS·rate-limit / k8s 멀티서비스·observability ServiceMonitor 실배포 / CI-CD 멀티모듈 파이프라인) · (선택) datasource multi 후속(보조 DB Flyway 자동화·DB별 health/metric 태깅·실DB e2e).
 
 **절대 되돌리지 말 것(고정 함정)**
 - **Jackson 3**: `tools.jackson.*` 사용, `com.fasterxml.jackson.databind/core` import 금지(애너테이션 `com.fasterxml.jackson.annotation.*` 만 OK). 정적 JSON 유틸은 `JsonUtils`(`JacksonConfig` 규칙 미러).
