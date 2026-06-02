@@ -1,0 +1,22 @@
+// 선택형 모듈: 분산 락 / 스케줄러 리더 선출. 의존성 추가 + framework.lock.enabled=true 로만 활성.
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    api project(':framework:framework-core') // DistributedLock + @SchedulerLock 애스펙트(AspectJ 는 core 가 api 전이)
+
+    // redis/jdbc 백엔드의 호스트 타입은 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지)
+    compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // 테스트 API(JUnit5 + AssertJ) — BOM 버전. (실행 런처 junit-platform-launcher 는 루트 subprojects 에서 일괄 적용)
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // ⚠️ compileOnly 는 test 클래스패스로 전이되지 않는다. 테스트가 main 의 compileOnly 클래스를 직접 쓰면 재선언 필요:
+    //   - jdbc : JdbcDistributedLockTest 가 JdbcTemplate/DriverManagerDataSource 사용
+    //   - redis: LockAutoConfigurationTest 가 StringRedisTemplate(mock) 으로 redis 백엔드 토글 검증
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    // JdbcDistributedLock 을 실제 DB(인메모리 H2)로 검증 — 획득/경합/만료-재획득/소유해제 SQL 의미 확인. (BOM 관리 버전)
+    testRuntimeOnly 'com.h2database:h2'
+}

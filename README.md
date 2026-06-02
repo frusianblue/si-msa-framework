@@ -24,7 +24,7 @@ deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification`(업무 생산성).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification`(업무 생산성) · `framework-observability/lock`(운영/관측).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -173,6 +173,7 @@ dependencies {
     implementation project(':framework:framework-excel')       // Excel 업/다운로드(POI 스트리밍 + 양식검증)
     implementation project(':framework:framework-batch')       // Spring Batch 실행/리스너 + Quartz cron
     implementation project(':framework:framework-notification') // 메일/SMS/알림톡 채널 추상화
+    implementation project(':framework:framework-lock')        // 분산 락 · 다중 파드 @Scheduled 중복방지
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
@@ -404,6 +405,25 @@ framework:
 - **구조화 로그**: Boot4 네이티브 `logging.structured.format`(ecs/logstash/gelf) — 인코더 라이브러리 불필요. traceId/spanId(MDC) 동봉.
 - **OTLP 익스포터**(기본 off): 메트릭 `metrics.otlp.{enabled,url}`, 트레이스 `tracing.otlp.{enabled,endpoint}`(브리지 키 `management.otlp.tracing.endpoint`).
 - 프로퍼티성 표준값은 `EnvironmentPostProcessor` 가 로깅/액추에이터 초기화 전에 주입(앱 값 우선). k8s: `deploy/k8s/observability.yaml`(ServiceMonitor + 스크레이프/프로브). 상세 `framework/framework-observability/README.md`.
+
+### framework-lock (분산 락 · 다중 파드 @Scheduled 중복방지)
+k8s 다중 replica 에서 **"한 번에 한 주체"** 강제. SPI `DistributedLock`(memory/redis/jdbc) + `@SchedulerLock` 애스펙트. 신규 외부 의존성 0(redis/jdbc 는 `compileOnly`, 테스트 H2).
+```yaml
+framework:
+  lock:
+    enabled: true
+    type: redis              # memory(단일JVM) | redis(권장) | jdbc(폐쇄망)
+    default-at-most-for: 5m
+    scheduler: { enabled: true }
+```
+```java
+@Scheduled(cron = "0 0 2 * * *")
+@SchedulerLock(name = "nightlySettlement", atMostFor = "10m", atLeastFor = "30s")
+public void settle() { ... }   // 락 잡은 파드만 실행, 나머지는 스킵
+```
+- **리스+소유자 토큰**: 모든 락 TTL 보유(보유 파드 사망해도 자동 해제). `unlock`/`keepUntil` 은 소유자 일치 시만(Redis Lua CAS / JDBC `WHERE lock_owner=?`).
+- **atLeastFor**: 조기 종료해도 최소 보유 → 파드 간 클럭 스큐로 인한 직후 재실행 차단(`keepUntil` 로 구현).
+- **batch 와 구분**: Quartz 잡은 job-store 클러스터링으로 중복방지; 본 모듈은 *평범한 `@Scheduled`* 갭을 메움. 상세 `framework/framework-lock/README.md`.
 
 ## 추가된 공통 (이번 보강)
 - **보안 예외 표준화**: 401/403 도 `ApiResponse` JSON 으로 통일(`RestAuthenticationEntryPoint`/`RestAccessDeniedHandler`).

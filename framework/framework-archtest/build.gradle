@@ -39,4 +39,5 @@ dependencies {
     testImplementation project(':framework:framework-notification')
     testImplementation project(':framework:framework-mfa')
     testImplementation project(':framework:framework-observability')
+    testImplementation project(':framework:framework-lock')
 }

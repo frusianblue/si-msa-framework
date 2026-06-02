@@ -22,6 +22,7 @@
 - ✅ **테스트 커버리지 전 모듈 확대(2026-06-03)**: 무테스트 라이브러리 모듈 14개(audit·batch·commoncode·excel·file·file-s3·i18n·idgen·messaging·mybatis·notification·openapi·redis·secure-web)에 **오토컨피그 로딩/토글 스모크**(`ApplicationContextRunner`, 서블릿 한정 `WebApplicationContextRunner`) 추가 — `framework.<X>.enabled` 토글을 빈 등록 유무로 검증. introspection 함정에 맞춰 compileOnly 타입(중첩 @Configuration/@Bean 반환 포함) test 재선언(audit=jdbc+web+messaging 등). commoncode/file 은 `@MapperScan`+MyBatis 결합이라 **disabled 백오프**까지(enabled 풀 와이어링은 DB 슬라이스). **신규 테스트 14 + build.gradle 7, 전부 testImplementation → 런타임/배포 영향 0**, 사용자 환경 BUILD 통과. 무테스트 라이브러리 모듈 0. (발견: redis 의 `RedisLoginAttemptAutoConfiguration` 이 `.imports` 미등록 — 다음 후보.)
 - ⏭️ **다음 후보**: **redis 레지스트레이션 갭 해소**(`RedisLoginAttemptAutoConfiguration` → `.imports` 등록, 현재 미활성) · commoncode/file enabled 경로 DB 슬라이스 테스트 · (devops) CI 게이트 + 멀티모듈 jacoco 집계 · **그릇 정비**(게이트웨이 런타임 점검·k8s 멀티서비스/CI-CD) · (선택) 규제특화 잔여(pki/hsm/recon/egov) · (선택) 멱등 재생 페이로드 지문(payload hash) · (선택) saga 단계별 타임아웃/보상 재시도·실DB(H2/PostgreSQL) 통합테스트
 - ✅ **독립 다중 DB 완료(2026-06-03)**: framework-datasource 에 `multi.*` 추가 — 서로 다른 물리 DB 마다 `<k>DataSource`/`<k>SqlSessionFactory`/`<k>SqlSessionTemplate`/`<k>TransactionManager` 세트를 `ImportBeanDefinitionRegistrar` 로 동적 등록. `@MapperScan(sqlSessionFactoryRef)`/`@Transactional("<k>TransactionManager")` 는 앱이 배선. 라우팅과 **상호 배타**(fail-fast). 새 외부 의존성 0. 분산 원자성은 여전히 XA 대신 Outbox/Saga로.
+- ✅ **분산 락 / 스케줄러 리더 선출(2026-06-03)**: **framework-lock 신설** — `DistributedLock` SPI(소유자 토큰 리스 기반 `tryLock/unlock/keepUntil` + 편의 `runIfLocked`), 백엔드 memory(단일JVM·기본)|redis(`SET NX PX` + Lua CAS)|jdbc(PK INSERT 충돌 선점·만료 재획득, idempotency JDBC 패턴 복제, DDL `db/lock-postgres.sql`). **`@SchedulerLock` 애스펙트**로 k8s 다중 파드 `@Scheduled` 중복 실행 방지(ShedLock 동등 `atMostFor`/`atLeastFor`, atLeastFor 는 조기종료 시 `keepUntil` 로 구현, 네이티브). batch(Quartz job-store 클러스터링)와 구분=평범한 `@Scheduled` 갭. **외부 의존성 0개**(redis/jdbc=compileOnly, H2=test-scope). ⚠️ 작성환경 컴파일 미검증 → 받는 쪽 `:framework:framework-lock:test`+`spotlessApply` 확인.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
 ---
@@ -120,6 +121,9 @@ public class XxxAutoConfiguration {
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
 | framework-observability ✅ | 구조화(JSON) 로그·Micrometer 메트릭(공통 태그)·OTel 트레이스/메트릭 OTLP 익스포터 | `framework.observability.enabled` | [선택] | 공통 |
+| ✅ framework-lock | **분산 락 / 스케줄러 리더 선출** — `DistributedLock` SPI(소유자 토큰 리스 기반 `tryLock/unlock/keepUntil` + 편의 `runIfLocked`), 백엔드 memory(단일JVM)\|redis(SET NX + Lua CAS)\|jdbc(INSERT 충돌·만료 재획득). **`@SchedulerLock`**(애스펙트)로 k8s 다중 파드 `@Scheduled` 중복 실행 방지(ShedLock 동등 `atMostFor`/`atLeastFor`, 네이티브). **외부 의존성 0개**(redis/jdbc=compileOnly, H2=test-scope) | `framework.lock.enabled` + `type=memory\\|redis\\|jdbc` (+`scheduler.enabled`) | [선택] | 공통 |
+
+> ✅ 구현완료(2026-06-03). **batch 모듈과의 차이**: Spring Batch 잡의 클러스터 중복방지는 Quartz `job-store-type=jdbc`. 본 모듈은 <b>평범한 `@Scheduled`</b>(Quartz 아님)의 중복방지 갭을 메우고, 임의의 단발 작업 단일 실행(`runIfLocked`)도 제공. 소유자 토큰으로 "내 락 만료 후 타 인스턴스 재획득분을 잘못 해제"를 차단(Redis=Lua CAS, JDBC=`WHERE lock_owner=?`). 운영(다중 replica)은 `type=redis\|jdbc` 필수(memory 는 파드 간 미배타). JDBC DDL `db/lock-postgres.sql`. 상세는 `framework/framework-lock/README.md`.
 
 > ✅ 구현완료(2026-06-02). 공통 태그=`MeterRegistryCustomizer`(service/env/version+extra). 구조화 로그=Boot4 네이티브 `logging.structured.format`(ecs/logstash/gelf, 인코더 불필요). 익스포터=메트릭/트레이스 OTLP(기본 off, 호스트 runtimeOnly opt-in). 프로퍼티성 표준값은 `EnvironmentPostProcessor`(로깅 초기화 전)로 주입. **새 외부 의존성 0**. 상세는 `framework/framework-observability/README.md`, k8s 는 `deploy/k8s/observability.yaml`.
 
@@ -148,7 +152,8 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
        ├── i18n            (모두가 메시지 사용)
        ├── idgen           (도메인 채번)
        ├── client ──── messaging/saga(연계)
-       └── observability   (전 모듈 횡단)
+       ├── observability   (전 모듈 횡단)
+       └── lock            (분산 락; impl: redis/jdbc, 횡단)
 ```
 원칙: 상위(토대)는 하위를 모른다. 순환 금지. impl 모듈(redis 등)이 추상(security/idempotency)을 의존. **saga 는 messaging(Outbox) 위에 오케스트레이션만 얹는다**(전송/멱등 소비 재사용, compileOnly 비전이라 의존 서비스가 messaging 도 명시).
 
@@ -161,7 +166,7 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
 3. **금융 핵심** — **framework-idempotency**, framework-messaging(+Outbox), framework-datasource
 4. **업무 생산성** — framework-excel, framework-batch, framework-notification
 5. **규제 특화** — framework-pki, framework-mfa, framework-crypto-hsm, framework-recon, (공공 시) framework-egov-compat
-6. **운영/관측** — framework-observability ✅
+6. **운영/관측** — framework-observability ✅ · framework-lock ✅(분산 락·`@Scheduled` 중복방지)
 7. **그릇 정비** — 게이트웨이(폴백·CORS·rate-limit)·k8s(redis/secret/멀티서비스)·CI/CD 멀티서비스화
 
 > 1·2단계 산출물은 3단계 이후 모든 모듈이 재사용한다(메시지·채번·연계·감사). 토대를 건너뛰면 각 모듈이 재발명한다.
