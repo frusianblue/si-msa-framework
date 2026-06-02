@@ -164,7 +164,7 @@ dependencies {
     implementation project(':framework:framework-client')      // 외부 API 표준 호출
     implementation project(':framework:framework-audit')       // 접속/감사 로그 적재·조회(ISMS-P)
     implementation project(':framework:framework-secure-web')  // 웹 보안 필터(헤더/경로조작/인젝션/CSRF)
-    implementation project(':framework:framework-datasource')  // 읽기/쓰기 분리 라우팅 DataSource(금융)
+    implementation project(':framework:framework-datasource')  // 읽기/쓰기 분리 라우팅 · 독립 다중 DB(금융)
     implementation project(':framework:framework-messaging')   // Kafka Outbox 발행 + 소비자측 멱등 소비(금융)
     implementation project(':framework:framework-excel')       // Excel 업/다운로드(POI 스트리밍 + 양식검증)
     implementation project(':framework:framework-batch')       // Spring Batch 실행/리스너 + Quartz cron
@@ -291,16 +291,23 @@ framework:
 
 전부 기본 off(`framework.<module>.enabled=false`). 상세 설계·카탈로그는 `docs/FRAMEWORK_MODULES.md`, 세션별 켜는 법/함정은 `HANDOFF_SUMMARY.md`.
 
-### framework-datasource (읽기/쓰기 분리 라우팅 · 금융)
+### framework-datasource (읽기/쓰기 분리 라우팅 · 독립 다중 DB · 금융)
 ```yaml
 framework:
   datasource:
-    routing:
+    routing:                              # (1) 읽기/쓰기 분리 — 하나의 논리 DB 를 primary/replica 로
       enabled: true
       write: { url: jdbc:postgresql://primary:5432/sidb, username: ${DB_USER}, password: ${DB_PW} }
       read:  { url: jdbc:postgresql://replica:5432/sidb, username: ${DB_USER}, password: ${DB_PW} }  # 생략 시 WRITE 폴백
+    # multi:                              # (2) 독립 다중 DB — 서로 다른 물리 DB (routing 과 배타)
+    #   enabled: true
+    #   primary: order                    # 소스 2개 이상이면 필수
+    #   sources:
+    #     order: { url: jdbc:postgresql://order-db:5432/orderdb, username: ${O_USER}, password: ${O_PW} }
+    #     user:  { url: jdbc:postgresql://user-db:5432/userdb,  username: ${U_USER}, password: ${U_PW} }
 ```
-- `@Transactional(readOnly=true)` 트랜잭션은 READ(복제) 노드로, 그 외는 WRITE 로 라우팅. `LazyConnectionDataSourceProxy` 로 감싸 readOnly 확정 후 커넥션 획득. 복제 지연 유의(직후 정합성 중요한 읽기는 write 트랜잭션 안에).
+- **routing**: `@Transactional(readOnly=true)` 트랜잭션은 READ(복제) 노드로, 그 외는 WRITE 로 라우팅. `LazyConnectionDataSourceProxy` 로 감싸 readOnly 확정 후 커넥션 획득. 복제 지연 유의(직후 정합성 중요한 읽기는 write 트랜잭션 안에).
+- **multi**: DB 키 `<k>` 마다 `<k>DataSource`/`<k>SqlSessionFactory`/`<k>SqlSessionTemplate`/`<k>TransactionManager` 등록. 앱이 `@MapperScan(sqlSessionFactoryRef="<k>SqlSessionFactory")` + 보조 DB 는 `@Transactional("<k>TransactionManager")` 배선. **routing 과 동시 활성 불가**(둘 다 `@Primary` DataSource → 기동 시 fail-fast). 자세한 배선 예제는 `framework/framework-datasource/README.md`.
 
 ### framework-messaging (Kafka Outbox 발행 + 소비자측 멱등 소비 · 금융)
 ```yaml

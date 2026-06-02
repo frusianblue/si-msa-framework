@@ -1,1 +1,2 @@
 com.company.framework.datasource.config.DataSourceRoutingAutoConfiguration
+com.company.framework.datasource.config.MultiDataSourceAutoConfiguration

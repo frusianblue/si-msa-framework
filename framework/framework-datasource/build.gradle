@@ -1,9 +1,12 @@
-// 선택형 모듈: 읽기/쓰기 분리 라우팅 DataSource.
-//   - @Transactional(readOnly = true) 트랜잭션은 READ(복제) 노드로, 그 외는 WRITE(주) 노드로 라우팅.
-//   - 라우팅 결정이 readOnly 플래그 확정 이후에 일어나도록 LazyConnectionDataSourceProxy 로 감싼다.
-// 새 외부 의존성 0(버전 0): jdbc/Hikari/spring-tx 는 호스트 앱(또는 framework-mybatis)이 이미 제공 → compileOnly.
-//   spring-jdbc(AbstractRoutingDataSource/LazyConnectionDataSourceProxy) · spring-tx(TransactionSynchronizationManager)
-//   · HikariCP(HikariConfig/HikariDataSource) · Boot DataSourceAutoConfiguration(before 순서 참조) 전부 starter-jdbc 안.
+// 선택형 모듈: DataSource 두 가지 — (1) 읽기/쓰기 분리 라우팅, (2) 독립 다중 DB 연결(상호배타).
+//   (1) routing: @Transactional(readOnly=true)→READ(복제), 그 외→WRITE(주). 라우팅 결정이 readOnly 플래그 확정
+//       이후에 일어나도록 LazyConnectionDataSourceProxy 로 감싼다.
+//   (2) multi: framework.datasource.multi.sources.<키> 마다 DataSource/SqlSessionFactory/SqlSessionTemplate/
+//       TransactionManager 세트를 동적 등록(@Primary 1개). @MapperScan(sqlSessionFactoryRef)·@Transactional("<키>TransactionManager")
+//       은 앱이 선언. routing 과 동시 활성 금지(둘 다 @Primary DataSource → 충돌, 기동 시 fail-fast).
+// 새 외부 의존성 0(버전 0): jdbc/Hikari/spring-tx/MyBatis 는 호스트 앱(또는 framework-mybatis)이 이미 제공 → compileOnly.
+//   spring-jdbc(AbstractRoutingDataSource/LazyConnectionDataSourceProxy/JdbcTransactionManager) · spring-tx
+//   · HikariCP · Boot DataSourceAutoConfiguration(before 순서) · MyBatis(SqlSessionFactoryBean 등).
 // 루트 build.gradle 이 java-library/dependency-management/spotless/jacoco 를 자동 적용하므로 dependencies 만 선언.
 dependencies {
     // 표준 응답/에러 포맷이 필요해질 때를 위해 core 유지(현재 라우팅 로직 자체는 core 미사용이나 규약상 베이스 의존).
@@ -13,10 +16,18 @@ dependencies {
     // 런타임은 호스트가 제공(드래그인 방지) → compileOnly.
     compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
 
+    // 독립 다중 DB(multi): DB 별 SqlSessionFactory/Template 을 만들기 위한 MyBatis API
+    //   (SqlSessionFactoryBean/SqlSessionTemplate/ConfigurationCustomizer + ibatis Configuration/Interceptor/ExecutorType).
+    //   런타임 MyBatis 는 호스트(보통 framework-mybatis)가 이미 제공 → compileOnly(비전이). multi 를 쓰는 서비스는 framework-mybatis 의존이 전제.
+    compileOnly "org.mybatis.spring.boot:mybatis-spring-boot-starter:${mybatisStarterVersion}"
+
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    // multi 통합테스트(두 개의 독립 H2 + 각 DB SqlSessionFactory/tx매니저 검증)
+    testImplementation "org.mybatis.spring.boot:mybatis-spring-boot-starter:${mybatisStarterVersion}"
+    testRuntimeOnly 'com.h2database:h2'
 }
