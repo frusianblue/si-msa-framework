@@ -1,0 +1,108 @@
+# =============================================================================
+# deploy/k8s/observability.yaml
+# 관측(framework-observability) k8s 연계 샘플 — 메트릭 스크레이프 + 액추에이터 노출.
+# user-service 예시. 환경에 맞게 name/namespace/label/포트만 바꿔 쓴다.
+#
+# 전제: 서비스가 framework-observability 를 의존하고 다음을 켠 상태
+#   framework.observability.enabled=true
+#   (+ Prometheus 스크레이프용) runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+# 그러면 /actuator/prometheus 가 노출되고(모듈 EPP 가 exposure.include 에 prometheus 포함),
+# k8s liveness/readiness 는 /actuator/health/{liveness,readiness} 로 동작한다.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# (A) Prometheus Operator 사용 시: ServiceMonitor 로 스크레이프 대상 선언
+#     (kube-prometheus-stack / Prometheus Operator 가 설치돼 있어야 CRD 존재)
+# -----------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: user-service
+  namespace: monitoring          # Operator 가 감시하는 네임스페이스(또는 release 라벨에 맞춤)
+  labels:
+    release: kube-prometheus-stack   # Operator 의 serviceMonitorSelector 와 일치시켜야 수집됨
+spec:
+  namespaceSelector:
+    matchNames: ["default"]      # 서비스가 떠 있는 네임스페이스
+  selector:
+    matchLabels:
+      app: user-service          # 아래 Service 의 라벨과 일치
+  endpoints:
+    - port: http                 # Service 의 포트 이름(숫자 아님)
+      path: /actuator/prometheus
+      interval: 15s
+      scrapeTimeout: 10s
+---
+# -----------------------------------------------------------------------------
+# (B) Service — ServiceMonitor 가 고를 수 있게 라벨/포트이름 부여
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: default
+  labels:
+    app: user-service
+  # (C) Operator 가 없고 Prometheus 가 annotation 기반 스크레이프(kubernetes-pods job)를 쓸 때:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/actuator/prometheus"
+    prometheus.io/port: "8080"
+spec:
+  selector:
+    app: user-service
+  ports:
+    - name: http                 # ServiceMonitor 의 endpoints[].port 와 일치
+      port: 8080
+      targetPort: 8080
+---
+# -----------------------------------------------------------------------------
+# (D) 액추에이터/관측 설정 ConfigMap (Deployment 에서 envFrom 또는 마운트해서 사용)
+#     application.yml 에 직접 넣어도 된다. 여기 값은 framework-observability 토글 예시.
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-observability
+  namespace: default
+data:
+  application-observability.yml: |
+    spring:
+      application:
+        name: user-service       # 메트릭 service 태그 / ECS service.name 기본값
+    framework:
+      observability:
+        enabled: true
+        env: prod                # 메트릭 env 태그 / ECS service.environment
+        version: "1.0.0"         # 메트릭 version 태그 / ECS service.version
+        metrics:
+          common-tags-enabled: true
+          extra-tags:
+            region: kr
+        logging:
+          structured:
+            enabled: true
+            format: ecs          # 컨테이너 로그를 ECS JSON 으로 → Loki/ELK 수집
+            target: console
+        endpoints:
+          expose: [health, info, metrics, prometheus]
+          probes-enabled: true
+    # OTLP(Collector)로 보낼 때만 켠다(기본 off). 메트릭은 micrometer-registry-otlp,
+    # 트레이스는 opentelemetry-exporter-otlp 를 runtimeOnly 로 추가해야 실제 export 됨.
+    #   framework.observability.metrics.otlp.enabled: true
+    #   framework.observability.metrics.otlp.url: http://otel-collector.monitoring:4318/v1/metrics
+    #   framework.observability.tracing.otlp.enabled: true
+    #   framework.observability.tracing.otlp.endpoint: http://otel-collector.monitoring:4318/v1/traces
+---
+# -----------------------------------------------------------------------------
+# (E) Deployment 의 프로브는 액추에이터 health 그룹을 가리킨다(probes-enabled=true 가 그룹 생성).
+#     아래는 컨테이너 spec 의 발췌(deploy/k8s/user-service.yaml 의 probe 부분 참고/치환).
+# -----------------------------------------------------------------------------
+# livenessProbe:
+#   httpGet: { path: /actuator/health/liveness, port: 8080 }
+#   initialDelaySeconds: 20
+#   periodSeconds: 10
+# readinessProbe:
+#   httpGet: { path: /actuator/health/readiness, port: 8080 }
+#   initialDelaySeconds: 10
+#   periodSeconds: 5

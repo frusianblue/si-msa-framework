@@ -1,0 +1,13 @@
+// 선택형 모듈: 관측(Observability) — 공통 메트릭 태그/네이밍 · 구조화(JSON) 로그 · OTel 익스포터 표준.
+// framework.observability.enabled=true 로만 활성. 기본은 전부 off.
+//
+// 새 외부 의존성 0:
+//   - 코드가 컴파일 타임에 참조하는 건 micrometer-core(Tag/MeterRegistry)·boot autoconfigure·boot/core 뿐 →
+//     전부 framework-core 가 api 로 전이(actuator + micrometer-tracing-bridge-otel).
+//   - 메트릭 레지스트리(prometheus/otlp)·OTel 스팬 익스포터는 "클래스 직접 참조 없음"(프로퍼티/런타임 classpath 로만 동작)
+//     → 호스트 서비스가 runtimeOnly 로 opt-in (README 레시피). 따라서 여기서 compileOnly 로도 받지 않는다.
+dependencies {
+    api project(':framework:framework-core')
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+}

@@ -14,8 +14,9 @@
 - ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅) · framework-messaging(Transactional Outbox + Kafka 릴레이 **+ 소비자측 멱등 소비**, `x-event-id`↔framework-idempotency) · audit↔messaging 연동(`store.type=kafka`)
 - ✅ **업무 생산성**: framework-excel(POI 스트리밍/양식검증) · framework-batch(Batch6+Quartz) · framework-notification(메일/SMS/알림톡)
 - ✅ **규제특화 시작**: framework-mfa(2단계 인증 — TOTP/OTP + ISMS-P 복구코드, **외부 의존성 0개**, security 로그인 흐름에 `MfaGate` SPI 로 연결)
+- ✅ **운영/관측**: framework-observability(공통 메트릭 태그 `MeterRegistryCustomizer` · Boot4 네이티브 구조화 JSON 로그 · 메트릭/트레이스 OTLP 익스포터 표준, 전부 토글·기본 off). **외부 의존성 0개**(레지스트리/익스포터는 호스트 runtimeOnly opt-in, Boot BOM 관리). k8s 샘플 `deploy/k8s/observability.yaml`
 - ✅ **SI 공통 유틸 보강(2026-06-02)**: `framework-core/util` 에 검증(`KoreanRegNoUtils`·`ValidationUtils`)·날짜/영업일(`DateUtils`·`HolidayUtils`)·금액(`MoneyUtils`)·한글(`HangulUtils`)·해시(`HashUtils`)·JSON(`JsonUtils`) 신규 + `MaskingUtils` 확장. 빈/오토컨피그 없는 순수 정적, **새 외부 의존성 0**(JSON 만 Jackson 3). 회귀 테스트 `CoreUtilsTest`. + **빌드 인프라 픽스**: 루트 `subprojects` 에 `testRuntimeOnly junit-platform-launcher` 추가(Gradle 9 에서 테스트 발견 단계 실패 방지, 전 모듈 공통).
-- ⏭️ **다음 후보**: 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) 또는 관측(observability — 분산추적은 core 에 보유, 메트릭/로그 표준화) · (선택) idempotency JdbcIdempotencyStore
+- ⏭️ **다음 후보**: 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · (선택) idempotency JdbcIdempotencyStore · **그릇 정비**(게이트웨이/k8s 멀티서비스/CI-CD)
 - ℹ️ **DB 범위 정리(2026-05-31)**: 읽기/쓰기 분리(primary/replica)까지 완료. *서로 다른 독립 DB 다중 연결*(DB별 SqlSessionFactory/tx매니저/@MapperScan)은 **미구현 — 필요 시 추가**. 분산 원자성은 XA 대신 Outbox/Saga로.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
@@ -114,7 +115,9 @@ public class XxxAutoConfiguration {
 
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
-| framework-observability | 구조화(JSON) 로그·Micrometer 메트릭·OTel 트레이스 익스포터 | `framework.observability.enabled` | [선택] | 공통 |
+| framework-observability ✅ | 구조화(JSON) 로그·Micrometer 메트릭(공통 태그)·OTel 트레이스/메트릭 OTLP 익스포터 | `framework.observability.enabled` | [선택] | 공통 |
+
+> ✅ 구현완료(2026-06-02). 공통 태그=`MeterRegistryCustomizer`(service/env/version+extra). 구조화 로그=Boot4 네이티브 `logging.structured.format`(ecs/logstash/gelf, 인코더 불필요). 익스포터=메트릭/트레이스 OTLP(기본 off, 호스트 runtimeOnly opt-in). 프로퍼티성 표준값은 `EnvironmentPostProcessor`(로깅 초기화 전)로 주입. **새 외부 의존성 0**. 상세는 `framework/framework-observability/README.md`, k8s 는 `deploy/k8s/observability.yaml`.
 
 ---
 
@@ -140,7 +143,7 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
 3. **금융 핵심** — **framework-idempotency**, framework-messaging(+Outbox), framework-datasource
 4. **업무 생산성** — framework-excel, framework-batch, framework-notification
 5. **규제 특화** — framework-pki, framework-mfa, framework-crypto-hsm, framework-recon, (공공 시) framework-egov-compat
-6. **운영/관측** — framework-observability
+6. **운영/관측** — framework-observability ✅
 7. **그릇 정비** — 게이트웨이(폴백·CORS·rate-limit)·k8s(redis/secret/멀티서비스)·CI/CD 멀티서비스화
 
 > 1·2단계 산출물은 3단계 이후 모든 모듈이 재사용한다(메시지·채번·연계·감사). 토대를 건너뛰면 각 모듈이 재발명한다.

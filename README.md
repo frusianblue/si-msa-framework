@@ -339,6 +339,31 @@ framework:
 ```
 - `NotificationService.send(NotificationRequest.mail(to,subject,content).html(true).build())` — `ChannelType` 라우팅. SMS/알림톡은 벤더 SPI(`SmsClient`/`AlimtalkClient`) + 기본 로깅 구현(서비스가 벤더 빈으로 교체).
 
+## 운영/관측 모듈 (2026-06 추가, 선택형)
+
+### framework-observability (메트릭 공통태그 · 구조화 로그 · OTel 익스포터)
+core 의 분산추적 토대(`micrometer-tracing-bridge-otel`·`MdcTraceFilter`) 위에 **표준화 + 익스포트**를 얹는다. 전부 토글, 기본 off. **새 외부 의존성 0**(레지스트리/익스포터는 호스트가 runtimeOnly 로 opt-in, 모두 Boot BOM 관리).
+```gradle
+implementation project(':framework:framework-observability')
+runtimeOnly 'io.micrometer:micrometer-registry-prometheus'   // (선택) /actuator/prometheus
+// runtimeOnly 'io.micrometer:micrometer-registry-otlp'        // (선택) 메트릭 OTLP push
+// runtimeOnly 'io.opentelemetry:opentelemetry-exporter-otlp'  // (선택) 트레이스 OTLP export
+```
+```yaml
+framework:
+  observability:
+    enabled: true
+    env: prod
+    version: "1.0.0"
+    metrics: { common-tags-enabled: true, extra-tags: { region: kr } }
+    logging: { structured: { enabled: true, format: ecs, target: console } }
+    endpoints: { expose: [health, info, metrics, prometheus], probes-enabled: true }
+```
+- **공통 태그**: `MeterRegistryCustomizer` 가 모든 레지스트리에 `service`/`env`/`version`(+extra) 부여(k8s 라벨/OTel 컨벤션 정렬). `service`=app name, `env`=프로파일 자동.
+- **구조화 로그**: Boot4 네이티브 `logging.structured.format`(ecs/logstash/gelf) — 인코더 라이브러리 불필요. traceId/spanId(MDC) 동봉.
+- **OTLP 익스포터**(기본 off): 메트릭 `metrics.otlp.{enabled,url}`, 트레이스 `tracing.otlp.{enabled,endpoint}`(브리지 키 `management.otlp.tracing.endpoint`).
+- 프로퍼티성 표준값은 `EnvironmentPostProcessor` 가 로깅/액추에이터 초기화 전에 주입(앱 값 우선). k8s: `deploy/k8s/observability.yaml`(ServiceMonitor + 스크레이프/프로브). 상세 `framework/framework-observability/README.md`.
+
 ## 추가된 공통 (이번 보강)
 - **보안 예외 표준화**: 401/403 도 `ApiResponse` JSON 으로 통일(`RestAuthenticationEntryPoint`/`RestAccessDeniedHandler`).
 - **예외 처리 확장**: 잘못된 JSON, 타입 불일치, 필수 파라미터 누락, 404, 405, 업로드 초과, DB 무결성 위반, 인가 거부 등 일괄 표준화.

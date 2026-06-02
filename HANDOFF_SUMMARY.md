@@ -7,55 +7,54 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**SI 공통 유틸(`framework-core/util`) 대거 보강** — 한국 공공/금융 SI 에서 반복되는 정적 헬퍼 8묶음(검증·마스킹·날짜/영업일·금액·한글·해시·JSON) 신규/확장. **빈/오토컨피그 없음**(순수 정적), core 전이로 어디서나 사용, **새 외부 의존성 0**(JSON 만 Jackson 3). 체크섬·금액·한글 조합·해시 등 "틀리면 조용히 잘못되는" 로직은 **순수 JDK 로 실제 실행 검증(27케이스 전수 통과)** 후 작성, 회귀 테스트 `CoreUtilsTest` 동봉.
+**`framework-observability` 신규(운영/관측 모듈)** — core 의 분산추적 토대(`micrometer-tracing-bridge-otel`·`MdcTraceFilter`) 위에 **① 공통 메트릭 태그(`MeterRegistryCustomizer`: service/env/version+extra, 전 레지스트리) ② Boot4 네이티브 구조화(JSON) 로그(`logging.structured.format` ecs/logstash/gelf, 인코더 라이브러리 불필요) ③ 메트릭/트레이스 OTLP 익스포터 표준**을 토글로 얹음. 전부 기본 off, **새 외부 의존성 0**(레지스트리/익스포터는 호스트 `runtimeOnly` opt-in, 전부 Boot BOM 관리). k8s 샘플(ServiceMonitor+스크레이프+프로브) 동봉. 핵심 분기(트레이스 OTLP 키 이중화·`MeterRegistryCustomizer` 패키지 이동)는 공식 API 로 확정 후 작성.
 
 ## 최종 갱신
 - 일자: 2026-06-02 · 갱신자: <!-- 채우기 -->
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-- **신규 유틸(`com.company.framework.core.util`)**:
-  - **검증** — `KoreanRegNoUtils`(주민번호 체크섬·외국인번호 형식·**사업자번호**·**법인번호**) · `ValidationUtils`(이메일·휴대폰/유선·**카드 Luhn**).
-  - **날짜/영업일** — `DateUtils`(yyyyMMdd↔LocalDate·만나이·기간·월초/말) · `HolidayUtils`(주말+**양력 고정공휴일** 자동, 음력·대체공휴일은 `Set<LocalDate>` **주입식** 영업일 계산: isBusinessDay/next/prev/plusBusinessDays/between).
-  - **금액** — `MoneyUtils`(천단위 콤마·**한글 금액** "일금 …원정"·반올림/절사/올림 BigDecimal).
-  - **한글** — `HangulUtils`(초성 추출·**초성 검색**·자모 분해/**조합**·**조사 선택**·**한↔영 자판 변환**(두벌식)).
-  - **해시/인코딩** — `HashUtils`(SHA-256/512 hex·Base64 표준/URL-safe·Hex).
-  - **JSON** — `JsonUtils`(Jackson 3 `tools.jackson.*` 기반 null-safe `toJson`/`fromJson`/`TypeReference`, `JacksonConfig` 규칙 동일).
-- **기존 확장** — `MaskingUtils` 에 **주민번호·카드·계좌·주소 마스킹** 추가(기존 이름/이메일/전화 유지, 가산).
-- **테스트** — `framework-core/src/test/.../util/CoreUtilsTest.java`(JUnit5+AssertJ, 7 메서드). core 의 `testImplementation spring-boot-starter-test` 로 의존 충분 → **build.gradle 무변경**.
-- **문서** — `README.md`("framework-core — SI 공통 유틸" 절 추가) · `HANDOFF.md`(6절 함정 2줄: util/support 구분, 유틸 주의점). **STACK/libs/settings/imports/카탈로그 무변경**(빈·새 라이브러리 0).
+- **신규 모듈 `framework-observability`**(`com.company.framework.observability`):
+  - `config/ObservabilityProperties`(`framework.observability.*` 토글: enabled·service·env·version·metrics{common-tags-enabled,extra-tags,otlp}·logging.structured{enabled,format,target}·tracing.otlp·endpoints{expose,probes-enabled}).
+  - `config/ObservabilityAutoConfiguration`(`@ConditionalOnProperty enabled=true`) → 빈 **`frameworkObservabilityCommonTags`**(`MeterRegistryCustomizer<MeterRegistry>`, 공통태그). Boot 가 레지스트리 생성 시 커스터마이저를 모아 적용 → afterName 불요.
+  - `config/ObservabilityEnvironmentPostProcessor`(EPP, `spring.factories` 등록) → 구조화 로그·액추에이터 노출·k8s 프로브·OTLP 익스포터 표준값을 **로깅 초기화 전**에 `addLast`(최저 우선순위, 앱 값 우선)로 주입.
+  - `metrics/ObservabilityTags`(순수 JDK 태그 해석) + `ObservabilityTagsTest`(JUnit5+AssertJ, 5케이스).
+  - resources: autoconfig `.imports`(1줄) + `META-INF/spring.factories`(EPP).
+  - `framework/framework-observability/build.gradle` = `api project(core)` + configuration-processor(끝).
+- **등록/배포**: `settings.gradle` 에 `include 'framework:framework-observability'`. k8s `deploy/k8s/observability.yaml`(ServiceMonitor·annotation 스크레이프·actuator ConfigMap·health 프로브).
+- **문서**: 모듈 `README.md` 신규 · 루트 `README.md`(운영/관측 절) · `HANDOFF.md`(1·6·7절) · `docs/FRAMEWORK_MODULES.md`(0·2.7·4절) · `STACK.md`(5절, 새 라이브러리 0/FQCN 이동/이중 OTLP 키). **카탈로그/libs.versions.toml 무변경**.
 
 ## 현재 상태 (적용/검증)
-- 신규/변경 파일 모두 repo 반영. 정적 점검 통과(괄호 균형, 패키지=디렉터리, **실제 `com.fasterxml` import 0건** — JsonUtils 의 fasterxml 문자열은 "쓰지 말라"는 주석).
-- **알고리즘 실행 검증 완료(JDK source-launch)**: 사업자 124-81-00998·법인 130111-0006246 유효, RRN self-consistent, Luhn(4111…/4532…/위조), 한글금액 123456→"십이만삼천사백오십육", 초성 "안녕하세요"→"ㅇㄴㅎㅅㅇ", 조사, 자모조합(닭+ㅏ→달가·값), 한영 "dkssudgktpdy"→"안녕하세요", sha256("abc") 표준벡터 → **전수 통과**.
-- ⚠️ **실제 gradle 컴파일은 미검증**(작성 환경 Maven Central 차단). 특히 **`JsonUtils` 만 런타임 미검증**(Jackson jar 없음) — `tools.jackson.core.type.TypeReference` import 1줄만 받는 쪽에서 확인. 나머지는 순수 JDK 라 안전.
-- 받는 쪽: `./gradlew :framework:framework-core:compileJava :framework:framework-core:test` + `./gradlew spotlessApply`(palantir 정렬).
+- 정적 점검 통과: 패키지=디렉터리, 괄호 균형, **`com.fasterxml` 0건**, Boot4 FQCN(`org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer`).
+- **공통태그 해석 로직 순수 JDK 실행검증 완료(5/5)**: 표준3태그·공백→unknown·trim·extra append/순서·extra override·불량 항목 무시.
+- ⚠️ **gradle 컴파일 미검증**(작성 환경 Maven Central 차단). 받는 쪽: `./gradlew :framework:framework-observability:compileJava :framework:framework-observability:test` + `./gradlew spotlessApply`. (launcher 픽스 이미 루트 적용됨 → 새 모듈 테스트 정상 실행 예상)
+- 공식 소스로 확정한 사실: Boot4 구조화 로그 네이티브(`logging.structured.format`), `MeterRegistryCustomizer` 패키지 이동, 메트릭 OTLP(`management.otlp.metrics.export.{enabled,url}`), 트레이스 OTLP 브리지 키(`management.otlp.tracing.endpoint`) vs 신규 스타터 키.
 
-## 켜는 법 (설정 불필요)
-- 정적 유틸이라 토글/설정/빈 등록 없음. `import com.company.framework.core.util.*` 후 바로 호출.
-- 예) `KoreanRegNoUtils.isValidBusinessNo("124-81-00998")` · `MoneyUtils.toKoreanAmount(50000)`("일금 오만원정") · `HangulUtils.matchesChosung("사과","ㅅㄱ")` · `HolidayUtils.nextBusinessDay(d, extraHolidays)`(음력/대체공휴일은 특일정보 API/사내표에서 주입).
+## 켜는 법
+- `implementation project(':framework:framework-observability')` + `framework.observability.enabled=true`.
+- Prometheus: `runtimeOnly 'io.micrometer:micrometer-registry-prometheus'` → `/actuator/prometheus`(EPP 가 exposure 에 포함). OTLP: 메트릭 `micrometer-registry-otlp`·트레이스 `opentelemetry-exporter-otlp` 추가 + `…otlp.enabled=true`.
+- 구조화 로그: `framework.observability.logging.structured.enabled=true`(format ecs 기본). k8s: `deploy/k8s/observability.yaml` 참고.
 
 ## 바로 다음 할 일 (Next)
-1. 받는 쪽 `compileJava`+`test`+`spotlessApply` 확인. **JUnit launcher 픽스 적용 완료**(루트 `subprojects` 에 `testRuntimeOnly junit-platform-launcher`) → `CoreUtilsTest` 정상 실행됨. 음력/대체공휴일 적재 소스 결정(공공데이터포털 특일정보 API → `Set<LocalDate>` 캐싱).
-2. **다음 묶음 = 관측(observability)** 1순위 — core 에 micrometer-tracing-otel 보유, 메트릭/구조화로그/익스포터 표준화. **착수 시트 `NEXT_SESSION_KICKOFF.md` 그대로 사용**(목표·결정사항·레시피 미리 채움). 차순위: 규제특화 잔여(pki/hsm/recon/egov) · JdbcIdempotencyStore · 게이트웨이/k8s/CI-CD.
+1. 받는 쪽 `:framework:framework-observability:compileJava (+:test) +spotlessApply` 확인. 특히 EPP 등록(`spring.factories`)·Boot4 `MeterRegistryCustomizer` FQCN 컴파일 통과 확인.
+2. (선택) user-service 에 observability 실적용 + ServiceMonitor 실배포로 `/actuator/prometheus` 스크레이프 e2e 확인(devops). Grafana 대시보드/알림 룰은 후속.
+3. **다음 모듈** = 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) 또는 **그릇 정비**(게이트웨이 폴백·CORS·rate-limit / k8s 멀티서비스 / CI-CD). `NEXT_SESSION_KICKOFF.md` 의 "이번 세션 목표" 갱신해 둠.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **`util` vs `support` 구분**: `core/util`=상태없는 순수 정적 헬퍼(컨텍스트 무의존) → SI 공통 유틸 자리. `<module>/support`=모듈전용·컨텍스트결합 헬퍼. **core 에 support 없음** — 범용 유틸을 support 로 만들지 말 것. util 은 빈 없음 → `imports` 무변경.
-- **외국인등록번호**: 2020-10 이후 검증번호(체크섬) 폐지 → `isValidForeignerNo` 는 **형식만** 검증(체크섬 적용 금지).
-- **음력/대체공휴일**: 양력 변환표 필요 → `HolidayUtils` 가 자동계산하지 않고 `extraHolidays` 주입식. 자동 고정은 양력 고정공휴일+주말만.
-- **JsonUtils 는 Jackson 3 전용**(`tools.jackson.*`). `com.fasterxml.*` import 금지(주석 언급은 무방). 직렬화 실패는 `BusinessException`(INTERNAL_ERROR/INVALID_INPUT)로 변환.
-- **JUnit Platform launcher 필수(Gradle 9, 전 모듈)**: `spring-boot-starter-test` 가 `junit-platform-launcher` 를 전이 안 함 + Gradle 9 자동주입 없음 → 루트 `subprojects { dependencies { testRuntimeOnly 'org.junit.platform:junit-platform-launcher' } }`. 누락 시 테스트 있는 모듈에서 "OutputDirectoryCreator not available … unaligned versions" 로 **발견 단계 실패**(어서션 이전). core 에 테스트가 없어 잠복하다 `CoreUtilsTest` 로 표면화 → 픽스 완료. 새 모듈 첫 테스트 때 재확인.
-- **범용 유틸 재발명 금지**: `StringUtils`/`CollectionUtils`/`ObjectUtils` 는 Spring·Commons 사용. 공통엔 한국·도메인·스택(Jackson3) 특화만.
-- (기존) MFA=security nullable SPI(`MfaGate`)·`LoginService` 9-arg·`AuthController` `ApiResponse<Object>` · 챌린지 store redis(멀티) · 새 모듈/변경은 `settings.gradle`/`imports` 등록 · BOM 밖 새 라이브러리만 카탈로그 핀 · Jackson3 전역 · Spring7 메일 jakarta.
+- **Boot4 패키지 이동**: `MeterRegistryCustomizer` = `org.springframework.boot.micrometer.metrics.autoconfigure`(3.x `actuate.autoconfigure.metrics` 아님). actuator 계열 FQCN 은 공식 API 로 확인. `MeterRegistry/Tag` 는 `io.micrometer.core.instrument.*` 유지.
+- **구조화 로그는 빈 아님 → EPP**: `logging.structured.*` 는 로깅 시스템이 컨텍스트보다 먼저 읽음 → `EnvironmentPostProcessor`(ConfigData 이후·로깅 초기화 전, order=LOWEST)가 `addLast` 로 표준값 주입(앱 값 우선). EPP 등록은 `META-INF/spring.factories`(오토컨피그 `.imports` 아님).
+- **OTLP 트레이스 키 이중 컨벤션**: 브리지 방식(core)=`management.otlp.tracing.endpoint`(+`opentelemetry-exporter-otlp`), 신규 스타터=`management.opentelemetry.tracing.export.otlp.endpoint`. 메트릭 OTLP=`management.otlp.metrics.export.{enabled,url}`. 메트릭 OTLP 레지스트리+OTel 메트릭 브리지 동시 사용 시 중복 — 한쪽만.
+- **관측도 새 의존성 0**: build.gradle 은 `api project(core)`+configuration-processor 만(레지스트리/익스포터 클래스 직접 참조 0). 호스트가 runtimeOnly opt-in. 카탈로그/STACK 무변경.
+- (기존) util vs support 구분 · 외국인번호 형식만 · 음력/대체공휴일 주입식 · JsonUtils=Jackson3 · JUnit launcher 루트 적용 · 범용 유틸 재발명 금지 · MFA SPI(9-arg)/`ApiResponse<Object>` · Jackson3 전역 · 신규 모듈 settings/imports 등록 · BOM 밖만 카탈로그 핀.
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
-1. 신규: `framework/framework-<X>/`(config Properties+AutoConfiguration · 도메인 패키지 · imports FQCN). 확장: 기존 모듈에 패키지/빈 추가 + imports 에 새 autoconfig 줄. **단, 빈 없는 순수 유틸은 `core/util` 에 클래스만 추가(오토컨피그/imports 무변경).**
-2. `build.gradle`: 능력 전이=`api`, 내부구현=`implementation`, 호스트/선택 의존=`compileOnly`(+test). **BOM 밖 새 라이브러리만** 카탈로그+ext 핀.
+1. 신규: `framework/framework-<X>/`(config Properties+AutoConfiguration · 도메인 패키지 · imports FQCN). 빈 없는 순수 유틸은 `core/util` 에 클래스만. **컨텍스트 이전 동작이 필요하면 EPP + `spring.factories`**(관측 사례).
+2. `build.gradle`: 능력전이=`api`, 내부구현=`implementation`, 호스트/선택=`compileOnly`(+test). **레지스트리/익스포터처럼 "클래스 직접 참조 없이 런타임 classpath 로만" 동작하면 모듈은 받지 않고 호스트가 `runtimeOnly` opt-in.** BOM 밖 새 라이브러리만 카탈로그+ext 핀.
 3. `settings.gradle`(신규 모듈) / `imports`(새 autoconfig) 등록 잊지 말 것.
-4. 코드 전 **Boot4/Spring7/Jackson3 + 외부 라이브러리 API 를 공식 소스(GitHub raw)로 확정**. **틀리면 조용히 잘못되는 알고리즘(체크섬/포맷/조합)은 순수 JDK 로 실제 실행 검증 후 박을 것**(이번 세션 패턴).
-5. 오토컨피그: `@AutoConfiguration(afterName=…)` + `@ConditionalOnClass/Property` + 빈 `@ConditionalOnMissingBean`. 교체형 SPI 는 `@ConditionalOnMissingBean(타입)`.
+4. 코드 전 **Boot4/Spring7/Jackson3 + 외부 API 를 공식 소스(GitHub raw/공식 API 문서)로 확정**(특히 Boot4 패키지 이동·이중 프로퍼티 키). 틀리면 조용히 잘못되는 알고리즘은 순수 JDK 로 실제 실행 검증.
+5. 오토컨피그: `@AutoConfiguration(afterName=…)` + `@ConditionalOnClass/Property` + 빈 `@ConditionalOnMissingBean`. (커스터마이저류는 Boot 가 모아 적용 → afterName 불요)
 6. 검증: `./gradlew :...:compileJava (+:test) (+spotlessApply)`.
-7. 드롭인: 변경 파일 전부(모듈/유틸 + 변경된 기존 파일 + 필요 시 settings/imports/카탈로그·문서) → 한 zip, 루트에서 `unzip -o`.
+7. 드롭인: 변경 파일 전부 → 한 zip, 루트에서 `unzip -o`.
 
 
 <!-- 갱신 끝 -->

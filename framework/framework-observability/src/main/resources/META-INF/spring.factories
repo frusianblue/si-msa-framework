@@ -1,0 +1,4 @@
+# EnvironmentPostProcessor 는 ApplicationContext 이전(로깅/액추에이터 초기화 전)에 동작하므로
+# AutoConfiguration.imports 가 아니라 spring.factories 로 등록한다.
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.company.framework.observability.config.ObservabilityEnvironmentPostProcessor

@@ -84,6 +84,7 @@
 - Docker 이미지: 레이어 추출 후 엔트리포인트는 `org.springframework.boot.loader.launch.JarLauncher` (구 `java -jar` 대체).
 - **Spring 7 `HttpHeaders`** — `MultiValueMap` 미구현. `containsKey→containsHeader`, `keySet→headerNames()`, `forEach/entrySet` 제거. 헤더 다루는 코드 주의.
 - **Boot 4 모듈 분리** — `org.springframework.boot.http.client.*` 는 starter-web 컴파일 경로에 없을 수 있음 → RestClient 타임아웃은 spring-web `SimpleClientHttpRequestFactory` 로. `RestTemplateBuilder` 는 `org.springframework.boot.restclient` 모듈.
+- **관측(framework-observability) — 새 라이브러리 0**: 메트릭 레지스트리(`micrometer-registry-prometheus`/`-otlp`)·OTel 익스포터(`opentelemetry-exporter-otlp`)는 **전부 Boot BOM 관리**(버전 미명시) → 카탈로그/`STACK` 무변경. 호스트 서비스가 필요할 때만 `runtimeOnly` 로 opt-in. ⚠️ Boot 4 패키지 재편: `MeterRegistryCustomizer` 가 `org.springframework.boot.micrometer.metrics.autoconfigure`(3.x 의 `actuate.autoconfigure.metrics` 에서 이동). 구조화 로그는 Boot4 네이티브(`logging.structured.format`)라 `logstash-logback-encoder` 불필요. OTLP 트레이스 키는 브리지 방식 `management.otlp.tracing.endpoint`(신규 스타터는 `management.opentelemetry.tracing.export.otlp.endpoint`).
 
 ## 6. 추천 후보 (미적용 — 필요 시 도입)
 | 항목 | 종류 | 용도 | 판단 |
