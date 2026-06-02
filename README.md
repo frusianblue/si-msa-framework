@@ -113,6 +113,17 @@ kubectl apply -f deploy/k8s/
 - **XSS 방어**: `XssRequestFilter`(파라미터/헤더 HTML 이스케이프).
 - **시큐어코딩 유틸**: `SecureUtils`(경로조작 방어 파일명 정제, ORDER BY 컬럼 화이트리스트로 SQL인젝션 방어).
 
+### framework-core — SI 공통 유틸 (`core/util`, 2026-06 추가)
+한국 공공/금융 SI 에서 반복되는 정적 헬퍼. **빈/오토컨피그 없음**(그냥 클래스), core 가 전이 노출되므로 별도 의존 추가 없이 어디서나 사용. **새 외부 의존성 0**(전부 JDK), JSON 만 Jackson 3(`tools.jackson.*`).
+- **검증** — `KoreanRegNoUtils`(주민번호 체크섬·외국인번호 형식·사업자번호·법인번호), `ValidationUtils`(이메일·휴대폰/유선·카드 Luhn).
+- **마스킹** — `MaskingUtils` 확장(이름/이메일/전화 + 주민번호·카드·계좌·주소).
+- **날짜/영업일** — `DateUtils`(yyyyMMdd 변환·만나이·기간), `HolidayUtils`(주말+양력 고정공휴일 자동, 음력·대체공휴일은 주입식 영업일 계산).
+- **금액/숫자** — `MoneyUtils`(천단위 콤마·한글 금액 "일금 …원정"·반올림/절사/올림).
+- **한글** — `HangulUtils`(초성 추출·초성 검색·자모 분해/조합·조사 선택·한↔영 자판 변환).
+- **해시/인코딩** — `HashUtils`(SHA-256/512 hex·Base64 표준/URL-safe·Hex).
+- **JSON** — `JsonUtils`(Jackson 3 기반 null-safe `toJson`/`fromJson`/`TypeReference`, `JacksonConfig` 규칙 동일).
+> 범용 `StringUtils`/`CollectionUtils` 류는 재발명하지 않고 Spring 표준을 사용. 회귀 테스트: `CoreUtilsTest`. ⚠️ 외국인등록번호는 2020-10 이후 체크섬 폐지 → 형식만 검증. ⚠️ 음력/대체공휴일은 양력 변환표가 필요해 자동계산하지 않고 주입(특일정보 API/사내 휴일표 권장).
+
 ### 소스 취약점 점검 (루트 build.gradle)
 - **OWASP Dependency-Check**: `./gradlew dependencyCheckAggregate` (CVSS 7.0+ 발견 시 빌드 실패).
   리포트: `build/reports/dependency-check-report.html`, 오탐 억제: `config/dependency-check-suppressions.xml`.

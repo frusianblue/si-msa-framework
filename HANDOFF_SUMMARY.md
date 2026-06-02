@@ -7,68 +7,55 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**framework-mfa(2단계 인증) 신규 모듈** 완성 — TOTP(RFC 6238)·OTP(`OtpSender` SPI)·**ISMS-P 일회용 복구코드**(SHA-256)를 제공하고, framework-security 로그인 흐름에 **`MfaGate` SPI**(nullable 선택주입)로 2단계 분기를 연결. **MFA 미사용/미의존이면 기존 단일단계 로그인과 완전 동일**(하위호환). **새 외부 의존성 0개**(Base32/HOTP/TOTP/복구코드 전부 JDK `javax.crypto`/`SecureRandom` 직접 구현).
+**SI 공통 유틸(`framework-core/util`) 대거 보강** — 한국 공공/금융 SI 에서 반복되는 정적 헬퍼 8묶음(검증·마스킹·날짜/영업일·금액·한글·해시·JSON) 신규/확장. **빈/오토컨피그 없음**(순수 정적), core 전이로 어디서나 사용, **새 외부 의존성 0**(JSON 만 Jackson 3). 체크섬·금액·한글 조합·해시 등 "틀리면 조용히 잘못되는" 로직은 **순수 JDK 로 실제 실행 검증(27케이스 전수 통과)** 후 작성, 회귀 테스트 `CoreUtilsTest` 동봉.
 
 ## 최종 갱신
 - 일자: 2026-06-02 · 갱신자: <!-- 채우기 -->
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-- **framework-security 확장(SPI 신설, 가산·하위호환)**:
-  - **`auth/MfaGate`**(인터페이스) — `isRequired(AuthenticatedUser)` / `issueChallenge(user, clientIp)→MfaTicket`. security 는 이 타입만 알고 구현은 모름(의존 방향 mfa→security 단방향).
-  - **`auth/MfaTicket`**(record: ticket, methods, expiresInSeconds) · **`auth/LoginOutcome`**(sealed: `Authenticated(tokens)` | `MfaRequired(ticket)`).
-  - **`LoginService`** — nullable `MfaGate` 필드 + **3번째 생성자(9-arg)**. `beginLogin(cmd, ip)→LoginOutcome`(1차 성공 후 MfaGate 있으면 챌린지, 없으면 즉시 토큰) · `completeMfa(userId, roles, ip)→TokenResponse`(2단계 통과 후 발급). 기존 5/8-arg 생성자·`login()` 은 null 위임으로 유지.
-  - **`AuthController#login`** 반환형 `ApiResponse<Object>` 로 변경(MFA 필요 시 `MfaTicket` 반환). **`AuthAutoConfiguration`** loginService 빈이 `ObjectProvider<MfaGate>` 주입. **`LoginAuditEvent.Type`** 에 MFA_CHALLENGE/SUCCESS/FAILURE/ENROLLED/DISABLED 추가. **framework-audit `LoginAuditListener`** 실패 판정을 `name().endsWith("FAILURE")` 로 일반화.
-- **framework-mfa 신규 모듈**(base `com.company.framework.mfa`, 토글 `framework.mfa.enabled` 기본 false, `policy=ENROLLED|OFF`):
-  - **totp**: `Base32`(RFC 4648) · `Totp`(RFC 6238, HmacSHA1/256/512, ±window, 상수시간 비교) · `TotpSecretGenerator`(시크릿+otpauth:// URI).
-  - **core**: `MfaMethod`(TOTP|OTP) · `MfaCrypto`(numericOtp/복구코드/SHA-256/상수시간 매칭) · **`MfaService`**(등록 시작·확정·OTP 등록·해제·상태·챌린지 생성·재발송·검증) · **`DefaultMfaGate`**(MfaGate 구현).
-  - **store**: `MfaEnrollment(Store)`+`InMemory`/`Jdbc`(영속) · `PendingAuth`+`MfaChallengeStore`+`InMemory`/`Redis`(단기, 수기 직렬화). **otp**: `OtpSender` SPI(프로젝트 구현, 없으면 OTP 비활성·TOTP 는 동작).
-  - **web**: `MfaEnrollmentController`(`/api/v1/mfa/**`, **인증 필요**: enroll/totp·confirm·otp·status·disable) · `MfaVerificationController`(`/api/v1/auth/mfa/**`, **permitAll**: verify·challenge/resend).
-  - **config**: `MfaProperties` · `MfaAutoConfiguration`(3단 토글, 등록 store memory|jdbc / 챌린지 store memory|redis, 컨트롤러·게이트 빈). `imports` 등록 · `db/mfa-postgres.sql`(jdbc 시).
-  - `build.gradle`: `api :framework-security` + `compileOnly` web/jdbc/data-redis. **새 라이브러리 0**.
-- **등록/문서**: `settings.gradle` 에 `framework:framework-mfa` 추가 · `docs/FRAMEWORK_MODULES.md`(진행현황·카탈로그 2.6) · `HANDOFF.md`(1·6·7절). **STACK.md/libs.versions.toml/루트 build.gradle 무변경**(버전 0).
+- **신규 유틸(`com.company.framework.core.util`)**:
+  - **검증** — `KoreanRegNoUtils`(주민번호 체크섬·외국인번호 형식·**사업자번호**·**법인번호**) · `ValidationUtils`(이메일·휴대폰/유선·**카드 Luhn**).
+  - **날짜/영업일** — `DateUtils`(yyyyMMdd↔LocalDate·만나이·기간·월초/말) · `HolidayUtils`(주말+**양력 고정공휴일** 자동, 음력·대체공휴일은 `Set<LocalDate>` **주입식** 영업일 계산: isBusinessDay/next/prev/plusBusinessDays/between).
+  - **금액** — `MoneyUtils`(천단위 콤마·**한글 금액** "일금 …원정"·반올림/절사/올림 BigDecimal).
+  - **한글** — `HangulUtils`(초성 추출·**초성 검색**·자모 분해/**조합**·**조사 선택**·**한↔영 자판 변환**(두벌식)).
+  - **해시/인코딩** — `HashUtils`(SHA-256/512 hex·Base64 표준/URL-safe·Hex).
+  - **JSON** — `JsonUtils`(Jackson 3 `tools.jackson.*` 기반 null-safe `toJson`/`fromJson`/`TypeReference`, `JacksonConfig` 규칙 동일).
+- **기존 확장** — `MaskingUtils` 에 **주민번호·카드·계좌·주소 마스킹** 추가(기존 이름/이메일/전화 유지, 가산).
+- **테스트** — `framework-core/src/test/.../util/CoreUtilsTest.java`(JUnit5+AssertJ, 7 메서드). core 의 `testImplementation spring-boot-starter-test` 로 의존 충분 → **build.gradle 무변경**.
+- **문서** — `README.md`("framework-core — SI 공통 유틸" 절 추가) · `HANDOFF.md`(6절 함정 2줄: util/support 구분, 유틸 주의점). **STACK/libs/settings/imports/카탈로그 무변경**(빈·새 라이브러리 0).
 
 ## 현재 상태 (적용/검증)
-- 신규/변경 파일 모두 repo 반영. 정적 점검 통과(괄호 균형, 패키지=디렉터리, **Jackson2(databind/core) import 0**). MfaService/Properties/스토어 시그니처와 컨트롤러·게이트 호출 교차검증 완료.
-- ⚠️ **실제 gradle 컴파일 미검증**(작성 환경 Maven Central 차단). 받는 쪽: `./gradlew :framework:framework-mfa:compileJava :framework:framework-security:compileJava` + `./gradlew spotlessApply`.
-- 런타임 전제: 멀티 인스턴스는 **챌린지 store=redis 필수**(로그인 1·2단계가 다른 파드일 수 있음), 운영 등록 store=jdbc(`mfa-postgres.sql`). OTP 쓰려면 `OtpSender` 빈 등록 필요(미등록 시 TOTP 만).
+- 신규/변경 파일 모두 repo 반영. 정적 점검 통과(괄호 균형, 패키지=디렉터리, **실제 `com.fasterxml` import 0건** — JsonUtils 의 fasterxml 문자열은 "쓰지 말라"는 주석).
+- **알고리즘 실행 검증 완료(JDK source-launch)**: 사업자 124-81-00998·법인 130111-0006246 유효, RRN self-consistent, Luhn(4111…/4532…/위조), 한글금액 123456→"십이만삼천사백오십육", 초성 "안녕하세요"→"ㅇㄴㅎㅅㅇ", 조사, 자모조합(닭+ㅏ→달가·값), 한영 "dkssudgktpdy"→"안녕하세요", sha256("abc") 표준벡터 → **전수 통과**.
+- ⚠️ **실제 gradle 컴파일은 미검증**(작성 환경 Maven Central 차단). 특히 **`JsonUtils` 만 런타임 미검증**(Jackson jar 없음) — `tools.jackson.core.type.TypeReference` import 1줄만 받는 쪽에서 확인. 나머지는 순수 JDK 라 안전.
+- 받는 쪽: `./gradlew :framework:framework-core:compileJava :framework:framework-core:test` + `./gradlew spotlessApply`(palantir 정렬).
 
-## 켜는 법 (application.yml)
-```yaml
-framework:
-  mfa:
-    enabled: true
-    policy: ENROLLED          # ENROLLED=등록자만 2차 인증(점진 도입) | OFF=강제 비활성
-    issuer: "si-msa"          # otpauth 라벨
-    totp: { enabled: true, algorithm: SHA1, digits: 6, period-seconds: 30, window: 1, recovery-codes: 10 }
-    otp:  { enabled: false, length: 6, auto-send: true }     # OtpSender 빈 있을 때만
-    challenge:  { ttl: PT5M, max-attempts: 5, store: { type: redis } }   # 멀티 인스턴스=redis
-    enrollment: { store: { type: jdbc } }                                # 운영=jdbc
-```
-- 흐름: `POST /api/v1/auth/login` → (MFA 필요) `data=MfaTicket{ticket,methods,...}` → `POST /api/v1/auth/mfa/verify {ticket,method,code}` → `TokenResponse`. 등록: 인증 후 `POST /api/v1/mfa/enroll/totp` → `/confirm {code}`(복구코드 반환). 빈: `MfaService`·`MfaGate`(자동), OTP 발송은 프로젝트가 `OtpSender` 구현.
+## 켜는 법 (설정 불필요)
+- 정적 유틸이라 토글/설정/빈 등록 없음. `import com.company.framework.core.util.*` 후 바로 호출.
+- 예) `KoreanRegNoUtils.isValidBusinessNo("124-81-00998")` · `MoneyUtils.toKoreanAmount(50000)`("일금 오만원정") · `HangulUtils.matchesChosung("사과","ㅅㄱ")` · `HolidayUtils.nextBusinessDay(d, extraHolidays)`(음력/대체공휴일은 특일정보 API/사내표에서 주입).
 
 ## 바로 다음 할 일 (Next)
-1. 받는 쪽 컴파일 확인 + `spotlessApply`. 멀티 인스턴스면 challenge=redis·enrollment=jdbc 설정 + `mfa-postgres.sql` 적용. OTP 쓰면 `OtpSender`(framework-notification 연계 가능) 구현.
-2. **다음 묶음 선택**: 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) 또는 **관측(observability)** — 분산추적은 core 에 micrometer-tracing-otel 보유, 메트릭/로그 표준화·대시보드가 후보.
-   - (선택) idempotency 에 **JdbcIdempotencyStore** 추가(현재 memory/redis만).
-3. 이후: 게이트웨이/k8s/CI-CD 멀티서비스화. (상세 `docs/FRAMEWORK_MODULES.md` 4절)
+1. 받는 쪽 `compileJava`+`test`+`spotlessApply` 확인(특히 JsonUtils 의 Jackson3 import). 음력/대체공휴일 적재 소스 결정(공공데이터포털 특일정보 API → `Set<LocalDate>` 캐싱).
+2. **다음 묶음 선택**(이전 세션 후보 유효): **관측(observability)** — core 에 micrometer-tracing-otel 보유, 메트릭/로그 표준화·대시보드 / **규제특화 잔여**(pki/hsm/recon/egov, 해당 사업만) / **JdbcIdempotencyStore**(현재 memory/redis만) / 게이트웨이·k8s·CI-CD 멀티서비스화.
+   - (선택) 한글 `korToEng`(역변환) 추가, 날짜 유틸에 한국 분기/반기 헬퍼 등 유틸 추가 보강.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **`MfaGate` 는 framework-security 의 nullable SPI** — `LoginService` 3번째 생성자(9-arg) 추가, **기존 5/8-arg 생성자 유지**(하위호환). `AuthController#login` 반환형이 `ApiResponse<Object>`(토큰 케이스 JSON 은 동일). MFA 빈 없으면 단일단계 그대로.
-- **`LoginAuditListener` 실패 판정 일반화**: `==LOGIN_FAILURE` → `name().endsWith("FAILURE")`(MFA_FAILURE 포함, 미래 이벤트 대비).
-- **MFA 경로 보안 경계**: 2단계 검증은 JWT 이전이라 `/api/v1/auth/mfa/**`(기존 permitAll `/api/*/auth/**` 에 포함, **SecurityAutoConfiguration 무수정**). 등록/관리는 `/api/v1/mfa/**`(인증). 현재 사용자=`CurrentUserProvider.getCurrentUser()`=JWT subject.
-- **챌린지 store 는 로그인 1·2단계 사이 단기 상태** → 인메모리는 멀티 파드에서 무력 → **멀티 인스턴스 redis 필수**. 등록은 영속 → jdbc.
-- **새 외부 의존성 0 유지**: TOTP/Base32/HOTP/복구코드 전부 JDK 자체 구현(googleauth/zxing/commons-codec 불요). 인프라성 JSON 은 수기 직렬화(`RedisMfaChallengeStore` Base64 수기, Jackson 미사용).
-- (기존) 새 모듈/변경은 `settings.gradle`/`imports` 등록 · BOM 밖 새 라이브러리만 카탈로그 핀(이번 0) · `IdempotencyStore.remove` SPI · SXSSF `close()` · Batch6 패키지 이동 & JobLauncher→JobOperator · Spring7 메일 jakarta.
+- **`util` vs `support` 구분**: `core/util`=상태없는 순수 정적 헬퍼(컨텍스트 무의존) → SI 공통 유틸 자리. `<module>/support`=모듈전용·컨텍스트결합 헬퍼. **core 에 support 없음** — 범용 유틸을 support 로 만들지 말 것. util 은 빈 없음 → `imports` 무변경.
+- **외국인등록번호**: 2020-10 이후 검증번호(체크섬) 폐지 → `isValidForeignerNo` 는 **형식만** 검증(체크섬 적용 금지).
+- **음력/대체공휴일**: 양력 변환표 필요 → `HolidayUtils` 가 자동계산하지 않고 `extraHolidays` 주입식. 자동 고정은 양력 고정공휴일+주말만.
+- **JsonUtils 는 Jackson 3 전용**(`tools.jackson.*`). `com.fasterxml.*` import 금지(주석 언급은 무방). 직렬화 실패는 `BusinessException`(INTERNAL_ERROR/INVALID_INPUT)로 변환.
+- **범용 유틸 재발명 금지**: `StringUtils`/`CollectionUtils`/`ObjectUtils` 는 Spring·Commons 사용. 공통엔 한국·도메인·스택(Jackson3) 특화만.
+- (기존) MFA=security nullable SPI(`MfaGate`)·`LoginService` 9-arg·`AuthController` `ApiResponse<Object>` · 챌린지 store redis(멀티) · 새 모듈/변경은 `settings.gradle`/`imports` 등록 · BOM 밖 새 라이브러리만 카탈로그 핀 · Jackson3 전역 · Spring7 메일 jakarta.
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
-1. 신규: `framework/framework-<X>/`(config Properties+AutoConfiguration · 도메인 패키지 · imports FQCN). 확장: 기존 모듈에 패키지/빈 추가 + imports 에 새 autoconfig 줄 추가.
-2. `build.gradle`: 능력 전이=`api`, 내부구현=`implementation`, 호스트/선택 의존=`compileOnly`(+test 에 동일 모듈 추가). **BOM 밖 새 라이브러리만** 카탈로그+ext 핀.
+1. 신규: `framework/framework-<X>/`(config Properties+AutoConfiguration · 도메인 패키지 · imports FQCN). 확장: 기존 모듈에 패키지/빈 추가 + imports 에 새 autoconfig 줄. **단, 빈 없는 순수 유틸은 `core/util` 에 클래스만 추가(오토컨피그/imports 무변경).**
+2. `build.gradle`: 능력 전이=`api`, 내부구현=`implementation`, 호스트/선택 의존=`compileOnly`(+test). **BOM 밖 새 라이브러리만** 카탈로그+ext 핀.
 3. `settings.gradle`(신규 모듈) / `imports`(새 autoconfig) 등록 잊지 말 것.
-4. 코드 전 **Boot4/Spring7/Jackson3 + 외부 라이브러리 API 를 공식 소스(GitHub raw)로 확정**(메이저 버전업=패키지 이동 잦음, 컴파일 미검증 환경).
-5. 오토컨피그: `@AutoConfiguration(afterName=관련 Boot/프레임워크 autoconfig)` + `@ConditionalOnClass/Property` + 빈 `@ConditionalOnMissingBean`. 선택 의존 모듈 연계는 `@ConditionalOnClass(타 모듈 마커)`+`@ConditionalOnBean`(+compileOnly). 교체형 SPI 는 `@ConditionalOnMissingBean(타입)` 으로 기본구현.
-6. 검증: `./gradlew :...:compileJava` (+`spotlessApply`).
-7. 드롭인: 변경 파일 전부(모듈 폴더 + 변경된 기존 파일 + `settings.gradle`/`imports`/필요 시 카탈로그·문서) → 한 zip, 루트에서 `unzip -o`.
+4. 코드 전 **Boot4/Spring7/Jackson3 + 외부 라이브러리 API 를 공식 소스(GitHub raw)로 확정**. **틀리면 조용히 잘못되는 알고리즘(체크섬/포맷/조합)은 순수 JDK 로 실제 실행 검증 후 박을 것**(이번 세션 패턴).
+5. 오토컨피그: `@AutoConfiguration(afterName=…)` + `@ConditionalOnClass/Property` + 빈 `@ConditionalOnMissingBean`. 교체형 SPI 는 `@ConditionalOnMissingBean(타입)`.
+6. 검증: `./gradlew :...:compileJava (+:test) (+spotlessApply)`.
+7. 드롭인: 변경 파일 전부(모듈/유틸 + 변경된 기존 파일 + 필요 시 settings/imports/카탈로그·문서) → 한 zip, 루트에서 `unzip -o`.
 
 
 <!-- 갱신 끝 -->
