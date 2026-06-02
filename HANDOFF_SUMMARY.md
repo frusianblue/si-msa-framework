@@ -37,7 +37,7 @@
 1. 받는 쪽 `:framework:framework-idempotency:compileJava :test (+spotlessApply)` — 12케이스(jdbc 6 + snapshot 4 + interceptor 8 중 신규 12) 그린 확인. 특히 filter `@Order`/`@ConditionalOnWebApplication` 활성·재생 e2e.
 2. (선택) user-service 에 `@Idempotent` + `replay.enabled=true` + `store.type=jdbc` 실적용, 타임아웃 재시도 시나리오로 동일 응답 재생 e2e(devops). 전체 만료 청소 잡(스케줄러 `DELETE WHERE expires_at<=now`) 동반.
 3. (선택·정합성 강화) 동일 키+다른 페이로드 충돌 시 IETF 권고대로 422 반환하려면 요청 지문(payload hash) 저장/비교 필요 — 현재는 미구현(키만으로 판정). 별도 토글로 후속 검토.
-4. **누적 문서 동기화 미완**: 이번 세션도 모듈 README 만 갱신. `HANDOFF.md`(멱등 재생 절)·`docs/FRAMEWORK_MODULES.md`(idempotency 토글 표에 replay 행)·`STACK.md`(새 라이브러리 0) 반영 권장.
+4. **누적 문서 동기화 완료**: `HANDOFF.md`(모듈 항목·학습/함정 3건·7절 완료/다음 우선순위)·`docs/FRAMEWORK_MODULES.md`(현황·완료 항목·다음 후보·토글 표·금융 프리셋)·`STACK.md`(의존성 무변경 노트·H2 test-scope)·루트 `README.md`(idempotency 절: store=memory\|redis\|jdbc + replay) 전부 반영. 5개 문서 모두 최신.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
 - **응답 캡처는 필터 래핑 전제**: 인터셉터는 응답을 *교체*할 수 없다(디스패처가 받은 응답 고정). 본문 캡처/재생하려면 **필터**가 `ContentCachingResponseWrapper`로 감싸고 `finally`에서 `copyBodyToResponse()` 해야 한다. 인터셉터는 `WebUtils.getNativeResponse(res, ContentCachingResponseWrapper.class)`로 래퍼를 찾는다. 필터는 secure-web 처럼 평범한 `@Bean`+`@Order`(Boot 자동 등록)이며 응답을 가장 안쪽에서 감싸야 하므로 **`@Order(LOWEST_PRECEDENCE)`**(요청 스크리닝 필터들보다 안쪽).

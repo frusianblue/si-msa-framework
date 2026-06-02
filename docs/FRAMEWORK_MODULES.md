@@ -7,7 +7,7 @@
 
 ---
 
-## 0. 진행 현황 (2026-06-02)
+## 0. 진행 현황 (2026-06-03)
 - ✅ **토대**: framework-idempotency · framework-i18n · framework-idgen · framework-client (선택형, 3단 토글 적용)
 - ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc|kafka)
 - ✅ **framework-secure-web**: 보안헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋(필터 계층, XSS 본문은 core)
@@ -16,7 +16,8 @@
 - ✅ **규제특화 시작**: framework-mfa(2단계 인증 — TOTP/OTP + ISMS-P 복구코드, **외부 의존성 0개**, security 로그인 흐름에 `MfaGate` SPI 로 연결)
 - ✅ **운영/관측**: framework-observability(공통 메트릭 태그 `MeterRegistryCustomizer` · Boot4 네이티브 구조화 JSON 로그 · 메트릭/트레이스 OTLP 익스포터 표준, 전부 토글·기본 off). **외부 의존성 0개**(레지스트리/익스포터는 호스트 runtimeOnly opt-in, Boot BOM 관리). k8s 샘플 `deploy/k8s/observability.yaml`
 - ✅ **SI 공통 유틸 보강(2026-06-02)**: `framework-core/util` 에 검증(`KoreanRegNoUtils`·`ValidationUtils`)·날짜/영업일(`DateUtils`·`HolidayUtils`)·금액(`MoneyUtils`)·한글(`HangulUtils`)·해시(`HashUtils`)·JSON(`JsonUtils`) 신규 + `MaskingUtils` 확장. 빈/오토컨피그 없는 순수 정적, **새 외부 의존성 0**(JSON 만 Jackson 3). 회귀 테스트 `CoreUtilsTest`. + **빌드 인프라 픽스**: 루트 `subprojects` 에 `testRuntimeOnly junit-platform-launcher` 추가(Gradle 9 에서 테스트 발견 단계 실패 방지, 전 모듈 공통).
-- ⏭️ **다음 후보**: 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · (선택) idempotency JdbcIdempotencyStore · **그릇 정비**(게이트웨이/k8s 멀티서비스/CI-CD)
+- ✅ **멱등성 확장(2026-06-03)**: framework-idempotency 에 **JDBC 스토어**(`store.type=jdbc`, 영속·다중 인스턴스 공유, DDL `db/idempotency-postgres.sql`) + **응답 재생(replay) 모드**(`replay.enabled`, 중복 시 409 대신 저장 응답 재생, 기본 off=하위호환). **외부 의존성 0개**(jdbc/web=compileOnly, H2=test-scope). 코덱·선점·재생 분기 순수 JDK 실행검증.
+- ⏭️ **다음 후보**: 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · **그릇 정비**(게이트웨이/k8s 멀티서비스/CI-CD) · (선택) 멱등 재생 페이로드 지문(payload hash)
 - ℹ️ **DB 범위 정리(2026-05-31)**: 읽기/쓰기 분리(primary/replica)까지 완료. *서로 다른 독립 DB 다중 연결*(DB별 SqlSessionFactory/tx매니저/@MapperScan)은 **미구현 — 필요 시 추가**. 분산 원자성은 XA 대신 Outbox/Saga로.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
@@ -96,7 +97,7 @@ public class XxxAutoConfiguration {
 
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
-| ✅ **framework-idempotency** | **정확히-한번/멱등키**(중복요청·중복결제 차단) | `framework.idempotency.enabled` + `store.type=redis\|jdbc` | [선택] | 금 ★ |
+| ✅ **framework-idempotency** | **정확히-한번/멱등키**(중복요청·중복결제 차단) + **응답 재생**(중복 시 저장 응답 재생) | `framework.idempotency.enabled` + `store.type=memory\|redis\|jdbc` (+`replay.enabled`) | [선택] | 금 ★ |
 | ✅ framework-messaging | Kafka + **Outbox**(발행: 유실/중복 방지) **+ 소비자측 멱등 소비**(`IdempotentEventProcessor`: `x-event-id` 헤더로 중복 배달 1회 처리, 실패 시 키 해제→재배달 재처리). 멱등 저장소는 framework-idempotency(redis 권장) | `framework.messaging.enabled`(+`outbox.relay.enabled`)·`framework.messaging.consumer.enabled` | [선택] | 금 ★ |
 | ✅ framework-datasource | **읽기/쓰기 분리 라우팅**(primary/replica). *독립 다중 DB(별도 SqlSessionFactory/tx매니저)는 미구현 — 추후* | `framework.datasource.routing.enabled` | [선택] | 금/공 |
 | framework-saga | 분산 트랜잭션/보상(Saga) | `framework.saga.enabled` | [선택] | 금 |
@@ -157,7 +158,7 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
 ```yaml
 # application-finance.yml  (금융 풀세트)
 framework:
-  idempotency: { enabled: true,  store: { type: redis } }
+  idempotency: { enabled: true,  store: { type: jdbc }, replay: { enabled: true } }  # 중복 차단+응답 재생, 영속 공유
   messaging:   { enabled: true, outbox: { relay: { enabled: true } } }
   datasource:  { routing: { enabled: true } }   # primary/replica 읽기·쓰기 분리
   audit:       { enabled: true,  store: { type: jdbc } }

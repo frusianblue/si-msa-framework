@@ -53,7 +53,7 @@
 | `spring-boot-starter-mail` | 메일 채널(JavaMailSender, jakarta.mail) — Boot BOM 관리 | framework-notification(선택) |
 | `spring-boot-starter-flyway` + `flyway-database-postgresql` | DB 마이그레이션(PG 10+) | 서비스 |
 | `org.postgresql:postgresql` | 운영 DB 드라이버(프레임워크는 미포함) | 각 서비스 |
-| `com.h2database:h2` | 로컬/테스트 DB | 각 서비스 |
+| `com.h2database:h2` | 로컬/테스트 DB | 각 서비스 + framework-idempotency test(JdbcIdempotencyStore 실DB 검증, `testRuntimeOnly`) |
 | `spring-cloud-starter-gateway-server-webflux` | API 게이트웨이(Boot 4 아티팩트) | gateway |
 | `spring-cloud-starter-circuitbreaker-reactor-resilience4j` | 회로차단 | gateway |
 
@@ -61,6 +61,8 @@
 > 모두 `framework-core`/`framework-security` + (필요 시) `spring-boot-starter-web/jdbc/data-redis` 를 `compileOnly`(호스트 제공)로만 사용하고,
 > 서킷브레이커는 자체 구현, 거부 응답 JSON 은 수기 직렬화(Jackson 비의존). 따라서 `libs.versions.toml` 변경 없음. 향후 messaging(Kafka)/batch 등 BOM 밖 라이브러리가
 > 필요한 모듈을 추가할 때 비로소 이 표에 행을 추가한다.
+>
+> **멱등성 확장(2026-06: JDBC 스토어 + 응답 재생)도 새 의존성 0.** `JdbcIdempotencyStore` 는 `spring-boot-starter-jdbc`(compileOnly), 재생 필터/래퍼는 `spring-boot-starter-web`(compileOnly, `ContentCachingResponseWrapper`/`OncePerRequestFilter`)만 쓰고 재생 저장은 수기 고정 셰이프(`status\ncontentType\nbase64(body)`, Jackson 비의존). 테스트는 `spring-boot-starter-jdbc`/`-web`(testImplementation, **compileOnly 는 test 로 전이 안 됨**) + H2(testRuntimeOnly) — 모두 Boot BOM 관리라 카탈로그 무변경.
 
 ## 4. 테스트 / 개발 도구
 | 항목 | 버전 | 용도 | 적용 위치 |

@@ -206,13 +206,20 @@ framework:
 
 ### framework-idempotency (정확히-한번 / 금융 ★)
 ```yaml
-framework: { idempotency: { enabled: true, store: { type: redis } } }   # 운영 replicas>=2 면 redis
+framework:
+  idempotency:
+    enabled: true
+    store: { type: jdbc }       # memory(기본·단일) | redis(다중인스턴스) | jdbc(영속·DB공유)
+    replay: { enabled: true }   # 중복 시 409 대신 "저장된 응답 재생"(기본 false=409)
 ```
 ```java
 @PostMapping("/api/v1/transfers")
-@Idempotent                                  // Idempotency-Key 헤더로 중복요청 차단(없으면 400, 중복 409)
+@Idempotent                                  // Idempotency-Key 헤더로 멱등 처리(헤더 없으면 400)
 public ApiResponse<Void> transfer(@RequestBody TransferRequest req) { ... }
 ```
+- 기본(`replay.enabled=false`): 중복 키 → 409. 운영 replicas≥2 면 `store.type=redis|jdbc`.
+- 재생 모드(`replay.enabled=true`): 완료된 동일 요청은 **저장된 응답 그대로 재생**, 처리중 409. 클라이언트 타임아웃 재시도에 동일 결과 보장. (실패/5xx 는 캐시 안 하고 재시도 허용. 작은 JSON 응답 권장 — 본문 버퍼링.)
+- 영속/다중 인스턴스 공유는 `store.type=jdbc`(테이블 `db/idempotency-postgres.sql`) 또는 `redis`.
 
 ### framework-i18n (메시지 외부화 / 다국어)
 ```yaml
