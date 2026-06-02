@@ -13,4 +13,7 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // 오토컨피그가 enabled=true 시 MfaEnrollmentController(@RestController)를 무조건 등록 → 인스턴스화에 web 타입 필요.
+    //   web 은 main 에서 compileOnly(비전이)라 test 에서 재선언해야 컨텍스트가 기동된다(레포 표준).
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
 }

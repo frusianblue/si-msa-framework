@@ -48,6 +48,8 @@
 - **WireMock 은 standalone(shaded) 픽스.** Boot4 가 끌어오는 Jetty 12.1(EE10)·Jackson 3 과 일반 wiremock-jetty12 가 충돌 → `org.wiremock:wiremock-standalone` 으로 내부 의존 셰이딩. 공개 API 는 `com.github.tomakehurst.wiremock.*` 유지.
 - **archtest 는 전 모듈 project 의존이 필수.** ArchUnit 은 바이트코드를 읽으므로 검사 대상 모듈 main 이 test 클래스패스에 있어야 임포트됨. 각 모듈 compileOnly 3rd-party 는 안 올라와도, 규칙이 `com.company.framework` 의존만 보므로 미해소 외부 타입 무방. **새 모듈 추가 시 의존 한 줄 누락하면 그 모듈은 검사 사각지대.**
 - **조건부 규칙엔 `.allowEmptyShould(true)`** — 모듈 부분 빌드/필터 결과가 비어도 ArchUnit 1.4 의 "empty should" 실패를 막음.
+- **MFA 오토컨피그 테스트는 web 을 test 에 재선언해야 기동(2026-06-03 픽스)**: `MfaAutoConfiguration` 은 `enabled=true` 시 `MfaEnrollmentController`(@RestController)를 **무조건** 등록 → 컨텍스트가 이 빈을 인스턴스화하며 spring-web 타입을 로드한다. web 은 main 에서 `compileOnly`(비전이)라 `framework-mfa/build.gradle` 에 `testImplementation 'spring-boot-starter-web'` 가 없으면 `ApplicationContextRunner` 가 기동 실패 → `hasNotFailed()` 에서 AssertionError. (client 와 동일한 "compileOnly 비전이" 함정)
+- **콘솔 한글 깨짐 = 파일 인코딩 아님, 출력 스트림 인코딩(2026-06-03 픽스)**: IntelliJ 파일 인코딩 UTF-8 은 소스 읽기/쓰기만 관여. JDK 21 은 `file.encoding`=UTF-8 이지만 Windows(한국어)는 `stdout/stderr` 가 콘솔 코드페이지(MS949)로 잡혀 `@DisplayName` 한글이 깨진다. → 루트 `build.gradle` Test 태스크에 `jvmArgs(-Dstdout.encoding/-Dstderr.encoding/-Dfile.encoding=UTF-8)`+`defaultCharacterEncoding='UTF-8'`, `gradle.properties` 에 `org.gradle.jvmargs=...UTF-8`(데몬). **터미널 자체도 UTF-8 이어야 함**(Windows: `chcp 65001`, 또는 IntelliJ 콘솔/`-Dfile.encoding` 설정).
 - (지난) `compileOnly` 비전이(테스트 재선언) · 모듈 toggle 3단 기본 off · 순수 로직 분리 JDK 검증 · Jackson3(`tools.jackson.*`) · `[this-escape]` 생성자 메서드참조 금지 · JUnit Platform launcher 명시(Gradle 9).
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)

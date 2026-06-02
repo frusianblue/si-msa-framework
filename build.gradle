@@ -57,6 +57,19 @@ subprojects {
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
         finalizedBy tasks.named('jacocoTestReport')
+
+        // 한글 깨짐 방지: 포크된 테스트 워커 JVM 이 @DisplayName/로그 등을 콘솔에 쓸 때 UTF-8 로 출력.
+        //   JDK 18+ 는 file.encoding 이 이미 UTF-8 이지만, Windows(한국어) 에서는 stdout/stderr 가
+        //   여전히 콘솔 코드페이지(MS949/cp949)로 잡혀 깨진다. 스트림 인코딩을 명시한다.
+        //   (stdout.encoding/stderr.encoding = JDK19+ 표준 프로퍼티)
+        jvmArgs(
+                '-Dfile.encoding=UTF-8',
+                '-Dstdout.encoding=UTF-8',
+                '-Dstderr.encoding=UTF-8',
+                '-Dsun.stdout.encoding=UTF-8',
+                '-Dsun.stderr.encoding=UTF-8')
+        systemProperty 'file.encoding', 'UTF-8'
+        defaultCharacterEncoding = 'UTF-8'
     }
 
     // Gradle 9 + 최신 JUnit Platform 조합에서는 junit-platform-launcher 가 자동 주입되지 않는다.
