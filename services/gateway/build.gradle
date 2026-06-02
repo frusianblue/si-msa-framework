@@ -8,5 +8,7 @@ dependencies {
     implementation 'io.micrometer:micrometer-tracing-bridge-otel'
     // 회복탄력성: Spring Framework 7 resilience 기반 CircuitBreaker
     implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-reactor-resilience4j'
+    // 레이트리밋: Redis 기반 RequestRateLimiter(토큰버킷). 분산/전역 한도 — KeyResolver(principalKeyResolver)와 함께 동작.
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
