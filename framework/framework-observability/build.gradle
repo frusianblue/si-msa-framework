@@ -10,4 +10,7 @@ dependencies {
     api project(':framework:framework-core')
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    // 테스트 API(JUnit5 + AssertJ) — BOM 버전. (실행 런처 junit-platform-launcher 는 루트 subprojects 에서 일괄 적용)
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
