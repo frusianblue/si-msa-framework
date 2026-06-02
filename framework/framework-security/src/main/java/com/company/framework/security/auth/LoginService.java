@@ -34,6 +34,7 @@ public class LoginService {
     private final ApplicationEventPublisher events; // nullable
     private final ConcurrentSessionService concurrentSessions; // nullable
     private final ConcurrentSessionProperties concurrentProperties; // nullable
+    private final MfaGate mfaGate; // nullable — framework-mfa 가 있고 활성일 때만 주입
 
     /** 하위호환 생성자(감사 이벤트/동시로그인 제어 미사용). */
     public LoginService(
@@ -45,6 +46,7 @@ public class LoginService {
         this(authenticator, jwtProvider, tokenStore, loginAttempts, loginAttemptProperties, null, null, null);
     }
 
+    /** 하위호환 생성자(MFA 게이트 미사용). */
     public LoginService(
             Authenticator authenticator,
             JwtProvider jwtProvider,
@@ -54,6 +56,28 @@ public class LoginService {
             ApplicationEventPublisher events,
             ConcurrentSessionService concurrentSessions,
             ConcurrentSessionProperties concurrentProperties) {
+        this(
+                authenticator,
+                jwtProvider,
+                tokenStore,
+                loginAttempts,
+                loginAttemptProperties,
+                events,
+                concurrentSessions,
+                concurrentProperties,
+                null);
+    }
+
+    public LoginService(
+            Authenticator authenticator,
+            JwtProvider jwtProvider,
+            TokenStore tokenStore,
+            LoginAttemptService loginAttempts,
+            LoginAttemptProperties loginAttemptProperties,
+            ApplicationEventPublisher events,
+            ConcurrentSessionService concurrentSessions,
+            ConcurrentSessionProperties concurrentProperties,
+            MfaGate mfaGate) {
         this.authenticator = authenticator;
         this.jwtProvider = jwtProvider;
         this.tokenStore = tokenStore;
@@ -62,6 +86,7 @@ public class LoginService {
         this.events = events;
         this.concurrentSessions = concurrentSessions;
         this.concurrentProperties = concurrentProperties;
+        this.mfaGate = mfaGate;
     }
 
     /** 하위호환: IP 미상(또는 IP 비결합 정책)일 때. 키는 loginId 단독. */
@@ -69,20 +94,52 @@ public class LoginService {
         return login(command, null);
     }
 
+    /**
+     * 하위호환 단일단계 로그인. 내부적으로 {@link #beginLogin} 을 호출하되, MFA 가 필요하면 단일단계 API 로는
+     * 완료할 수 없으므로 예외를 던진다. <b>MFA 미사용 환경에서는 항상 토큰을 즉시 반환</b>(기존 동작 동일).
+     */
     public TokenResponse login(LoginCommand command, String clientIp) {
+        LoginOutcome outcome = beginLogin(command, clientIp);
+        if (outcome instanceof LoginOutcome.Authenticated authenticated) {
+            return authenticated.tokens();
+        }
+        throw new BusinessException(
+                ErrorCode.Common.UNAUTHORIZED, "2단계 인증이 필요합니다. /api/v1/auth/mfa/verify 로 인증을 완료하세요.");
+    }
+
+    /**
+     * 1차 인증 → (MFA 게이트가 필요하다고 판정하면) 챌린지 발급, 아니면 토큰 발급. 잠금/감사/실패카운트 처리는
+     * 단일단계와 동일하게 적용된다. MFA 게이트가 없으면(mfaGate==null) 항상 {@link LoginOutcome.Authenticated}.
+     */
+    public LoginOutcome beginLogin(LoginCommand command, String clientIp) {
         String key = attemptKey(command.loginId(), clientIp);
         loginAttempts.assertNotLocked(key); // 잠겨 있으면 429(LOGIN_LOCKED)
         try {
             AuthenticatedUser user = authenticator.authenticate(command);
-            loginAttempts.reset(key); // 성공 → 카운터 초기화
+            loginAttempts.reset(key); // 1차 인증 성공 → 카운터 초기화
+            if (mfaGate != null && mfaGate.isRequired(user)) {
+                MfaTicket ticket = mfaGate.issueChallenge(user, clientIp);
+                publish(LoginAuditEvent.Type.MFA_CHALLENGE, command.loginId(), clientIp, null);
+                return new LoginOutcome.MfaRequired(ticket);
+            }
             TokenResponse response = issue(user.userId(), user.roles());
             publish(LoginAuditEvent.Type.LOGIN_SUCCESS, command.loginId(), clientIp, null);
-            return response;
+            return new LoginOutcome.Authenticated(response);
         } catch (RuntimeException e) {
             loginAttempts.recordFailure(key); // 실패 → 카운트(임계치 초과 시 잠금)
             publish(LoginAuditEvent.Type.LOGIN_FAILURE, command.loginId(), clientIp, e.getMessage());
             throw e;
         }
+    }
+
+    /**
+     * 2차 인증 검증 성공 후 토큰을 발급한다(framework-mfa 의 검증 컨트롤러가 호출). 동시로그인 제어/세션 등록은
+     * 단일단계 발급과 동일하게 적용된다.
+     */
+    public TokenResponse completeMfa(String userId, List<String> roles, String clientIp) {
+        TokenResponse response = issue(userId, roles);
+        publish(LoginAuditEvent.Type.MFA_SUCCESS, userId, clientIp, null);
+        return response;
     }
 
     /** 실패 카운트 키 = 정책(LOGIN_ID | LOGIN_ID_AND_IP)에 따라 결정. IP 미상이면 loginId 로 폴백. */

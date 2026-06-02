@@ -6,6 +6,7 @@ import com.company.framework.security.jwt.JwtProvider;
 import com.company.framework.security.loginattempt.LoginAttemptProperties;
 import com.company.framework.security.loginattempt.LoginAttemptService;
 import com.company.framework.security.token.TokenStore;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -31,7 +32,8 @@ public class AuthAutoConfiguration {
             LoginAttemptProperties loginAttemptProperties,
             ApplicationEventPublisher eventPublisher,
             ConcurrentSessionService concurrentSessions,
-            ConcurrentSessionProperties concurrentSessionProperties) {
+            ConcurrentSessionProperties concurrentSessionProperties,
+            ObjectProvider<MfaGate> mfaGate) {
         return new LoginService(
                 authenticator,
                 jwtProvider,
@@ -40,7 +42,8 @@ public class AuthAutoConfiguration {
                 loginAttemptProperties,
                 eventPublisher,
                 concurrentSessions,
-                concurrentSessionProperties);
+                concurrentSessionProperties,
+                mfaGate.getIfAvailable());
     }
 
     @Bean

@@ -7,13 +7,14 @@
 
 ---
 
-## 0. 진행 현황 (2026-05-31)
+## 0. 진행 현황 (2026-06-02)
 - ✅ **토대**: framework-idempotency · framework-i18n · framework-idgen · framework-client (선택형, 3단 토글 적용)
 - ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc|kafka)
 - ✅ **framework-secure-web**: 보안헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋(필터 계층, XSS 본문은 core)
 - ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅) · framework-messaging(Transactional Outbox + Kafka 릴레이 **+ 소비자측 멱등 소비**, `x-event-id`↔framework-idempotency) · audit↔messaging 연동(`store.type=kafka`)
 - ✅ **업무 생산성**: framework-excel(POI 스트리밍/양식검증) · framework-batch(Batch6+Quartz) · framework-notification(메일/SMS/알림톡)
-- ⏭️ **다음 후보**: 규제특화(pki/mfa/hsm/recon/egov, 해당 사업만) 또는 관측(observability — 분산추적은 core 에 보유, 메트릭/로그 표준화) · (선택) idempotency JdbcIdempotencyStore
+- ✅ **규제특화 시작**: framework-mfa(2단계 인증 — TOTP/OTP + ISMS-P 복구코드, **외부 의존성 0개**, security 로그인 흐름에 `MfaGate` SPI 로 연결)
+- ⏭️ **다음 후보**: 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) 또는 관측(observability — 분산추적은 core 에 보유, 메트릭/로그 표준화) · (선택) idempotency JdbcIdempotencyStore
 - ℹ️ **DB 범위 정리(2026-05-31)**: 읽기/쓰기 분리(primary/replica)까지 완료. *서로 다른 독립 DB 다중 연결*(DB별 SqlSessionFactory/tx매니저/@MapperScan)은 **미구현 — 필요 시 추가**. 분산 원자성은 XA 대신 Outbox/Saga로.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
@@ -103,7 +104,7 @@ public class XxxAutoConfiguration {
 | 모듈 | 책임 | 토글 | 분류 | 규제 |
 |---|---|---|---|---|
 | framework-pki | GPKI/NPKI·전자서명·부인방지 | `framework.pki.enabled` | [선택] | 공/금 |
-| framework-mfa | 2차 인증/OTP | `framework.mfa.enabled` | [선택] | 금 |
+| ✅ framework-mfa | **2단계 인증(MFA)** — TOTP(RFC 6238)·OTP(SMS/메일/알림톡 `OtpSender` SPI)·**ISMS-P 일회용 복구코드**(SHA-256). security 로그인이 `MfaGate` SPI 로 2단계 분기(미사용 시 단일단계 그대로). 챌린지 저장소 memory\|redis(멀티 인스턴스는 redis 필수)·등록 저장소 memory\|jdbc. **외부 의존성 0개**(Base32/HOTP/TOTP/복구코드 전부 JDK) | `framework.mfa.enabled` + `policy=ENROLLED\|OFF`, `totp/otp.enabled`, `challenge/enrollment.store.type` | [선택] | 금/공 |
 | framework-crypto-hsm | HSM 키관리(PKCS#11) | `framework.crypto.provider=hsm` | [선택] | 금 |
 | framework-recon | 대사/정산 배치 | `framework.recon.enabled` | [선택] | 금 |
 | framework-egov-compat | 전자정부 표준프레임워크 호환 어댑터 | `framework.egov.enabled` | [선택] | 공 |

@@ -24,9 +24,14 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<TokenResponse> login(@RequestBody LoginCommand command, HttpServletRequest request) {
+    public ApiResponse<Object> login(@RequestBody LoginCommand command, HttpServletRequest request) {
         String clientIp = ClientIpResolver.resolve(request, loginAttemptProperties.getClientIpHeader());
-        return ApiResponse.ok(loginService.login(command, clientIp), "로그인 성공");
+        LoginOutcome outcome = loginService.beginLogin(command, clientIp);
+        if (outcome instanceof LoginOutcome.Authenticated authenticated) {
+            return ApiResponse.ok(authenticated.tokens(), "로그인 성공");
+        }
+        LoginOutcome.MfaRequired mfaRequired = (LoginOutcome.MfaRequired) outcome;
+        return ApiResponse.ok(mfaRequired.ticket(), "2단계 인증이 필요합니다.");
     }
 
     @PostMapping("/refresh")

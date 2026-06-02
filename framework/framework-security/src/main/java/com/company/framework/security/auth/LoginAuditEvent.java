@@ -11,7 +11,12 @@ public record LoginAuditEvent(Type type, String loginId, String clientIp, String
     public enum Type {
         LOGIN_SUCCESS,
         LOGIN_FAILURE,
-        LOGOUT
+        LOGOUT,
+        MFA_CHALLENGE,
+        MFA_SUCCESS,
+        MFA_FAILURE,
+        MFA_ENROLLED,
+        MFA_DISABLED
     }
 
     public static LoginAuditEvent of(Type type, String loginId, String clientIp, String detail) {

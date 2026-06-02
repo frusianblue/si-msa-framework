@@ -20,6 +20,7 @@ include 'framework:framework-messaging'     // 선택형: 신뢰성 발행(Trans
 include 'framework:framework-excel'          // 선택형: Excel 업/다운로드(POI 스트리밍 + 양식검증)
 include 'framework:framework-batch'          // 선택형: 배치(Spring Batch 실행/리스너 + Quartz cron 스케줄)
 include 'framework:framework-notification'   // 선택형: 알림 채널 추상화(메일/SMS/알림톡)
+include 'framework:framework-mfa'            // 선택형: 규제특화 2단계 인증(TOTP/OTP, ISMS-P 복구코드)
 
 // ----- 업무 / 인프라 서비스 -----
 include 'services:gateway'

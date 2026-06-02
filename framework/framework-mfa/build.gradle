@@ -1,0 +1,16 @@
+// 선택형 모듈: 규제특화 2단계 인증(MFA — TOTP/OTP, ISMS-P 복구코드). 의존성 추가 + framework.mfa.enabled=true 로만 활성.
+// 외부 의존성 0개: Base32/HOTP/TOTP/복구코드는 모두 JDK(javax.crypto.Mac, SecureRandom)로 직접 구현.
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // MfaGate/MfaTicket/LoginOutcome(security), LoginService.completeMfa, CurrentUserProvider(security→mybatis 경유) 사용.
+    // 의존 방향은 mfa → security 단방향(security 는 MfaGate 타입만 알고 구현은 모름).
+    api project(':framework:framework-security')
+    // jdbc(enrollment.store=jdbc)/redis(challenge.store=redis)/web 는 호스트 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지)
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
+    compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

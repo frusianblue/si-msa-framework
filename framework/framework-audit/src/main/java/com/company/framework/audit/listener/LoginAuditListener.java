@@ -20,12 +20,11 @@ public class LoginAuditListener {
 
     @EventListener
     public void on(LoginAuditEvent e) {
-        String result =
-                e.type() == LoginAuditEvent.Type.LOGIN_FAILURE ? AuditEvent.RESULT_FAILURE : AuditEvent.RESULT_SUCCESS;
+        String result = e.type().name().endsWith("FAILURE") ? AuditEvent.RESULT_FAILURE : AuditEvent.RESULT_SUCCESS;
         String actor = (e.loginId() != null && !e.loginId().isBlank()) ? e.loginId() : "anonymous";
         sink.save(new AuditEvent(
                 e.occurredAt(),
-                e.type().name(), // LOGIN_SUCCESS | LOGIN_FAILURE | LOGOUT
+                e.type().name(), // LOGIN_* | LOGOUT | MFA_*
                 actor,
                 "AUTH",
                 "SESSION",

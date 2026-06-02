@@ -1,0 +1,23 @@
+package com.company.framework.mfa.store;
+
+import java.util.List;
+
+/**
+ * 로그인 1단계 통과 후 2차 인증 완료 전까지의 서버측 대기 상태. 티켓으로 식별되며 단기 TTL 로 만료된다.
+ *
+ * @param userId 인증 대상 사용자
+ * @param roles 토큰 발급에 쓸 권한(2차 인증 성공 시 그대로 사용)
+ * @param methods 이 사용자가 쓸 수 있는 방식 코드(예: ["totp","otp"])
+ * @param otpCodeHash 발송형 OTP 코드의 SHA-256(발송한 경우만, 평문 미보관)
+ * @param attempts 누적 검증 실패 횟수(임계치 초과 시 챌린지 폐기)
+ */
+public record PendingAuth(String userId, List<String> roles, List<String> methods, String otpCodeHash, int attempts) {
+
+    public PendingAuth withOtpCodeHash(String hash) {
+        return new PendingAuth(userId, roles, methods, hash, attempts);
+    }
+
+    public PendingAuth withAttempts(int value) {
+        return new PendingAuth(userId, roles, methods, otpCodeHash, value);
+    }
+}
