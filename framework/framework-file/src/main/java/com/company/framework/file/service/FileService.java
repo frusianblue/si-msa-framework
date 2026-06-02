@@ -9,6 +9,7 @@ import com.company.framework.file.dto.FileMetaDto;
 import com.company.framework.file.mapper.FileMapper;
 import com.company.framework.file.storage.FileStorage;
 import com.company.framework.file.storage.StoredFile;
+import com.company.framework.file.validator.FileContentTypeValidator;
 import java.io.IOException;
 import java.io.InputStream;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,11 +24,17 @@ public class FileService {
     private final FileStorage storage;
     private final FileMapper fileMapper;
     private final FileStorageProperties props;
+    private final FileContentTypeValidator contentTypeValidator;
 
-    public FileService(FileStorage storage, FileMapper fileMapper, FileStorageProperties props) {
+    public FileService(
+            FileStorage storage,
+            FileMapper fileMapper,
+            FileStorageProperties props,
+            FileContentTypeValidator contentTypeValidator) {
         this.storage = storage;
         this.fileMapper = fileMapper;
         this.props = props;
+        this.contentTypeValidator = contentTypeValidator;
     }
 
     @Transactional
@@ -49,9 +56,12 @@ public class FileService {
             throw new BusinessException(ErrorCode.Common.INVALID_INPUT, "허용되지 않는 확장자입니다: " + ext);
         }
 
+        // 실제 바이트 기반 콘텐츠 검증(옵트인) → 신뢰 가능한 contentType 획득(헤더 위조 무시)
+        String resolvedContentType = contentTypeValidator.resolveAndValidate(file);
+
         StoredFile stored;
         try (InputStream in = file.getInputStream()) {
-            stored = storage.store(in, safeName, file.getContentType(), file.getSize());
+            stored = storage.store(in, safeName, resolvedContentType, file.getSize());
         } catch (IOException e) {
             throw new IllegalStateException("업로드 처리 실패", e);
         }
@@ -59,7 +69,7 @@ public class FileService {
         FileMetadata meta = new FileMetadata();
         meta.setOriginalName(safeName);
         meta.setStoredPath(stored.storedPath());
-        meta.setContentType(file.getContentType());
+        meta.setContentType(resolvedContentType);
         meta.setSize(file.getSize());
         meta.setStorageType(storage.type());
         fileMapper.insert(meta); // 감사필드 자동주입

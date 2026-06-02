@@ -14,5 +14,6 @@ dependencies {
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-core'  // CommonCodeController @PreAuthorize 검증 컴파일용
     testRuntimeOnly 'com.h2database:h2'  // 활성 경로 슬라이스(임베디드 DB) 검증용
 }

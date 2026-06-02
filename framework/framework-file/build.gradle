@@ -2,9 +2,12 @@ dependencies {
     api project(':framework:framework-core')
     api project(':framework:framework-mybatis')
     compileOnly 'org.springframework.security:spring-security-core'  // @PreAuthorize (선택)
+    compileOnly "org.apache.tika:tika-core:${tikaVersion}"           // 콘텐츠 타입 검출(선택·옵트인)
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-core'  // FileController @PreAuthorize 검증 컴파일용
+    testImplementation "org.apache.tika:tika-core:${tikaVersion}"    // 콘텐츠 검증 테스트용
     testRuntimeOnly 'com.h2database:h2'  // 활성 경로 슬라이스(임베디드 DB) 검증용
 }

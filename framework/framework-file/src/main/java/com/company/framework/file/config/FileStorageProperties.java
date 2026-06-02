@@ -1,5 +1,6 @@
 package com.company.framework.file.config;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -22,6 +23,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class FileStorageProperties {
     private boolean enabled = true;
     private Storage storage = new Storage();
+    private Validation validation = new Validation();
 
     public boolean isEnabled() {
         return enabled;
@@ -39,10 +41,61 @@ public class FileStorageProperties {
         this.storage = storage;
     }
 
+    public Validation getValidation() {
+        return validation;
+    }
+
+    public void setValidation(Validation validation) {
+        this.validation = validation;
+    }
+
+    /**
+     * 업로드 콘텐츠 검증 설정.
+     *  - content-type-detection=true 면 Tika 로 실제 바이트(매직넘버) 기반 MIME 을 검출해 위장 업로드를 차단하고,
+     *    메타에는 클라이언트가 보낸 값이 아닌 검출된 신뢰 MIME 을 기록한다. (tika-core 의존 필요 — 옵트인)
+     */
+    public static class Validation {
+        private boolean contentTypeDetection = false;
+        private Set<String> blockedContentTypes = new LinkedHashSet<>(List.of(
+                "application/x-dosexec",
+                "application/x-msdownload",
+                "application/x-executable",
+                "application/x-elf",
+                "application/x-sharedlib",
+                "application/x-mach-binary",
+                "application/x-httpd-php",
+                "application/x-php",
+                "application/x-sh",
+                "application/x-shellscript",
+                "text/x-shellscript",
+                "application/java-archive",
+                "application/javascript",
+                "text/javascript",
+                "text/html",
+                "application/xhtml+xml"));
+
+        public boolean isContentTypeDetection() {
+            return contentTypeDetection;
+        }
+
+        public void setContentTypeDetection(boolean contentTypeDetection) {
+            this.contentTypeDetection = contentTypeDetection;
+        }
+
+        public Set<String> getBlockedContentTypes() {
+            return blockedContentTypes;
+        }
+
+        public void setBlockedContentTypes(Set<String> blockedContentTypes) {
+            this.blockedContentTypes = blockedContentTypes;
+        }
+    }
+
     public static class Storage {
         private String type = "local";
         private String basePath = "./uploads";
         private long maxSize = 10 * 1024 * 1024;
+        private boolean encrypt = false; // true 면 저장소에 AES 암호화하여 보관(at-rest)
         private List<String> allowedExtensions = List.of(
                 "jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "hwp", "txt", "csv",
                 "zip");
@@ -75,6 +128,14 @@ public class FileStorageProperties {
 
         public void setMaxSize(long maxSize) {
             this.maxSize = maxSize;
+        }
+
+        public boolean isEncrypt() {
+            return encrypt;
+        }
+
+        public void setEncrypt(boolean encrypt) {
+            this.encrypt = encrypt;
         }
 
         public List<String> getAllowedExtensions() {
