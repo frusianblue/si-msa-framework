@@ -6,7 +6,7 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**모듈별 최소 테스트 + 아키텍처 규칙 강제 도입.** (1) 핵심 알고리즘 단위테스트 — JWT(`JwtProviderTest`), TOTP/Base32(`TotpTest`/`Base32Test`, RFC4648 벡터), RBAC 판정(`DynamicAuthorizationManagerTest`), 마스킹(`MaskingUtilsTest`). (2) 오토컨피그 로딩 — `MfaAutoConfigurationTest`(enabled/disabled 빈 등록), client 로딩은 WireMock 테스트에 포함. (3) **신규 테스트전용 모듈 `framework-archtest`** — ArchUnit 7규칙(모듈 순환금지·Jackson3 규약·mapper/domain 레이어 격리·*AutoConfiguration/*Properties 네이밍·필드주입 금지). (4) **WireMock 연동테스트 `ClientResilienceWireMockTest`** — 503 재시도→200·서킷 OPEN 차단·POST 비재시도. **새 런타임 의존성 0**(archunit/wiremock 은 test 전용).
+**모듈별 최소 테스트 + 아키텍처 규칙 강제 도입 — gradle BUILD 통과 확인.** (1) 핵심 알고리즘 단위테스트 — JWT(`JwtProviderTest`), TOTP/Base32(`TotpTest`/`Base32Test`, RFC4648 벡터), RBAC 판정(`DynamicAuthorizationManagerTest`), 마스킹(`MaskingUtilsTest`). (2) 오토컨피그 로딩 — `MfaAutoConfigurationTest`(enabled/disabled 빈 등록), client 로딩은 WireMock 테스트에 포함. (3) **신규 테스트전용 모듈 `framework-archtest`** — ArchUnit 7규칙(모듈 순환금지·Jackson3 규약·mapper/domain 레이어 격리·*AutoConfiguration/*Properties 네이밍·필드주입 금지). (4) **WireMock 연동테스트 `ClientResilienceWireMockTest`** — 503 재시도→200·서킷 OPEN 차단·POST 비재시도. **새 런타임 의존성 0**(archunit/wiremock 은 test 전용). + 콘솔 UTF-8 인코딩 고정.
 
 ## 최종 갱신
 - 일자: 2026-06-03 · 갱신자: <!-- 채우기 -->
@@ -25,22 +25,24 @@
   - `framework-security`: `JwtProviderTest`(발급/파싱 라운드트립·roles→ROLE_ 권한·키불일치/변조 거부), `DynamicAuthorizationManagerTest`(6케이스: 역할 매칭/거부·메서드 한정 매핑·미매핑→인증만·null→거부, StubSecurityMapper).
   - `framework-mfa`: `Base32Test`(RFC4648 벡터·20바이트 무손실 왕복·관대 디코드·잘못된 문자 예외), `TotpTest`(SHA1/256/512·6/8자리 결정적 왕복·공백/하이픈 정규화·형식 거부), `MfaAutoConfigurationTest`(enabled→Totp/MfaService/MfaGate/인메모리 스토어 빈·disabled→빈 없음, stub `CurrentUserProvider`).
 - **WireMock 연동테스트** `framework-client/.../ClientResilienceWireMockTest`: (a) 오토컨피그 로딩(enabled 빈 유무), (b) GET 503→재시도→200 "ok"(업스트림 2회), (c) 재시도 OFF·임계치2 → 3번째 호출 서킷 OPEN 차단(`CircuitOpenException` 체인·업스트림 정확히 2회), (d) POST 503 비재시도(업스트림 1회). 단일 RestClient 재사용으로 호스트 단위 브레이커 공유.
-- **build.gradle**: `framework-client` test 에 `spring-boot-starter-test`+`-web`(compileOnly 비전이라 재선언)+`wiremock-standalone`. `framework-archtest` 는 archunit-junit5 + 전 모듈 project 의존 + `spring-boot-autoconfigure`(애너테이션 타입).
+- **build.gradle**: `framework-client` test 에 `spring-boot-starter-test`+`-web`(compileOnly 비전이라 재선언)+`wiremock-standalone`. `framework-mfa` test 에 `-web`+`-jdbc`+`-data-redis`(오토컨피그 introspection 이 @Bean 파라미터 타입 전부 로드 → compileOnly 3종 모두 재선언). `framework-archtest` 는 archunit-junit5 + 전 모듈 project 의존 + `spring-boot-autoconfigure`(애너테이션 타입).
+- **콘솔 인코딩(한글) 고정**: 루트 `build.gradle` Test 태스크 `jvmArgs(-Dstdout/-Dstderr/-Dfile.encoding=UTF-8)`+`defaultCharacterEncoding='UTF-8'`(테스트 워커), `gradle.properties` `org.gradle.jvmargs=...UTF-8`(데몬). 콘솔 최종 렌더는 `gradlew` 클라이언트 JVM 이므로 셸에서 `GRADLE_OPTS="...UTF-8"` 도 필요(데몬 전용 설정만으론 부족).
 
 ## 현재 상태 (적용/검증)
 - **순수 로직/벡터 JDK 검증 완료**(작성 환경 javac 부재·Maven Central 차단 → JRE+Python 포팅으로 교차검증): Base32 RFC4648 전 벡터, 마스킹 7종 출력(예: 홍길동→홍*동, 010-1234-5678→010-****-5678, 1234567812345678→1234-****-****-5678), 모듈 의존 그래프 = **순환 없는 DAG**(21노드).
 - **ArchUnit 7규칙 사전 정적검증 ALL PASS**: 이동된 `com.fasterxml.jackson.*` **0건**(유일한 jackson import 는 `.annotation` 1건=허용), 모든 `*AutoConfiguration`=@AutoConfiguration·top-level `*Properties`=@ConfigurationProperties, 필드주입 0건.
-- ⚠️ **gradle 컴파일·테스트 실행은 받는 쪽에서**: `./gradlew :framework:framework-archtest:test :framework:framework-client:test :framework:framework-mfa:test :framework:framework-security:test :framework:framework-core:test (+spotlessApply)`.
+- ✅ **gradle BUILD 통과 확인(사용자 환경, 2026-06-03)**: `./gradlew :framework:framework-archtest:test :framework:framework-client:test :framework:framework-mfa:test :framework:framework-security:test :framework:framework-core:test spotlessApply` → BUILD SUCCESSFUL. (도중 발견·수정: `MfaAutoConfigurationTest` 가 mfa 오토컨피그 introspection 시 `StringRedisTemplate`/`JdbcTemplate`/web 타입을 못 찾아 컨텍스트 기동 실패 → mfa test 에 compileOnly 3종 재선언으로 해결.) 콘솔 한글 깨짐은 인코딩 설정 반영했으나 실패 출력이 없어 육안 재확인은 다음 실패 시.
 
 ## 켜는 법
 - 테스트/규칙은 토글 아님 — `./gradlew test` 에 자동 포함. ArchUnit 규칙 위반 시 빌드 실패(의도). 새 모듈 추가 시 `framework-archtest/build.gradle` 에 `testImplementation project(':framework:framework-<신규>')` 한 줄 추가해야 검사 대상에 포함됨.
 - WireMock 연동테스트는 `framework-client` 의 `compileOnly` web 을 test 에서 재선언해야 RestClient 런타임이 생김(레포 표준).
+- **콘솔 한글이 깨지면**: 셸에서 `export GRADLE_OPTS="-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8"` 후 실행(클라이언트 JVM 렌더링용). 데몬/워커는 `gradle.properties`·루트 `build.gradle` 에 이미 반영. 데몬 설정 변경 시 `./gradlew --stop` 으로 재기동 필요.
 
 ## 바로 다음 할 일 (Next)
-1. 받는 쪽에서 위 gradle 명령으로 그린 확인(특히 archtest 7규칙·wiremock 4케이스). 실패 규칙 있으면 위반 클래스 정리 or 규칙 예외 명문화.
-2. 테스트 0개였던 잔여 모듈(audit/commoncode/file/redis/messaging/saga/excel/batch/notification/observability/idgen/i18n/openapi/secureweb/datasource는 일부 보유)로 오토컨피그 로딩 스모크 확대.
-3. (devops) CI 에 `:framework-archtest:test` 게이트 + jacoco 집계, ArchUnit 규칙 위반을 PR 차단으로.
-4. **그릇 정비** 잔여: 게이트웨이 런타임 점검(CORS preflight/rate-limit 429) · k8s 멀티서비스/CI-CD · (선택) 규제특화 잔여(pki/hsm/recon/egov).
+1. **테스트 커버리지 확대**: 현재 테스트 보유 = core·datasource·idempotency·observability·saga(기존) + 이번 추가(mfa·security·client·archtest). **0개인 잔여 모듈**(audit/commoncode/file/file-s3/redis/messaging/i18n/idgen/openapi/secureweb/excel/batch/notification)에 **오토컨피그 로딩 스모크**(ApplicationContextRunner enabled/disabled) 추가. ⚠️ 각 모듈의 `compileOnly` 의존을 test 에 전부 재선언할 것(introspection 함정).
+2. (devops) CI 에 `:framework-archtest:test` 게이트 + jacoco 집계, ArchUnit 규칙 위반을 PR 차단으로. 멀티모듈 jacoco 집계 리포트(루트 aggregate).
+3. **그릇 정비** 잔여: 게이트웨이 런타임 점검(CORS preflight `Access-Control-*`·rate-limit 429, 빌드는 통과) · k8s 멀티서비스/CI-CD(redis/secret/observability ServiceMonitor 실배포).
+4. (선택) 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · saga 단계별 타임아웃/보상 재시도 · 멱등 재생 페이로드 지문(payload hash).
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
 - **ArchUnit Jackson 규칙은 이동된 패키지만 금지.** `jackson-annotations` 는 Jackson 3 에서도 `com.fasterxml.jackson.annotation` 에 그대로 남는다 → `ApiResponse` 의 `com.fasterxml.jackson.annotation.JsonInclude` 는 **정상**. 규칙에서 `...annotation` 을 금지하면 오탐. 금지 대상은 `databind/core/dataformat/datatype/module` 뿐.

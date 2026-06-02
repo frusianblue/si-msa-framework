@@ -128,7 +128,11 @@ public class XxxAutoConfiguration {
 |---|---|---|---|---|
 | framework-archtest ✅ | **ArchUnit 아키텍처 규칙 강제** — 모듈(슬라이스) 순환금지 · Jackson3 규약(이동된 `com.fasterxml.jackson.*` 금지, `.annotation` 예외) · mapper/domain 레이어 격리 · `*AutoConfiguration`/`*Properties` 네이밍 · 필드주입 금지(생성자 주입). 전 모듈 main 을 `testImplementation project(...)` 로 임포트해 검사 | (토글 없음·`test` 자동) | [테스트] | 공통 |
 
-> ✅ 구현완료(2026-06-03). 7규칙, `@AnalyzeClasses(DoNotIncludeTests)`. **새 라이브러리 모듈 추가 시 `framework-archtest/build.gradle` 에 project 의존 한 줄을 추가**해야 검사 대상에 포함된다(누락 시 사각지대). 함께 도입: 핵심 알고리즘 단위테스트(JWT/TOTP/Base32/RBAC/마스킹) + 오토컨피그 로딩 테스트(`ApplicationContextRunner`) + **WireMock(standalone) 서비스간 연동 테스트**(`framework-client`: 재시도/서킷/POST 비재시도). archunit/wiremock 모두 **test 전용 → 런타임 무영향**.
+> ✅ 구현완료·**BUILD 통과(2026-06-03)**. 7규칙, `@AnalyzeClasses(DoNotIncludeTests)`. **새 라이브러리 모듈 추가 시 `framework-archtest/build.gradle` 에 project 의존 한 줄을 추가**해야 검사 대상에 포함된다(누락 시 사각지대). 함께 도입: 핵심 알고리즘 단위테스트(JWT/TOTP/Base32/RBAC/마스킹) + 오토컨피그 로딩 테스트(`ApplicationContextRunner`) + **WireMock(standalone) 서비스간 연동 테스트**(`framework-client`: 재시도/서킷/POST 비재시도). archunit/wiremock 모두 **test 전용 → 런타임 무영향**.
+>
+> **오토컨피그 로딩 테스트 함정**: `ApplicationContextRunner` 가 설정 클래스를 리플렉션 introspect 하며 **모든 @Bean 파라미터/반환 타입을 로드**한다(@ConditionalOnClass 무관). 그 모듈의 `compileOnly` 의존을 **전부** `testImplementation` 으로 재선언해야 컨텍스트가 뜬다(예: mfa = web+jdbc+data-redis). 운영은 Boot 가 ASM 으로 읽어 무관.
+>
+> **콘솔 한글 인코딩**: 테스트 워커/데몬은 `build.gradle`·`gradle.properties` 에서 UTF-8 고정. 콘솔 최종 렌더는 `gradlew` 클라이언트 JVM 이라 Windows 에서 깨지면 셸 `GRADLE_OPTS="...UTF-8"` 추가(데몬 변경 시 `--stop`).
 
 ---
 
