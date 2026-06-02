@@ -6,61 +6,65 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**모듈별 최소 테스트 + 아키텍처 규칙 강제 도입 — gradle BUILD 통과 확인.** (1) 핵심 알고리즘 단위테스트 — JWT(`JwtProviderTest`), TOTP/Base32(`TotpTest`/`Base32Test`, RFC4648 벡터), RBAC 판정(`DynamicAuthorizationManagerTest`), 마스킹(`MaskingUtilsTest`). (2) 오토컨피그 로딩 — `MfaAutoConfigurationTest`(enabled/disabled 빈 등록), client 로딩은 WireMock 테스트에 포함. (3) **신규 테스트전용 모듈 `framework-archtest`** — ArchUnit 7규칙(모듈 순환금지·Jackson3 규약·mapper/domain 레이어 격리·*AutoConfiguration/*Properties 네이밍·필드주입 금지). (4) **WireMock 연동테스트 `ClientResilienceWireMockTest`** — 503 재시도→200·서킷 OPEN 차단·POST 비재시도. **새 런타임 의존성 0**(archunit/wiremock 은 test 전용). + 콘솔 UTF-8 인코딩 고정.
+**잔여 무테스트 모듈 14개에 오토컨피그 로딩/토글 스모크 추가 — gradle BUILD 통과 확인.** 직전 세션 Next #1 완료. `ApplicationContextRunner`(필요 시 `WebApplicationContextRunner`)로 `framework.<module>.enabled` 토글 켜짐/꺼짐을 빈 등록 유무로 검증. 실제 레포의 `@Bean` 시그니처·`build.gradle` 을 직접 읽어 **introspection 함정(compileOnly 타입 전부 test 재선언)** 을 모듈별로 반영. 신규 테스트 14개 + `build.gradle` 7개 변경 — **전부 `testImplementation` → 런타임/배포 영향 0**. 발견 2건: redis 레지스트레이션 갭·MapperScan 결합 모듈(commoncode/file)은 백오프-only.
 
 ## 최종 갱신
 - 일자: 2026-06-03 · 갱신자: <!-- 채우기 -->
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-- **카탈로그**(`gradle/libs.versions.toml`): `archunit=1.4.2`(Java21 OK), `wiremock=3.13.2`(standalone/shaded) 버전 + `archunit-junit5`·`wiremock-standalone` 라이브러리 추가. **둘 다 test 전용 → 배포 산출물·런타임 무영향.**
-- **신규 모듈 `framework:framework-archtest`**(테스트 전용, `settings.gradle` 등록): 모든 라이브러리 모듈을 `testImplementation project(...)` 로 끌어와 ArchUnit 으로 검사. `FrameworkArchitectureTest`(@AnalyzeClasses, DoNotIncludeTests) 7규칙:
-  1. `slices().matching("com.company.framework.(*)..").beFreeOfCycles()` — 21 슬라이스 순환 없음(검증된 DAG).
-  2. Jackson3: `noClasses().dependOnClassesThat().resideInAnyPackage(databind/core/dataformat/datatype/module ..)` — **이동된 패키지만 금지, `com.fasterxml.jackson.annotation` 은 예외**(3에서도 유지).
-  3. mapper → web/service 의존 금지. 4. domain → web/service/mapper 의존 금지.
-  5. `*AutoConfiguration` → `@AutoConfiguration`. 6. top-level `*Properties` → `@ConfigurationProperties`.
-  7. `NO_CLASSES_SHOULD_USE_FIELD_INJECTION`(생성자 주입 강제).
-- **알고리즘/오토컨피그 단위테스트**:
-  - `framework-core`: `MaskingUtilsTest`(7 마스커 + 엣지; 기존 CoreUtilsTest 보강).
-  - `framework-security`: `JwtProviderTest`(발급/파싱 라운드트립·roles→ROLE_ 권한·키불일치/변조 거부), `DynamicAuthorizationManagerTest`(6케이스: 역할 매칭/거부·메서드 한정 매핑·미매핑→인증만·null→거부, StubSecurityMapper).
-  - `framework-mfa`: `Base32Test`(RFC4648 벡터·20바이트 무손실 왕복·관대 디코드·잘못된 문자 예외), `TotpTest`(SHA1/256/512·6/8자리 결정적 왕복·공백/하이픈 정규화·형식 거부), `MfaAutoConfigurationTest`(enabled→Totp/MfaService/MfaGate/인메모리 스토어 빈·disabled→빈 없음, stub `CurrentUserProvider`).
-- **WireMock 연동테스트** `framework-client/.../ClientResilienceWireMockTest`: (a) 오토컨피그 로딩(enabled 빈 유무), (b) GET 503→재시도→200 "ok"(업스트림 2회), (c) 재시도 OFF·임계치2 → 3번째 호출 서킷 OPEN 차단(`CircuitOpenException` 체인·업스트림 정확히 2회), (d) POST 503 비재시도(업스트림 1회). 단일 RestClient 재사용으로 호스트 단위 브레이커 공유.
-- **build.gradle**: `framework-client` test 에 `spring-boot-starter-test`+`-web`(compileOnly 비전이라 재선언)+`wiremock-standalone`. `framework-mfa` test 에 `-web`+`-jdbc`+`-data-redis`(오토컨피그 introspection 이 @Bean 파라미터 타입 전부 로드 → compileOnly 3종 모두 재선언). `framework-archtest` 는 archunit-junit5 + 전 모듈 project 의존 + `spring-boot-autoconfigure`(애너테이션 타입).
-- **콘솔 인코딩(한글) 고정**: 루트 `build.gradle` Test 태스크 `jvmArgs(-Dstdout/-Dstderr/-Dfile.encoding=UTF-8)`+`defaultCharacterEncoding='UTF-8'`(테스트 워커), `gradle.properties` `org.gradle.jvmargs=...UTF-8`(데몬). 콘솔 최종 렌더는 `gradlew` 클라이언트 JVM 이므로 셸에서 `GRADLE_OPTS="...UTF-8"` 도 필요(데몬 전용 설정만으론 부족).
+- **오토컨피그 로딩/토글 스모크 14개 신규**(각 모듈 `src/test/.../<config>Test.java`):
+
+  | 모듈 | 검증축 | introspection 대응(test 재선언) |
+  |---|---|---|
+  | audit | enabled→logging 싱크(LoggingAuditEventSink), jdbc 조회 API off / disabled→none | **jdbc + web + messaging** |
+  | batch | enabled(+JobOperator mock)→JobLaunchSupport+LoggingJobExecutionListener / disabled→none | 불필요 |
+  | excel | enabled→ExcelExporter/ExcelImporter / disabled→none | 불필요(POI=implementation, 자기 test 에 존재) |
+  | idgen | enabled→IdGenerator만(DataSource無→CodeGenerator off) / disabled→none | **jdbc**(중첩 CodeGeneratorConfiguration 시그니처) |
+  | i18n | 코어 enabled→MessageResolver/ErrorMessageResolver / 웹(서블릿)→LocaleResolver+I18nExceptionAdvice | **web**(+starter-test); 웹은 `WebApplicationContextRunner` |
+  | messaging | 발행 enabled→OutboxRepository/Publisher(Relay off) / 소비 enabled(+IdempotencyStore mock)→IdempotentEventProcessor | 기존 test 의존(jdbc/kafka-test/idempotency) 충분 |
+  | mybatis | 로딩→PersistenceExceptionHandler/ConfigurationCustomizer/CurrentUserProvider/AuditFieldInterceptor / audit-injection=false→인터셉터만 off | 불필요 |
+  | notification | enabled→NotificationService / +sms→LoggingSmsClient+SmsNotificationSender / disabled→none | 불필요(mail=api) |
+  | openapi | 기본(matchIfMissing)→OpenAPI / false→none | **starter-test 신규**(test 의존 0이었음) |
+  | redis | token-store.type=redis→TokenStore / login-attempt.type=redis→LoginAttemptService(+StringRedisTemplate mock) | **starter-test 신규** |
+  | secure-web | enabled→SecureWebResponder+헤더+경로필터, 나머지 off / 전부 on→인젝션/CSRF/rate-limit | **web**; `WebApplicationContextRunner` |
+  | file-s3 | type=s3(+S3Client mock+FileStorageProperties deep-stub)→S3FileStorage / 미지정→none | **starter-test 신규** |
+  | commoncode·file | **disabled 백오프만**(enabled=false→빈 없음·컨텍스트 정상) | 불필요 |
+
+- **build.gradle 7개 보정**(introspection 함정·test 의존 결손): audit(+jdbc/web/messaging), file-s3(+starter-test), i18n(+starter-test/web), idgen(+starter-test/jdbc), openapi(+starter-test), redis(+starter-test), secure-web(+web). 나머지 7개 모듈은 기존 test 의존으로 충분(batch/excel/messaging/mybatis/notification/commoncode/file).
+- **mybatis 는 보너스 포함**: 직전 Next 의 13개 목록에서 빠져 있었음 — `MyBatisConfig` 가 `*AutoConfiguration` 네이밍이 아니라 ArchUnit 네이밍 규칙·목록에서 누락. 0개 테스트라 함께 스모크 추가.
+- **패턴 출처**: `MfaAutoConfigurationTest`(JUnit5+AssertJ, `@DisplayName` 한국어, `assertThat(context).hasNotFailed()/hasSingleBean/doesNotHaveBean`).
 
 ## 현재 상태 (적용/검증)
-- **순수 로직/벡터 JDK 검증 완료**(작성 환경 javac 부재·Maven Central 차단 → JRE+Python 포팅으로 교차검증): Base32 RFC4648 전 벡터, 마스킹 7종 출력(예: 홍길동→홍*동, 010-1234-5678→010-****-5678, 1234567812345678→1234-****-****-5678), 모듈 의존 그래프 = **순환 없는 DAG**(21노드).
-- **ArchUnit 7규칙 사전 정적검증 ALL PASS**: 이동된 `com.fasterxml.jackson.*` **0건**(유일한 jackson import 는 `.annotation` 1건=허용), 모든 `*AutoConfiguration`=@AutoConfiguration·top-level `*Properties`=@ConfigurationProperties, 필드주입 0건.
-- ✅ **gradle BUILD 통과 확인(사용자 환경, 2026-06-03)**: `./gradlew :framework:framework-archtest:test :framework:framework-client:test :framework:framework-mfa:test :framework:framework-security:test :framework:framework-core:test spotlessApply` → BUILD SUCCESSFUL. (도중 발견·수정: `MfaAutoConfigurationTest` 가 mfa 오토컨피그 introspection 시 `StringRedisTemplate`/`JdbcTemplate`/web 타입을 못 찾아 컨텍스트 기동 실패 → mfa test 에 compileOnly 3종 재선언으로 해결.) 콘솔 한글 깨짐은 인코딩 설정 반영했으나 실패 출력이 없어 육안 재확인은 다음 실패 시.
+- ✅ **gradle BUILD 통과 확인(사용자 환경, 2026-06-03)**: 14개 모듈 `:test` 전부 통과(컴파일·컨텍스트 기동·어서션). 작성 환경은 Maven Central 차단으로 빌드 불가 → 참조 클래스/패키지 존재를 `find/grep` 으로 정적 교차검증(MISSING 0), `JsonMapper.builder()` 는 레포 `JsonUtils` 와 동일 사용 확인 후 사용자 환경에서 최종 통과.
+- 이제 **테스트 보유 = 전 라이브러리 모듈**(기존 core·datasource·idempotency·observability·saga·mfa·security·client·archtest + 이번 14개). 무테스트 라이브러리 모듈 0.
 
 ## 켜는 법
-- 테스트/규칙은 토글 아님 — `./gradlew test` 에 자동 포함. ArchUnit 규칙 위반 시 빌드 실패(의도). 새 모듈 추가 시 `framework-archtest/build.gradle` 에 `testImplementation project(':framework:framework-<신규>')` 한 줄 추가해야 검사 대상에 포함됨.
-- WireMock 연동테스트는 `framework-client` 의 `compileOnly` web 을 test 에서 재선언해야 RestClient 런타임이 생김(레포 표준).
-- **콘솔 한글이 깨지면**: 셸에서 `export GRADLE_OPTS="-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8"` 후 실행(클라이언트 JVM 렌더링용). 데몬/워커는 `gradle.properties`·루트 `build.gradle` 에 이미 반영. 데몬 설정 변경 시 `./gradlew --stop` 으로 재기동 필요.
+- 스모크는 토글 아님 — `./gradlew test` 자동 포함. 부분 실행: `./gradlew :framework:framework-{audit,batch,commoncode,excel,file,file-s3,i18n,idgen,messaging,mybatis,notification,openapi,redis,secure-web}:test spotlessApply`(셸 중괄호 미동작 시 모듈 나열).
+- 신규 오토컨피그에 스모크 붙일 때: **그 오토컨피그(중첩 @Configuration 포함)의 `@Bean` 시그니처에 나타나는 compileOnly 타입을 전부 `testImplementation` 재선언**. `@ConditionalOnWebApplication(SERVLET)` 이면 `WebApplicationContextRunner`. `@MapperScan`+matchIfMissing(기본 ON)+MyBatis 결합 모듈은 enabled 가 DataSource 를 요구 → 순수 스모크는 **disabled 백오프**까지만.
 
 ## 바로 다음 할 일 (Next)
-1. **테스트 커버리지 확대**: 현재 테스트 보유 = core·datasource·idempotency·observability·saga(기존) + 이번 추가(mfa·security·client·archtest). **0개인 잔여 모듈**(audit/commoncode/file/file-s3/redis/messaging/i18n/idgen/openapi/secureweb/excel/batch/notification)에 **오토컨피그 로딩 스모크**(ApplicationContextRunner enabled/disabled) 추가. ⚠️ 각 모듈의 `compileOnly` 의존을 test 에 전부 재선언할 것(introspection 함정).
-2. (devops) CI 에 `:framework-archtest:test` 게이트 + jacoco 집계, ArchUnit 규칙 위반을 PR 차단으로. 멀티모듈 jacoco 집계 리포트(루트 aggregate).
-3. **그릇 정비** 잔여: 게이트웨이 런타임 점검(CORS preflight `Access-Control-*`·rate-limit 429, 빌드는 통과) · k8s 멀티서비스/CI-CD(redis/secret/observability ServiceMonitor 실배포).
-4. (선택) 규제특화 잔여(pki/hsm/recon/egov, 해당 사업만) · saga 단계별 타임아웃/보상 재시도 · 멱등 재생 페이로드 지문(payload hash).
+1. **redis 레지스트레이션 갭 해소(소)**: `RedisLoginAttemptAutoConfiguration` 이 코드로 존재하나 `META-INF/.../AutoConfiguration.imports` 에 **미등록**(현재 `RedisTokenStoreAutoConfiguration` 만). `login-attempt.type=redis` 설정해도 자동활성 안 됨 → imports 에 한 줄 추가 필요. (테스트는 두 클래스 직접 로드로 의도 동작을 이미 문서화/검증.)
+2. **commoncode/file enabled 경로 테스트(중)**: 두 모듈은 클래스레벨 `@MapperScan`+matchIfMissing(기본 ON)+MyBatis 결합이라 enabled 풀 와이어링이 `SqlSessionFactory`/DataSource 를 요구 → **DB 있는 서비스 슬라이스(@MybatisTest 또는 Testcontainers-H2/PG)** 에서 다룬다. 현재는 백오프만 검증됨.
+3. (devops) CI 게이트: `:framework-archtest:test` + 전 모듈 `:test` 를 PR 차단 게이트로 + **멀티모듈 jacoco 집계 리포트**(루트 aggregate).
+4. **그릇 정비**: 게이트웨이 런타임 점검(CORS preflight `Access-Control-*`·rate-limit 429) · k8s 멀티서비스/CI-CD(redis/secret/observability ServiceMonitor 실배포).
+5. (선택) 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · 멱등 재생 페이로드 지문(payload hash).
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **ArchUnit Jackson 규칙은 이동된 패키지만 금지.** `jackson-annotations` 는 Jackson 3 에서도 `com.fasterxml.jackson.annotation` 에 그대로 남는다 → `ApiResponse` 의 `com.fasterxml.jackson.annotation.JsonInclude` 는 **정상**. 규칙에서 `...annotation` 을 금지하면 오탐. 금지 대상은 `databind/core/dataformat/datatype/module` 뿐.
-- **인터셉터 합성 순서 Trace→CircuitBreaker→Retry→Logging**(바깥→안): 서킷이 재시도를 감싸므로 재시도 내부 중간 5xx 는 서킷에 집계 안 됨. **서킷 단독 검증은 재시도 OFF** 로. 서킷 차단은 `CircuitOpenException`(IOException 계열)→RestClient 가 `ResourceAccessException` 으로 래핑 → 원인 체인 탐색으로 단언.
-- **WireMock 은 standalone(shaded) 픽스.** Boot4 가 끌어오는 Jetty 12.1(EE10)·Jackson 3 과 일반 wiremock-jetty12 가 충돌 → `org.wiremock:wiremock-standalone` 으로 내부 의존 셰이딩. 공개 API 는 `com.github.tomakehurst.wiremock.*` 유지.
-- **archtest 는 전 모듈 project 의존이 필수.** ArchUnit 은 바이트코드를 읽으므로 검사 대상 모듈 main 이 test 클래스패스에 있어야 임포트됨. 각 모듈 compileOnly 3rd-party 는 안 올라와도, 규칙이 `com.company.framework` 의존만 보므로 미해소 외부 타입 무방. **새 모듈 추가 시 의존 한 줄 누락하면 그 모듈은 검사 사각지대.**
-- **조건부 규칙엔 `.allowEmptyShould(true)`** — 모듈 부분 빌드/필터 결과가 비어도 ArchUnit 1.4 의 "empty should" 실패를 막음.
-- **오토컨피그 로딩 테스트는 그 오토컨피그의 compileOnly 클래스를 "전부" test 에 재선언(2026-06-03 픽스)**: `ApplicationContextRunner` 가 설정 클래스를 **리플렉션으로 introspect** 할 때 `@Bean` 메서드의 **모든 파라미터/반환 타입**을 로드한다 — 이는 `@ConditionalOnClass` 와 **무관**하게 일어난다. 따라서 `MfaAutoConfiguration` 처럼 `redisMfaChallengeStore(StringRedisTemplate)`·`jdbcMfaEnrollmentStore(JdbcTemplate)`·web 컨트롤러 반환 빈을 가진 오토컨피그는, main 의 `compileOnly` 3종(web/jdbc/data-redis)을 **모두** `testImplementation` 으로 다시 선언해야 컨텍스트가 뜬다(클래스 존재만 필요, 빈 생성은 불필요 — type 미지정이면 in-memory 만). 누락 시 `NoClassDefFoundError → IllegalStateException: Failed to introspect Class → BeanDefinitionStoreException: Failed to parse configuration class` 로 기동 실패 → `hasNotFailed()` AssertionError. **운영에선 Boot 가 ASM 메타데이터로 읽어 미사용 타입을 로드하지 않으므로 redis/jdbc 없는 앱도 정상**(테스트 전용 함정).
-- **콘솔 한글 깨짐 = 파일 인코딩 아님, 출력 스트림 인코딩(2026-06-03 픽스)**: IntelliJ 파일 인코딩 UTF-8 은 소스 읽기/쓰기만 관여. JDK 21 은 `file.encoding`=UTF-8 이지만 Windows(한국어)는 `stdout/stderr` 가 콘솔 코드페이지(MS949)로 잡혀 `@DisplayName` 한글이 깨진다. → 루트 `build.gradle` Test 태스크에 `jvmArgs(-Dstdout.encoding/-Dstderr.encoding/-Dfile.encoding=UTF-8)`+`defaultCharacterEncoding='UTF-8'`, `gradle.properties` 에 `org.gradle.jvmargs=...UTF-8`(데몬). **터미널 자체도 UTF-8 이어야 함**(Windows: `chcp 65001`, 또는 IntelliJ 콘솔/`-Dfile.encoding` 설정).
-- (지난) `compileOnly` 비전이(테스트 재선언) · 모듈 toggle 3단 기본 off · 순수 로직 분리 JDK 검증 · Jackson3(`tools.jackson.*`) · `[this-escape]` 생성자 메서드참조 금지 · JUnit Platform launcher 명시(Gradle 9).
+- **redis 오토컨피그 2개 중 1개만 등록됨**: `RedisTokenStoreAutoConfiguration`(imports 등록) + `RedisLoginAttemptAutoConfiguration`(**미등록**). 후자는 코드·테스트는 있으나 자동활성 경로가 없다 — Next #1. 새 오토컨피그 작성 시 `.imports` 등록을 항상 같이 확인(클래스만 있고 미등록이면 죽은 코드).
+- **`@MapperScan` 은 클래스레벨이라 enabled 경로 스모크가 DB 를 끌어온다**: `@ConditionalOnProperty(matchIfMissing=true)` 로 기본 ON 인 commoncode/file 은 enabled 시 `@MapperScan` 이 매퍼 빈을 `SqlSessionFactory` 로 생성하려 해 DataSource 없으면 컨텍스트 실패. **단, 클래스레벨 조건이 false(enabled=false)면 설정 클래스가 제외돼 @MapperScan 도 미처리** → 백오프 스모크는 안전. 순수 로딩 스모크의 한계 = MapperScan 결합 모듈은 disabled 까지.
+- **`@ConditionalOnWebApplication(SERVLET)` 오토컨피그는 `WebApplicationContextRunner`**: 일반 `ApplicationContextRunner` 는 웹앱이 아니라 그 설정이 통째로 백오프(빈 0). i18n 웹/secure-web 이 해당. 또한 web 필터/`FilterRegistrationBean`/`LocaleResolver` 등 web 타입 introspection 위해 `testImplementation spring-boot-starter-web` 필요(main 은 compileOnly).
+- **`MyBatisConfig` 는 `*AutoConfiguration` 네이밍이 아니다**: `@AutoConfiguration` 이지만 이름이 규칙(`*AutoConfiguration`)과 달라 ArchUnit 네이밍 규칙 적용 대상이 아니고, 직전 세션의 "0개 테스트 13개 목록"에서도 누락됐다. 0-test 모듈을 셀 땐 이름이 아니라 `imports` 등록분으로 세야 빠지지 않음.
+- **introspection 함정은 중첩 @Configuration·@Bean 반환타입까지**: idgen 의 중첩 `CodeGeneratorConfiguration` @Bean 이 `JdbcTemplate`/`PlatformTransactionManager` 를 받음 → jdbc 재선언. audit 의 `auditController()` 반환타입 `AuditController`(web import) → web 재선언. "@Bean 파라미터" 뿐 아니라 **반환 타입 클래스가 끌고 오는 import** 도 로드된다.
+- (지난·유효) 오토컨피그 introspection = compileOnly 타입 전부 test 재선언 / `compileOnly` 비전이 / 모듈 toggle 3단 기본 off(단 commoncode·file·openapi 는 `matchIfMissing=true` 기본 ON·예외) / Jackson3(`tools.jackson.*`, `.annotation` 만 예외) / 콘솔 UTF-8 3계층 / JUnit Platform launcher·starter-test 모듈마다 / ArchUnit Jackson 은 이동 패키지만 금지.
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
 1. 신규 모듈/기존 확장. 순수 로직은 Spring 무의존 코어로 분리해 JDK 단독 검증.
 2. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`. **테스트가 그 compileOnly 클래스를 쓰면 재선언.**
-3. `settings.gradle`/`imports` 등록. **신규 모듈이면 `framework-archtest/build.gradle` 에 project 의존 추가**(아키텍처 검사 포함).
+3. `settings.gradle`/`imports` 등록. **신규 모듈이면 `framework-archtest/build.gradle` 에 project 의존 추가**(아키텍처 검사 포함). 새 오토컨피그는 `.imports` 등록을 반드시 확인(미등록=죽은 코드).
 4. Boot4/Spring7/Jackson3 + 통합 대상 실제 시그니처를 레포 내 동일 사용처로 교차확인.
 5. 오토컨피그 3단 토글 + 빈 `@ConditionalOnMissingBean`. 런타임 개수 가변 빈은 `ImportBeanDefinitionRegistrar`.
-6. **테스트**: 핵심 알고리즘 단위 + 오토컨피그 로딩(ApplicationContextRunner enabled/disabled). 외부연동은 WireMock(standalone). 검증 `./gradlew :…:test (+:framework-archtest:test) (+spotlessApply)`.
+6. **테스트**: 핵심 알고리즘 단위 + 오토컨피그 로딩(ApplicationContextRunner enabled/disabled, 서블릿 한정이면 WebApplicationContextRunner). compileOnly 타입(중첩/반환타입 포함) 전부 test 재선언. MapperScan+MyBatis 결합은 백오프까지. 외부연동은 WireMock(standalone). 검증 `./gradlew :…:test (+:framework-archtest:test) (+spotlessApply)`.
 7. 드롭인: 변경 파일 전부 → 한 zip, 루트에서 `unzip -o`. 문서 5종 동기화.
 
 <!-- 갱신 끝 -->
