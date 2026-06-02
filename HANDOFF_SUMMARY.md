@@ -7,54 +7,52 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**`framework-idempotency` 에 JDBC 스토어 추가** — 기존 `IdempotencyStore` SPI(memory·redis)에 **세 번째 구현 `JdbcIdempotencyStore`(store.type=jdbc)** 를 얹음. Redis 없이 기존 DataSource 만으로 다중 인스턴스/재기동 간 멱등키 공유. 원자적 선점은 **PK 유니크 + INSERT 충돌(`DataIntegrityViolationException`) 캐치**(idgen 채번과 동일 관용), **만료행은 선점 직전 동일 키만 정리 후 INSERT** → 동시 정리에도 소유자 1개 보장. `saveResult` 는 벤더 UPSERT 회피("UPDATE 먼저, 0행이면 INSERT", MFA 스토어와 동일). 새 외부 의존성 0(jdbc 는 `compileOnly`, 호스트 제공). DDL(H2/PostgreSQL 공통) 동봉, H2 JUnit 6케이스 + 순수 JDK 시뮬 6/6 검증.
+**`framework-idempotency` 응답 재생(replay) 확장** — 기존 인터셉터(중복=409)에 **재생 모드**(`framework.idempotency.replay.enabled=true`, 기본 off=하위호환)를 얹음. 완료된 동일 키 요청은 **저장된 응답(상태/콘텐츠타입/본문)을 그대로 재생**, 처리중은 409, 최초 요청은 통과 후 `afterCompletion`에서 응답 캡처→`saveResult`. 캡처를 위해 **`IdempotencyResponseFilter`**(재생 모드에서만 등록, `@Order(LOWEST_PRECEDENCE)`)가 헤더 있는 요청만 `ContentCachingResponseWrapper`로 감쌈(헤더 없으면 버퍼링 0). 저장 포맷은 **`status\ncontentType\nbase64(body)` 고정 셰이프**(`ResponseSnapshot`, Jackson/문자셋 가정 없음). **실패(예외/5xx/캡처불가)는 캐시 안 하고 선점 해제**. SPI·imports·settings 무변경, 새 외부 의존성 0.
 
 ## 최종 갱신
 - 일자: 2026-06-03 · 갱신자: <!-- 채우기 -->
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-- **신규 `store/JdbcIdempotencyStore`**(`com.company.framework.idempotency.store`):
-  - `putIfAbsent`: `DELETE … WHERE idem_key=? AND expires_at<=now`(만료 동일 키만) → `INSERT(result=NULL)`; PK 충돌이면 `DataIntegrityViolationException` 캐치 → false.
-  - `saveResult`: `UPDATE`; 0행이면 `INSERT`(레이스로 행 생기면 재 `UPDATE`). 벤더 UPSERT 미사용.
-  - `findResult`: `SELECT result WHERE idem_key=? AND expires_at>now`; 행 없음/만료/`result NULL` → `Optional.empty`(InMemory 와 동일 의미).
-  - `remove`: `DELETE`. 테이블명 상수 `TABLE="framework_idempotency"`(DDL 과 일치).
-- **배선** `config/IdempotencyAutoConfiguration`: jdbc 빈 추가 — `@ConditionalOnClass(JdbcTemplate)` + `@ConditionalOnMissingBean(IdempotencyStore)` + `@ConditionalOnProperty(store.type=jdbc)`(MFA 의 enrollment.store=jdbc 빈과 동형). 클래스 javadoc 3단 설명 `memory|redis|jdbc` 로 갱신.
-- **DDL** `src/main/resources/db/idempotency-postgres.sql`(`CREATE TABLE IF NOT EXISTS framework_idempotency` + expires 인덱스, H2/PostgreSQL/Oracle 공통).
-- **build.gradle**: `compileOnly spring-boot-starter-jdbc` + `testImplementation spring-boot-starter-test` + `testRuntimeOnly com.h2database:h2`(BOM 관리).
-- **테스트** `JdbcIdempotencyStoreTest`(JUnit5+AssertJ, 인메모리 H2 MODE=PostgreSQL, 6케이스): 선점1회/save·find/선점만→empty/만료 재선점/만료결과 미반환/remove 후 재선점.
-- **문서**: 모듈 `README.md`(JDBC 스토어 절 신규).
+- **신규 `web/ResponseSnapshot`**(record): `encode/decode/writeTo`. 포맷 `status\ncontentType\nbase64(body)` — status/ct 가 앞서고 body 는 개행 없는 Base64 라 앞 두 개행만 끊어 무손실 복원(임의 바이너리/문자셋 안전, 이스케이프 불필요).
+- **신규 `web/IdempotencyResponseFilter`**(`OncePerRequestFilter`, `@Order(LOWEST_PRECEDENCE)`): Idempotency-Key 헤더 있는 요청만 `ContentCachingResponseWrapper` 로 감싸고 `finally`에서 `copyBodyToResponse()`. 헤더 없으면 그대로 통과(버퍼링 0).
+- **개정 `web/IdempotencyInterceptor`**: 2모드. 레거시(기본)=기존 409 동작 그대로. 재생=① `findResult` 있으면 `ResponseSnapshot.decode().writeTo()` 재생 ② `putIfAbsent` 성공 시 통과+캡처표시(req attr) ③ 선점 실패 시 재확인 후 재생/409. `afterCompletion`: 캡처표시 있으면 `WebUtils.getNativeResponse(...ContentCachingResponseWrapper)` 로 본문 읽어 저장. **`ex!=null||status>=500||wrapper==null` → `remove`(실패 미캐시·선점 해제)**.
+- **개정 `config/IdempotencyProperties`**: `Replay{enabled=false}` 추가(`framework.idempotency.replay.enabled`).
+- **개정 `config/IdempotencyAutoConfiguration`**: `idempotencyResponseFilter` 빈 추가 — `@ConditionalOnClass(ContentCachingResponseWrapper)` + `@ConditionalOnWebApplication(SERVLET)` + `@ConditionalOnProperty(replay.enabled=true)` + `@ConditionalOnMissingBean`. secure-web 처럼 평범한 `@Bean`(Boot 자동 등록).
+- **build.gradle**: 테스트가 main 의 `compileOnly` 클래스를 쓰므로 `testImplementation spring-boot-starter-web` 추가(jdbc 분과 동일 사유).
+- **테스트**: `ResponseSnapshotTest`(4: 라운드트립·개행·null-CT·바이너리) + `IdempotencyInterceptorTest`(8: 비대상 통과·헤더없음400·레거시409·재생 선점/재생/처리중409·2xx 캡처·5xx 해제, MockHttpServletRequest/Response + HandlerMethod + ContentCachingResponseWrapper).
+- **문서**: 모듈 `README.md`(재생 모드 절 + replay 토글).
 
 ## 현재 상태 (적용/검증)
-- 정적 점검 통과: 패키지=디렉터리, 괄호 균형, **`com.fasterxml` 0건**, FQCN(`org.springframework.jdbc.core.JdbcTemplate`·`org.springframework.dao.DataIntegrityViolationException`), H2 는 테스트에만.
-- **선점/만료-재선점/저장/제거 의미 순수 JDK(JDK21 단일파일 런처) 실행검증 6/6**(SQL 분기 충실 모델링).
-- ⚠️ **gradle 컴파일 미검증**(작성 환경 Maven Central 차단). 받는 쪽: `./gradlew :framework:framework-idempotency:compileJava :framework:framework-idempotency:test` + `./gradlew spotlessApply`. (H2 testRuntimeOnly 가 BOM 으로 해석되는지, jdbc compileOnly 로 `JdbcTemplate` 컴파일 통과하는지 확인.)
+- 정적 점검 통과: 패키지=디렉터리, 괄호 균형, **`com.fasterxml` 0건**, Boot4/spring FQCN(`ConditionalOnWebApplication`·`ContentCachingResponseWrapper`·`WebUtils`·`core.annotation.Order`·`OncePerRequestFilter` — secure-web 와 동일).
+- **순수 JDK(JDK21) 실행검증 10/10**: 코덱 무손실(기본·개행·null-CT·바이너리) + 인터셉터 분기(선점통과·처리중409·완료재생·재생본문보존·5xx해제·예외해제).
+- ⚠️ **gradle 컴파일 미검증**(작성 환경 Maven Central 차단). 받는 쪽: `./gradlew :framework:framework-idempotency:compileJava :test +spotlessApply`. 특히 새 `testImplementation spring-boot-starter-web` 로 `IdempotencyInterceptorTest` 컴파일 통과 확인.
 
 ## 켜는 법
-- `implementation project(':framework:framework-idempotency')` + `framework.idempotency.enabled=true` + `framework.idempotency.store.type=jdbc`.
-- 호스트 앱에 `spring-boot-starter-jdbc`(또는 data-jpa 등 DataSource) 필요. 테이블은 `db/idempotency-postgres.sql` 실행(운영은 Flyway `db/migration` 배치 권장).
-- 컨트롤러 메서드에 `@Idempotent` + 클라이언트가 `Idempotency-Key` 헤더 전송. 현재 정책: 헤더 없음 400 / 중복·처리중 409.
+- 모듈/기능 켜기는 기존과 동일 + `framework.idempotency.replay.enabled=true`.
+- 컨트롤러 메서드 `@Idempotent` + 클라이언트 `Idempotency-Key` 헤더. 재생 모드: 최초 통과/완료 재생, 처리중 409, 헤더없음 400.
+- 다중 인스턴스/재기동 간 재생 유지하려면 `store.type=jdbc` 또는 `redis`(memory 는 인스턴스 로컬). 본문 메모리 버퍼링이라 **작은 JSON 응답** 권장(스트리밍 부적합).
 
 ## 바로 다음 할 일 (Next)
-1. 받는 쪽 `:framework:framework-idempotency:compileJava :test (+spotlessApply)` 확인. 특히 jdbc 빈 `@ConditionalOnProperty(store.type=jdbc)` 활성·H2 테스트 6/6 그린.
-2. (선택) `result` 컬럼 활용 = **결과 재생(replay)** 로 인터셉터 확장: 중복 시 409 대신 저장된 응답 반환(현 인터셉터는 `saveResult` 미호출, `findResult` 만 중복판정에 사용). 응답 캡처/재생은 정책 결정 필요(상태코드/바디/헤더 범위).
-3. (선택) user-service 에 jdbc 멱등 실적용 + 전체 만료 청소 잡(스케줄러 `DELETE WHERE expires_at<=now`) 추가.
-4. **누적 문서 동기화 미완**: 이번 세션은 모듈 README 만 갱신. 구조/원칙 변화는 아니지만 `HANDOFF.md`·`docs/FRAMEWORK_MODULES.md`(idempotency 3단 토글 표에 jdbc 행)·`STACK.md`(새 라이브러리 0/H2 test-scope) 반영 권장.
+1. 받는 쪽 `:framework:framework-idempotency:compileJava :test (+spotlessApply)` — 12케이스(jdbc 6 + snapshot 4 + interceptor 8 중 신규 12) 그린 확인. 특히 filter `@Order`/`@ConditionalOnWebApplication` 활성·재생 e2e.
+2. (선택) user-service 에 `@Idempotent` + `replay.enabled=true` + `store.type=jdbc` 실적용, 타임아웃 재시도 시나리오로 동일 응답 재생 e2e(devops). 전체 만료 청소 잡(스케줄러 `DELETE WHERE expires_at<=now`) 동반.
+3. (선택·정합성 강화) 동일 키+다른 페이로드 충돌 시 IETF 권고대로 422 반환하려면 요청 지문(payload hash) 저장/비교 필요 — 현재는 미구현(키만으로 판정). 별도 토글로 후속 검토.
+4. **누적 문서 동기화 미완**: 이번 세션도 모듈 README 만 갱신. `HANDOFF.md`(멱등 재생 절)·`docs/FRAMEWORK_MODULES.md`(idempotency 토글 표에 replay 행)·`STACK.md`(새 라이브러리 0) 반영 권장.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **JDBC 멱등 선점 = PK 충돌로 상호배제**: 별도 트랜잭션/락 없이 `INSERT` + `DataIntegrityViolationException` 캐치로 충분(idgen 채번과 동일). 만료행은 **선점 직전 동일 키만** 정리(전체 정리 아님) → 살아있는 선점 보존, 동시 정리에도 INSERT 는 하나만 성공.
-- **벤더 UPSERT 금지(이식성)**: MERGE/ON CONFLICT/ON DUPLICATE 미사용. `saveResult` 는 "UPDATE 먼저, 0행이면 INSERT". `VARCHAR/TIMESTAMP` 만 사용 → H2/PostgreSQL/Oracle 공통(BIGSERIAL 등 벤더 타입 회피, idgen 원칙과 동일).
-- **`result NULL` = 선점됨·미완료 → findResult empty**: 선점만 하고 결과 미저장 행은 `Optional.empty` 로 InMemory 와 의미 일치. `findResult` 의 `expires_at>now` 로 만료 결과도 자동 배제.
-- **JDBC 스토어 테스트는 H2 실DB 로**: 선점/만료는 PK·TIMESTAMP 비교 의존이라 모킹 말고 인메모리 H2(`MODE=PostgreSQL`)로 검증. H2 는 모듈 `testRuntimeOnly`(BOM 관리, 카탈로그 핀 불요).
-- **`compileOnly` 는 test 클래스패스로 전이되지 않는다**: main 을 `compileOnly`(jdbc/redis/web)로 받는 모듈에서 **테스트가 그 클래스를 직접 import 하면** `testCompileJava` 가 `package … does not exist` 로 실패한다(main 은 통과). 해결: 해당 의존을 test 소스셋에 **별도 선언**(`testImplementation`, 실행도 필요하면 그대로/아니면 `testCompileOnly`). idempotency: `testImplementation spring-boot-starter-jdbc` 추가로 해소. (관측의 "테스트 API 모듈마다 선언"과 같은 결: test 소스셋은 main 의 compileOnly 를 못 본다.)
-- (기존) Boot4 패키지 이동(MeterRegistryCustomizer 등) · 구조화로그=EPP · OTLP 이중키 · 관측 새 의존성 0 · 테스트 API 모듈마다 선언 · util vs support · JsonUtils=Jackson3 · JUnit launcher 루트 적용 · 범용 유틸 재발명 금지 · 신규 모듈 settings/imports 등록 · BOM 밖만 카탈로그 핀.
+- **응답 캡처는 필터 래핑 전제**: 인터셉터는 응답을 *교체*할 수 없다(디스패처가 받은 응답 고정). 본문 캡처/재생하려면 **필터**가 `ContentCachingResponseWrapper`로 감싸고 `finally`에서 `copyBodyToResponse()` 해야 한다. 인터셉터는 `WebUtils.getNativeResponse(res, ContentCachingResponseWrapper.class)`로 래퍼를 찾는다. 필터는 secure-web 처럼 평범한 `@Bean`+`@Order`(Boot 자동 등록)이며 응답을 가장 안쪽에서 감싸야 하므로 **`@Order(LOWEST_PRECEDENCE)`**(요청 스크리닝 필터들보다 안쪽).
+- **재생 저장은 고정 셰이프 + Base64**: `status\ncontentType\nbase64(body)`. body 를 Base64(개행 없는 `getEncoder()`)로 인코딩해 앞 두 개행만으로 분리 → 임의 본문/문자셋/바이너리 무손실. JSON 직렬화·이스케이프·문자셋 추정 전부 불필요(프레임워크의 "수기 고정 셰이프" 원칙 일관).
+- **실패는 캐시 금지·선점 해제**: 캡처 시 `ex!=null||status>=500||wrapper==null` 이면 `saveResult` 대신 `remove`. 안 그러면 5xx 응답이 재생돼 재시도가 영영 실패하거나, 캡처 불가로 키가 TTL 까지 묶여 409 고착. GlobalExceptionHandler 가 처리한 예외는 `afterCompletion`의 `ex`가 null 이라 **상태코드(status>=500)로 판정**.
+- **재생은 옵트인(하위호환)**: `replay.enabled` 기본 false → 기존 409 동작 보존. 필터도 재생 모드에서만 등록. (전 모듈 공통 "기본 off" 원칙.)
+- (지난) **`compileOnly` 는 test 클래스패스로 전이 안 됨** — 테스트가 main 의 compileOnly 클래스(web/jdbc) import 하면 `testImplementation` 재선언(이번: web 추가). · JDBC 멱등 선점=PK충돌 상호배제·만료행만 정리 · 벤더 UPSERT 금지 · `result NULL`→empty · H2 실DB 테스트.
+- (기존) Boot4 패키지 이동 · 구조화로그=EPP · OTLP 이중키 · 새 의존성 0 · 테스트 API 모듈마다 선언 · util vs support · JsonUtils=Jackson3 · JUnit launcher 루트 · 범용 유틸 재발명 금지 · 신규 모듈 settings/imports 등록 · BOM 밖만 카탈로그 핀.
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
-1. 신규: `framework/framework-<X>/`(config Properties+AutoConfiguration · 도메인 패키지 · imports FQCN). **기존 SPI 에 구현만 추가**할 땐(이번 jdbc 사례): 구현 클래스 + AutoConfig 에 `@ConditionalOnClass/@ConditionalOnMissingBean/@ConditionalOnProperty(type=…)` 빈 1개 + (영속이면) `db/*.sql` DDL. 컨텍스트 이전 동작이 필요하면 EPP + `spring.factories`.
-2. `build.gradle`: 능력전이=`api`, 내부구현=`implementation`, 호스트/선택=`compileOnly`(jdbc/redis/web 등). **테스트 넣으면 `testImplementation spring-boot-starter-test`**, 실DB 검증 필요하면 `testRuntimeOnly 'com.h2database:h2'`(둘 다 BOM). **테스트가 main 의 `compileOnly` 클래스를 import 하면 그 의존도 test 소스셋에 재선언**(`testImplementation …`) — compileOnly 는 test 로 전이 안 됨(idempotency: `testImplementation spring-boot-starter-jdbc`). 레지스트리/익스포터처럼 런타임 classpath 로만 동작하면 호스트가 `runtimeOnly` opt-in.
-3. `settings.gradle`(신규 모듈) / `imports`(새 autoconfig) 등록. **기존 모듈 확장이면 변경 없음**(이번 jdbc: settings/imports 무변경).
-4. 코드 전 Boot4/Spring7/Jackson3 + 외부 API 공식 소스 확정. 틀리면 조용히 잘못되는 알고리즘(멱등 선점·만료 등)은 순수 JDK 또는 H2 로 실제 실행 검증.
-5. 오토컨피그: `@AutoConfiguration` + `@ConditionalOnClass/Property` + 빈 `@ConditionalOnMissingBean`.
+1. 신규 모듈 또는 기존 확장. 기존 모듈에 **웹 응답 캡처/재생**을 더할 땐(이번 사례): 필터(`OncePerRequestFilter`+`@Order`)로 응답 래핑 + 인터셉터 `afterCompletion` 캡처 + 고정 셰이프 코덱. 빈은 세부 토글(`@ConditionalOnProperty`)로 옵트인.
+2. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(web/jdbc/redis). **테스트가 그 compileOnly 클래스를 import 하면 `testImplementation` 재선언**(web/jdbc). 실DB 검증은 `testRuntimeOnly h2`.
+3. `settings.gradle`/`imports` 등록 — **기존 모듈 확장이면 무변경**(이번: 변경 없음).
+4. 코드 전 Boot4/Spring7/Jackson3 + 외부 API 공식 소스 확정. 조용히 틀리는 로직(멱등 선점·코덱·재생 분기)은 순수 JDK 또는 H2 로 실제 실행 검증.
+5. 오토컨피그: `@AutoConfiguration` + `@ConditionalOnClass/Property(+WebApplication)` + 빈 `@ConditionalOnMissingBean`. 필터는 평범한 `@Bean`(Boot 자동 등록)+`@Order`(secure-web 컨벤션).
 6. 검증: `./gradlew :...:compileJava (+:test) (+spotlessApply)`.
 7. 드롭인: 변경 파일 전부 → 한 zip, 루트에서 `unzip -o`.
 

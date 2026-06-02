@@ -12,9 +12,11 @@ dependencies {
 
     // 테스트 API(JUnit5 + AssertJ) — BOM 버전. (실행 런처 junit-platform-launcher 는 루트 subprojects 에서 일괄 적용)
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    // ⚠️ compileOnly 는 test 클래스패스로 전이되지 않는다. JdbcIdempotencyStoreTest 가 JdbcTemplate/
-    //    DriverManagerDataSource 를 직접 쓰므로 test 소스셋에 jdbc 를 별도 선언해야 컴파일된다. (BOM 버전)
+    // ⚠️ compileOnly 는 test 클래스패스로 전이되지 않는다. 테스트가 main 의 compileOnly 클래스를 직접 쓰면 재선언 필요:
+    //   - jdbc: JdbcIdempotencyStoreTest 가 JdbcTemplate/DriverManagerDataSource 사용
+    //   - web : IdempotencyInterceptorTest 가 HandlerMethod/ContentCachingResponseWrapper 사용
     testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
     // JdbcIdempotencyStore 를 실제 DB(인메모리 H2)로 검증 — 선점/만료-재선점 SQL 의미 확인용. (BOM 관리 버전)
     testRuntimeOnly 'com.h2database:h2'
 }

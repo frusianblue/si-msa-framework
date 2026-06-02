@@ -28,6 +28,8 @@ public class IdempotencyProperties {
 
     private final Store store = new Store();
 
+    private final Replay replay = new Replay();
+
     public static class Store {
         /** memory(기본·단일인스턴스) | redis(다중인스턴스 공유) | jdbc(영속). */
         private String type = "memory";
@@ -38,6 +40,22 @@ public class IdempotencyProperties {
 
         public void setType(String type) {
             this.type = type;
+        }
+    }
+
+    public static class Replay {
+        /**
+         * 응답 재생 활성(기본 false=레거시 409). true 면 완료된 동일 키 요청에 저장된 응답을 그대로 재생하고,
+         * 처리중이면 409. 활성 시 IdempotencyResponseFilter 가 등록되어 응답을 버퍼링(헤더 있는 요청만).
+         */
+        private boolean enabled = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
         }
     }
 
@@ -67,5 +85,9 @@ public class IdempotencyProperties {
 
     public Store getStore() {
         return store;
+    }
+
+    public Replay getReplay() {
+        return replay;
     }
 }

@@ -5,16 +5,19 @@ import com.company.framework.idempotency.store.InMemoryIdempotencyStore;
 import com.company.framework.idempotency.store.JdbcIdempotencyStore;
 import com.company.framework.idempotency.store.RedisIdempotencyStore;
 import com.company.framework.idempotency.web.IdempotencyInterceptor;
+import com.company.framework.idempotency.web.IdempotencyResponseFilter;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.util.ContentCachingResponseWrapper;
 
 /**
  * 멱등성 오토컨피그.
@@ -63,5 +66,18 @@ public class IdempotencyAutoConfiguration {
                 registry.addInterceptor(new IdempotencyInterceptor(store, props));
             }
         };
+    }
+
+    /**
+     * 재생 모드 전용. 응답 캡처를 위해 (헤더가 있는 요청의) 응답을 ContentCachingResponseWrapper 로 감싼다.
+     * secure-web 와 동일하게 평범한 @Bean 으로 등록(Boot 자동 등록) + 필터 클래스의 @Order(LOWEST_PRECEDENCE)로 정렬.
+     */
+    @Bean
+    @ConditionalOnClass(ContentCachingResponseWrapper.class)
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnProperty(prefix = "framework.idempotency.replay", name = "enabled", havingValue = "true")
+    @ConditionalOnMissingBean
+    public IdempotencyResponseFilter idempotencyResponseFilter(IdempotencyProperties props) {
+        return new IdempotencyResponseFilter(props);
     }
 }
