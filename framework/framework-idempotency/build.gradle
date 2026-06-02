@@ -2,10 +2,19 @@
 // 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
 dependencies {
     api project(':framework:framework-core')
-    // web/redis 는 호스트 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지)
+    // web/redis/jdbc 는 호스트 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지)
     compileOnly 'org.springframework.boot:spring-boot-starter-web'
     compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+
+    // 테스트 API(JUnit5 + AssertJ) — BOM 버전. (실행 런처 junit-platform-launcher 는 루트 subprojects 에서 일괄 적용)
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // ⚠️ compileOnly 는 test 클래스패스로 전이되지 않는다. JdbcIdempotencyStoreTest 가 JdbcTemplate/
+    //    DriverManagerDataSource 를 직접 쓰므로 test 소스셋에 jdbc 를 별도 선언해야 컴파일된다. (BOM 버전)
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    // JdbcIdempotencyStore 를 실제 DB(인메모리 H2)로 검증 — 선점/만료-재선점 SQL 의미 확인용. (BOM 관리 버전)
+    testRuntimeOnly 'com.h2database:h2'
 }
