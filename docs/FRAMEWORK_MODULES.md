@@ -69,7 +69,7 @@ public class XxxAutoConfiguration {
 | framework-openapi | API 문서 | `framework.openapi.enabled` | [선택] | 공통 |
 | framework-redis | Redis TokenStore/LoginAttempt | `...type=redis` | [선택] | 공통 |
 | framework-commoncode | 공통코드 CRUD | `framework.commoncode.enabled` | [선택] | 공통 |
-| framework-file / -s3 | 파일 저장(로컬/NAS/S3) | `framework.file.enabled`,`storage.type` | [선택] | 공통 |
+| framework-file / -s3 | 파일 저장(로컬/NAS/S3) + **콘텐츠 타입 검증(Tika, 옵트인)·at-rest 암호화(AES, 옵트인)** | `framework.file.enabled`,`storage.type`,`storage.encrypt`,`validation.content-type-detection` | [선택] | 공통 |
 
 ### 2.2 신규 — 토대 (다른 기능의 전제, 먼저 깔 것)
 

@@ -532,19 +532,27 @@ framework:
       base-path: ./uploads   # nas 는 마운트 경로(예: /mnt/nas/uploads)
       max-size: 10485760     # 10MB
       allowed-extensions: [jpg, png, pdf, docx, xlsx, hwp, zip, ...]
+      encrypt: false         # true=저장소에 AES-CBC 스트리밍 암호화(at-rest). framework.crypto.* 필요
       s3:                    # type=s3 일 때만
         bucket: my-bucket
         region: ap-northeast-2
         endpoint:            # MinIO 등 S3 호환 스토리지(선택)
+    validation:
+      content-type-detection: false   # true=Tika 매직넘버로 실제 MIME 검증(위장 업로드 차단). tika-core 의존 필요
+      # blocked-content-types: [...]   # 차단 MIME 커스터마이즈(기본: 실행파일/스크립트/HTML 등)
 ```
 - **local**(기본)·**nas**: 파일시스템 저장소 공유(`FileSystemFileStorage`). NAS는 마운트 경로를 `base-path`로 지정만.
 - **s3**: `framework-file-s3` 의존성 추가 + `type: s3`. AWS SDK v2 직접 사용(자격증명은 기본 체인: env/profile/IAM Role). `endpoint` 지정 시 MinIO 호환.
 - 환경 분리 예: 로컬 `type: local`, 운영(폐쇄망) `type: nas`, 클라우드 `type: s3` — 같은 코드, 프로퍼티만 다르게.
+- **콘텐츠 타입 검증(옵트인)**: `validation.content-type-detection: true` + 서비스에 `implementation 'org.apache.tika:tika-core:3.1.0'`. Tika 가 본문 매직넘버로 실제 MIME 을 판정해 위험 형식(실행파일/스크립트/HTML 등)을 차단하고, 메타에는 클라이언트 헤더가 아닌 **검출된 신뢰 MIME** 을 기록한다. 의존 없이 토글만 켜면 경고 후 검증 생략(NoOp 폴백).
+- **저장소 암호화(옵트인)**: `storage.encrypt: true` (+ `framework.crypto.aes-secret` 설정). local/nas/s3 어느 백엔드든 본문을 AES-CBC 로 스트리밍 암호화해 보관(메타·다운로드는 그대로). ⚠️ **기존 평문 파일은 복호화 실패** — 신규 적용은 빈 스토리지부터.
 
 ### 보안 검증 (SI 필수)
 - 저장 파일명은 **UUID로 생성**(원본명은 메타에만 보존) → 경로조작/덮어쓰기 차단
 - 위험 확장자 **항상 차단**(exe/jsp/sh/php/bat 등) + 화이트리스트 확장자만 허용
 - 크기 제한(프로퍼티) + Spring 멀티파트 한도 + 경로 정규화 후 base-path 이탈 검사
+- (옵트인) **콘텐츠 타입 검증**: Tika 매직넘버로 실제 MIME 을 판정 → 확장자/헤더 위장 업로드(png 로 위장한 jsp·exe 등) 차단. 메타엔 검출된 신뢰 MIME 기록
+- (옵트인) **저장소 at-rest 암호화**: AES-CBC 스트리밍으로 본문 암호화 보관(폐쇄망/민감자료). 대용량도 메모리 적재 없이 스트리밍
 - 업로드/삭제는 `@AuditLog`로 감사로그 기록
 
 ### API & 데모

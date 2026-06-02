@@ -2,7 +2,7 @@
 
 > 목적: 무엇을, 왜, 어디에, 어떤 버전으로 쓰는지 한곳에서 추적한다.
 > 단일 버전 소스는 `gradle/libs.versions.toml`. **버전을 바꿀 땐 카탈로그를 고치고 이 표를 갱신**한다.
-> 최종 갱신: 2026-06-01 · 갱신자: <!-- 채우기 -->
+> 최종 갱신: 2026-06-03 · 갱신자: <!-- 채우기 -->
 
 ---
 
@@ -37,6 +37,7 @@
 | `software.amazon.awssdk:bom` / `s3` | 2.31.0 | S3 저장소 (Spring Cloud AWS 회피) | framework-file-s3 |
 | `com.github.gavlyukovskiy:datasource-proxy-spring-boot-starter` | 2.0.0 | SQL 디버깅(바인딩 값/슬로우쿼리) — **Boot 4 는 2.0.0+** | 서비스(개발) |
 | `org.apache.poi:poi-ooxml` | 5.5.1 | Excel 업/다운로드(XSSF/SXSSF/HSSF) — **Boot BOM 미관리**(여기서 고정), 모듈 내부 implementation | framework-excel(선택) |
+| `org.apache.tika:tika-core` | 3.1.0 | 업로드 콘텐츠 타입 매직넘버 검출 — **Boot BOM 미관리**(여기서 고정). file 에 `compileOnly`(선택 의존·가드된 인스턴스화) + test. 검출만이라 tika-core 단독(파서 모듈 불필요) | framework-file(선택, `validation.content-type-detection=true` 시) |
 
 ### 3.2 BOM 관리(버전 미명시)
 | 라이브러리 | 용도 | 적용 위치 |
@@ -53,7 +54,7 @@
 | `spring-boot-starter-mail` | 메일 채널(JavaMailSender, jakarta.mail) — Boot BOM 관리 | framework-notification(선택) |
 | `spring-boot-starter-flyway` + `flyway-database-postgresql` | DB 마이그레이션(PG 10+) | 서비스 |
 | `org.postgresql:postgresql` | 운영 DB 드라이버(프레임워크는 미포함) | 각 서비스 |
-| `com.h2database:h2` | 로컬/테스트 DB | 각 서비스 + framework-idempotency test(JdbcIdempotencyStore 실DB 검증, `testRuntimeOnly`) |
+| `com.h2database:h2` | 로컬/테스트 DB | 각 서비스 + framework-idempotency·**commoncode·file** test(JdbcIdempotencyStore/enabled 매퍼 슬라이스 실DB 검증, `testRuntimeOnly`) |
 | `spring-cloud-starter-gateway-server-webflux` | API 게이트웨이(Boot 4 아티팩트) | gateway |
 | `spring-cloud-starter-circuitbreaker-reactor-resilience4j` | 회로차단 | gateway |
 
@@ -90,6 +91,7 @@
 - Docker 이미지: 레이어 추출 후 엔트리포인트는 `org.springframework.boot.loader.launch.JarLauncher` (구 `java -jar` 대체).
 - **Spring 7 `HttpHeaders`** — `MultiValueMap` 미구현. `containsKey→containsHeader`, `keySet→headerNames()`, `forEach/entrySet` 제거. 헤더 다루는 코드 주의.
 - **Boot 4 모듈 분리** — `org.springframework.boot.http.client.*` 는 starter-web 컴파일 경로에 없을 수 있음 → RestClient 타임아웃은 spring-web `SimpleClientHttpRequestFactory` 로. `RestTemplateBuilder` 는 `org.springframework.boot.restclient` 모듈.
+- **Boot 4 `EnvironmentPostProcessor` 패키지 이동** — `org.springframework.boot.env.EnvironmentPostProcessor` → `org.springframework.boot.EnvironmentPostProcessor`(구버전 deprecated 브리지, 4.2.0 제거 예정). `BootstrapRegistry` 계열은 `org.springframework.boot` → `org.springframework.boot.bootstrap`. EPP 는 **코드 import + `spring.factories` 키 둘 다** 갱신(키 불일치 시 조용히 미등록). 메서드 시그니처는 불변. (framework-observability 적용 완료.)
 - **관측(framework-observability) — 새 라이브러리 0**: 메트릭 레지스트리(`micrometer-registry-prometheus`/`-otlp`)·OTel 익스포터(`opentelemetry-exporter-otlp`)는 **전부 Boot BOM 관리**(버전 미명시) → 카탈로그/`STACK` 무변경. 호스트 서비스가 필요할 때만 `runtimeOnly` 로 opt-in. ⚠️ Boot 4 패키지 재편: `MeterRegistryCustomizer` 가 `org.springframework.boot.micrometer.metrics.autoconfigure`(3.x 의 `actuate.autoconfigure.metrics` 에서 이동). 구조화 로그는 Boot4 네이티브(`logging.structured.format`)라 `logstash-logback-encoder` 불필요. OTLP 트레이스 키는 브리지 방식 `management.otlp.tracing.endpoint`(신규 스타터는 `management.opentelemetry.tracing.export.otlp.endpoint`).
 
 ## 6. 추천 후보 (미적용 — 필요 시 도입)
