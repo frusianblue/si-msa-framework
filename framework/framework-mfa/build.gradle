@@ -13,7 +13,11 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    // 오토컨피그가 enabled=true 시 MfaEnrollmentController(@RestController)를 무조건 등록 → 인스턴스화에 web 타입 필요.
-    //   web 은 main 에서 compileOnly(비전이)라 test 에서 재선언해야 컨텍스트가 기동된다(레포 표준).
+    // 오토컨피그 로딩 테스트(ApplicationContextRunner)는 MfaAutoConfiguration 을 리플렉션으로 introspect 한다.
+    //   이때 @Bean 메서드의 "모든" 파라미터 타입(StringRedisTemplate/JdbcTemplate/web 컨트롤러)을 로드하므로,
+    //   @ConditionalOnClass 와 무관하게 main 의 compileOnly 3종을 test 에 그대로 다시 선언해야 컨텍스트가 뜬다.
+    //   (운영에선 Boot 가 ASM 으로 메타데이터를 읽어 미사용 타입을 로드하지 않으므로 redis/jdbc 없는 앱도 정상.)
     testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
 }
