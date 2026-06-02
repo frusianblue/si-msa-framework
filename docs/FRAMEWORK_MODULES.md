@@ -122,6 +122,14 @@ public class XxxAutoConfiguration {
 
 > ✅ 구현완료(2026-06-02). 공통 태그=`MeterRegistryCustomizer`(service/env/version+extra). 구조화 로그=Boot4 네이티브 `logging.structured.format`(ecs/logstash/gelf, 인코더 불필요). 익스포터=메트릭/트레이스 OTLP(기본 off, 호스트 runtimeOnly opt-in). 프로퍼티성 표준값은 `EnvironmentPostProcessor`(로깅 초기화 전)로 주입. **새 외부 의존성 0**. 상세는 `framework/framework-observability/README.md`, k8s 는 `deploy/k8s/observability.yaml`.
 
+### 2.8 신규 — 테스트/아키텍처 검증 (테스트 전용, 배포 산출물 아님)
+
+| 모듈 | 책임 | 토글 | 분류 | 규제 |
+|---|---|---|---|---|
+| framework-archtest ✅ | **ArchUnit 아키텍처 규칙 강제** — 모듈(슬라이스) 순환금지 · Jackson3 규약(이동된 `com.fasterxml.jackson.*` 금지, `.annotation` 예외) · mapper/domain 레이어 격리 · `*AutoConfiguration`/`*Properties` 네이밍 · 필드주입 금지(생성자 주입). 전 모듈 main 을 `testImplementation project(...)` 로 임포트해 검사 | (토글 없음·`test` 자동) | [테스트] | 공통 |
+
+> ✅ 구현완료(2026-06-03). 7규칙, `@AnalyzeClasses(DoNotIncludeTests)`. **새 라이브러리 모듈 추가 시 `framework-archtest/build.gradle` 에 project 의존 한 줄을 추가**해야 검사 대상에 포함된다(누락 시 사각지대). 함께 도입: 핵심 알고리즘 단위테스트(JWT/TOTP/Base32/RBAC/마스킹) + 오토컨피그 로딩 테스트(`ApplicationContextRunner`) + **WireMock(standalone) 서비스간 연동 테스트**(`framework-client`: 재시도/서킷/POST 비재시도). archunit/wiremock 모두 **test 전용 → 런타임 무영향**.
+
 ---
 
 ## 3. 의존 관계 (요약)

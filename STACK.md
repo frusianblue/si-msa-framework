@@ -100,9 +100,9 @@
 | Boot 내장 SBOM(`/actuator/sbom`) | 기능 | 공급망 보안 SBOM | 권장(별도 플러그인보다 우선) |
 | `org.gradle.test-retry` | 플러그인 | CI flaky 테스트 재시도 | 선택 |
 | Spring REST Docs | 라이브러리 | 테스트 기반 API 문서 | 선택(공공 산출물) |
-| WireMock | 라이브러리 | 서비스 간 HTTP 연동 테스트 목 | 서비스 간 통신 도입 시 |
+| `org.wiremock:wiremock-standalone:3.13.2` | 라이브러리 | 서비스 간 HTTP 연동 테스트 목 | ✅ **도입**(framework-client test). standalone=Boot4 Jetty12.1/Jackson3 충돌 회피 |
 | Awaitility | 라이브러리 | 비동기/가상스레드 테스트 검증 | 선택 |
-| ArchUnit | 라이브러리 | 모듈/레이어 의존 규칙 강제 | 재사용 프레임워크라 권장 |
+| `com.tngtech.archunit:archunit-junit5:1.4.2` | 라이브러리 | 모듈/레이어 의존 규칙 강제 | ✅ **도입**(테스트전용 `framework-archtest`: 순환·Jackson3·레이어·네이밍·필드주입 7규칙) |
 | Error Prone + NullAway | 플러그인 | 컴파일타임 버그/NPE 탐지 | 신규 모듈부터 점진(초기 노이즈 많음) |
 
 ## 7. 버전 확인 / 업데이트 방법

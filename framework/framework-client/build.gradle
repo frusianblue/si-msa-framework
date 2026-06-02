@@ -4,4 +4,11 @@ dependencies {
     api project(':framework:framework-core')   // MdcTraceFilter 상수(트레이스) 재사용
     compileOnly 'org.springframework.boot:spring-boot-starter-web'   // RestClient/인터셉터: 호스트 제공
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    // 서비스간 연동 테스트: 실제 HTTP 로 재시도/서킷 동작 검증.
+    //   web 은 compileOnly(비전이)라 테스트에서 RestClient 런타임을 다시 선언해야 한다(레포 표준).
+    //   wiremock-standalone(shaded): Boot4 가 끌어오는 Jetty 12.1 / Jackson 3 과 클래스패스 충돌 회피.
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation libs.wiremock.standalone
 }

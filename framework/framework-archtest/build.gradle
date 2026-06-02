@@ -1,0 +1,42 @@
+// 테스트 전용 모듈(배포 산출물 아님). ArchUnit 으로 프레임워크 전체에 아키텍처 규칙을 강제한다:
+//   - 모듈(슬라이스) 간 순환 의존 금지
+//   - Jackson 3 규약: tools.jackson.* 만. 3에서 이동된 com.fasterxml.jackson.{databind,core,dataformat,
+//     datatype,module} 의존 금지. (jackson-annotations=com.fasterxml.jackson.annotation 은 3에서도 유지 → 예외)
+//   - 레이어 격리: mapper/domain 가 web/service 에 의존 금지
+//   - 네이밍 규약: *AutoConfiguration=@AutoConfiguration, top-level *Properties=@ConfigurationProperties
+//   - 필드 주입 금지(생성자 주입 강제)
+//
+// ArchUnit 은 바이트코드를 읽어 검사하므로, 검사 대상인 모든 라이브러리 모듈의 main 클래스를
+// 이 모듈 test 클래스패스에 올려야 한다 → 전 모듈 project 의존(testImplementation).
+//   (각 모듈의 compileOnly 3rd-party 는 안 올라오지만, 규칙은 com.company.framework 클래스의 의존만
+//    검사하므로 미해소 외부 타입이 있어도 임포트/검사에 문제 없음.)
+dependencies {
+    testImplementation libs.archunit.junit5
+
+    // 규칙에서 참조하는 애너테이션 타입(@AutoConfiguration / @ConfigurationProperties) 컴파일용.
+    testImplementation 'org.springframework.boot:spring-boot-autoconfigure'
+
+    // 검사 대상: 모든 프레임워크 라이브러리 모듈(archtest 자신 제외).
+    testImplementation project(':framework:framework-core')
+    testImplementation project(':framework:framework-mybatis')
+    testImplementation project(':framework:framework-security')
+    testImplementation project(':framework:framework-openapi')
+    testImplementation project(':framework:framework-redis')
+    testImplementation project(':framework:framework-commoncode')
+    testImplementation project(':framework:framework-file')
+    testImplementation project(':framework:framework-file-s3')
+    testImplementation project(':framework:framework-idempotency')
+    testImplementation project(':framework:framework-i18n')
+    testImplementation project(':framework:framework-idgen')
+    testImplementation project(':framework:framework-client')
+    testImplementation project(':framework:framework-audit')
+    testImplementation project(':framework:framework-secure-web')
+    testImplementation project(':framework:framework-datasource')
+    testImplementation project(':framework:framework-messaging')
+    testImplementation project(':framework:framework-saga')
+    testImplementation project(':framework:framework-excel')
+    testImplementation project(':framework:framework-batch')
+    testImplementation project(':framework:framework-notification')
+    testImplementation project(':framework:framework-mfa')
+    testImplementation project(':framework:framework-observability')
+}
