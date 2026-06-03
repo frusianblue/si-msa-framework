@@ -24,7 +24,7 @@ deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거) · `framework-archive`(아카이빙/압축: ZIP+GZIP·zip-slip/폭탄 가드).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거) · `framework-archive`(아카이빙/압축: ZIP+GZIP·zip-slip/폭탄 가드) · `framework-file-batch`(파일 일괄처리: 다건 동일작업 + 부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -194,6 +194,7 @@ dependencies {
     implementation project(':framework:framework-context')     // 요청 컨텍스트/멀티테넌시(tenantId/userId/locale + @Async·아웃바운드 전파)
     implementation project(':framework:framework-image')       // 이미지 처리(리사이즈/썸네일·EXIF orientation 보정·민감 EXIF(GPS) 제거, ImageIO·의존성 0)
     implementation project(':framework:framework-archive')     // 아카이빙/압축(ZIP+GZIP, zip-slip·압축폭탄 가드, java.util.zip·의존성 0)
+    implementation project(':framework:framework-file-batch')  // 파일 일괄처리(다건 동일작업 + 부분실패 격리·Java21 가상스레드 병렬·드라이런, image/archive 위임·의존성 0)
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
@@ -601,6 +602,41 @@ archiver.gunzip(in, out);
 ```
 - **tar/tar.gz 는 미지원**(JDK 미포함) — 필요 시 commons-compress 옵트인 후속. zip 패스워드 암호화도 미지원(at-rest 암호화는 `framework-file` `storage.encrypt`).
 - 모든 메서드는 호출자 입/출력 스트림을 **닫지 않는다**(소유권 보존). 키가 틀린/조작된 데이터는 해제 도중 예외로 기동을 막는다.
+
+### framework-file-batch (파일 일괄처리 — 다건 동일작업 + 부분실패 격리·가상스레드 병렬·드라이런)
+"같은 작업을 **여러 파일에 한꺼번에**"(이름 변경/이미지 변환/압축)를 감싸는 **얇은 오케스트레이션**. 한 건이 실패해도 나머지는 계속(부분 실패 격리)하고, Java 21 **가상스레드**로 병렬 처리하며, **드라이런**으로 미리 계획만 볼 수 있다. 결과는 항상 **입력 순서**로 모인다. 변환/압축은 `framework-image`/`framework-archive` 에 **위임**하므로 그 자체로 새 의존성을 더하지 않는다(**신규 외부 의존성 0**) — 두 모듈이 없으면 해당 작업만 빠지고 이름 변경·오케스트레이터는 그대로 동작한다. 웹 비의존(배치/스케줄)·기본 off.
+```yaml
+framework:
+  file-batch:
+    enabled: true
+    default-parallelism: 16   # 동시 처리 상한(가상스레드 + Semaphore). 호출 시 BatchOptions 로 재정의 가능
+```
+```java
+@Autowired FileBatchProcessor fileBatch;
+@Autowired BatchImageOps batchImageOps;     // framework-image 가 있을 때만 빈 등록
+@Autowired BatchArchiveOps batchArchiveOps; // framework-archive 가 있을 때만 빈 등록
+
+// 1) 이름 일괄 변경 — 디렉토리의 파일들을 연번으로(img001.jpg, img002.jpg, ...)
+List<BatchItem> items = Files.list(dir).map(BatchItem::of).toList();
+var rename = new RenameOperation(RenameOperation.sequence("img", 1, 3));
+BatchResult r = fileBatch.run(items, rename);
+if (r.hasFailures()) r.failures().forEach(f -> log.warn("{} 실패: {}", f.item().name(), f.message()));
+
+// 2) 이미지 일괄 썸네일(framework-image 위임) — png/jpeg 혼재 → 128px JPEG
+var thumb = batchImageOps.thumbnail(128, ImageFormat.JPEG, 0.8f);
+fileBatch.run(items, thumb);
+
+// 3) 파일별 GZIP 압축(framework-archive 위임) — 각 파일을 <name>.gz 로
+fileBatch.run(items, batchArchiveOps.gzip());
+
+// 옵션: fail-fast + 동시도 4 / 또는 드라이런(IO 없이 계획만)
+fileBatch.run(items, rename, BatchOptions.defaults().withContinueOnError(false).withParallelism(4));
+BatchResult plan = fileBatch.run(items, rename, BatchOptions.defaults().withDryRun(true));
+```
+- **이름 충돌**은 실제 IO 이전 `BatchPreflight` 단계에서 일괄 검출한다 — `CollisionStrategy.FAIL`(전체 중단) 또는 `SUFFIX`(`name-1.ext`, `name-2.ext` 연번). 연번은 입력 인덱스 기반이라 병렬에서도 결정적.
+- 결과 이름은 항상 **단일 파일명**으로 강제된다(`BatchSafety` — 경로 구분자/`..`/드라이브 표기 거부). 디렉토리 밖 기록(경로 조작) 차단.
+- `BatchItem` 은 경로 기반(결과를 같은 디렉토리에 스트리밍 기록) 또는 본문 바이트 기반(결과를 본문으로 반환) 모두 지원. 실패는 `BusinessException` 의 `ErrorCode` 를 보존해 수집한다.
+- 작업을 직접 구현하려면 `BatchFileOperation`(필요 시 `BatchPreflight` 병행)을 구현해 `run` 에 넘기면 된다.
 
 ### framework-file (파일 하드닝 — Range 스트리밍·presigned·확장자 정합·안티바이러스)
 기존 파일 저장(로컬/NAS/S3)에 더해 **대용량/스트리밍·메타 정합성·안티바이러스**를 옵트인으로 얹는다. 기존 `FileStorage` 인터페이스는 불변이며, 선택 기능은 capability 인터페이스로 추가돼 미지원 저장소는 자동 폴백한다. **신규 외부 의존성 0**(Range=JDK NIO, ClamAV=순수 소켓, S3Presigner=awssdk:s3 포함).

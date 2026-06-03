@@ -1,0 +1,24 @@
+// 선택형 모듈: 파일 일괄처리(Batch File Processing) — "같은 작업을 여러 파일에 한꺼번에".
+//   - 얇은 오케스트레이션: rename/이미지변환/압축의 단건 기능을 "다건 + 병렬 + 부분실패 격리 + 결과수집"으로 감싼다.
+//   - 병렬은 Java 21 가상스레드(Executors.newVirtualThreadPerTaskExecutor) + Semaphore 동시도 상한 → 새 의존성 0.
+//   - 실제 변환/압축은 기존 모듈에 위임: framework-image(ImageProcessor) / framework-archive(Archiver) 는 compileOnly.
+//     해당 모듈이 클래스패스에 없으면 그 op 만 빠지고(@ConditionalOnClass 백오프) rename/copy 는 그대로 동작.
+//   - 순수 로직(RenameOperation/FileBatchProcessor/BatchSafety)은 Spring 무의존 → JDK 단독 단위검증 가능.
+// 루트 build.gradle 이 java-library/dependency-management/spotless/jacoco 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // 표준 예외/에러코드(BusinessException/ErrorCode). 안전 위반/충돌/실패를 표준 예외로 던진다.
+    api project(':framework:framework-core')
+
+    // 위임 대상(선택): 있으면 image/archive op 활성, 없으면 그 op 만 백오프. 전이 노출 금지 → compileOnly.
+    compileOnly project(':framework:framework-image')
+    compileOnly project(':framework:framework-archive')
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // 테스트는 위임 대상을 실제로 써서 백오프/위임을 검증 → compileOnly 를 test 에서 재선언.
+    testImplementation project(':framework:framework-image')
+    testImplementation project(':framework:framework-archive')
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

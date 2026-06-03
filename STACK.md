@@ -78,6 +78,8 @@
 
 > **framework-image(2026-06-03: 이미지 처리)도 새 의존성 0.** `api framework-core` 만 — 리사이즈/썸네일·EXIF orientation 보정·메타 제거 엔진이 전부 **JDK 내장**(`javax.imageio`/`java.awt.image`/`java.awt.geom.AffineTransform`)이라 외부 이미지 라이브러리(thumbnailator/metadata-extractor/TwelveMonkeys 등) 불필요. `ExifOrientation` 은 JPEG APP1/TIFF 를 직접 파싱(메타 라이브러리 무), 메타 제거는 디코드→리인코딩 부수효과. **web 도 불필요**(`@ConditionalOnWebApplication` 미부착 → 배치/MQ 컨슈머 사용). 테스트는 starter-test(testImplementation, 합성 JPEG/PNG 바이트 생성)만 — 카탈로그/ext 무변경.
 
+> **framework-file-batch(2026-06-03: 파일 일괄처리)도 새 의존성 0.** `api framework-core` + `compileOnly framework-image`/`framework-archive`(전이 노출 금지). 병렬은 **JDK 내장** `Executors.newVirtualThreadPerTaskExecutor()`(Java 21 가상스레드) + `java.util.concurrent.Semaphore` 동시도 상한이라 Spring Batch/commons-io/리액터 등 불필요. 변환/압축은 image/archive 에 **위임**(직접 인코딩 안 함) — 해당 모듈이 없으면 그 op 팩토리만 `@ConditionalOnClass` 백오프하고 rename·오케스트레이터는 그대로 동작. 순수 로직(`FileBatchProcessor`/`RenameOperation`/`BatchSafety`)은 Spring 무의존이라 JDK 단독 검증 가능. 테스트만 image/archive `testImplementation` 재선언(백오프/위임 검증).
+
 ## 4. 테스트 / 개발 도구
 | 항목 | 버전 | 용도 | 적용 위치 |
 |---|---|---|---|
@@ -123,7 +125,7 @@
 | 설정값(YAML) 암호화 | 기능 | yaml 시크릿 `ENC(...)` 자동 복호화 | ✅ **완료(2026-06-03)** — **Jasypt 미도입**. 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor`(+`DecryptingPropertySource`, `spring.factories` 등록) + 기존 `AesCryptoService`(AES-GCM, 마스터키 `AES_SECRET`) 재사용, 토글 `framework.crypto.config-decryption.enabled`(기본 on), 토큰 CLI `CryptoCli`, prod 마스터키 가드 `AesMasterKeySafetyGuard`. **신규 의존성 0·Jackson 무관**. 설계 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md` |
 | 아카이빙/압축 | 모듈 | ZIP/GZIP 묶기·풀기 | ✅ **완료(2026-06-03, `framework-archive`)** — 순수 JDK `java.util.zip`, 스트리밍·zip-slip·압축폭탄 가드. `Archiver` SPI+`ZipArchiver`. **신규 의존성 0.** tar/tar.gz 만 commons-compress 옵트인 후속 |
 | 공통 유틸 6종 | 코어 | IO/CSV/고정폭/문자셋/텍스트/컬렉션 | ✅ **완료(2026-06-03, `framework-core/util`)** — Io(가드 스트리밍)·Csv(RFC4180)·FixedWidth(CP949 전문)·Charset(MS949/EUC-KR)·Text(바이트절단)·Collection(chunk). 순수 정적 JDK·**신규 의존성 0** |
-| 파일 일괄처리 | 모듈 | 다파일 동일작업 일괄 | ⏭️ **다음 작업**(`framework-file-batch`) — 이름변경/변환/압축 일괄, 부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임. **신규 의존성 0 예정.** 설계 `docs/NEXT_FILE_BATCH_PROCESSING.md` |
+| 파일 일괄처리 | 모듈 | 다파일 동일작업 일괄 | ✅ **완료(2026-06-03, `framework-file-batch`)** — 이름변경/변환/압축 일괄, 부분실패 격리·Java21 가상스레드+Semaphore 병렬·드라이런·입력순서 보존. `RenameOperation`/`ImageTransformOperation`/`CompressOperation` + `FileBatchProcessor`(Spring 무의존). image/archive 는 `compileOnly`+`@ConditionalOnClass` 백오프. **신규 의존성 0.** 설계 `docs/NEXT_FILE_BATCH_PROCESSING.md` |
 
 ## 7. 버전 확인 / 업데이트 방법
 - 의존성 최신 여부: `./gradlew dependencyUpdates` (ben-manes 플러그인 도입 후)
