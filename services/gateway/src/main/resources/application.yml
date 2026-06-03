@@ -65,3 +65,16 @@ management:
 logging:
   pattern:
     level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-}]"
+
+# 엣지 인증: 게이트웨이에서 JWT 1차 검증 후 신뢰 헤더(X-User-Id/X-User-Roles)를 다운스트림에 주입.
+#   jwt-secret 은 framework.security.jwt.secret 과 "동일한" 값이어야 한다(같은 키로 서명한 토큰 검증).
+#   기본 off(점진 도입). 운영에서는 GATEWAY_AUTH_ENABLED=true + JWT_SECRET 주입.
+gateway:
+  auth:
+    enabled: ${GATEWAY_AUTH_ENABLED:false}
+    jwt-secret: ${JWT_SECRET:}
+    token-type: access
+    permit-all-patterns:
+      - /api/*/auth/**
+      - /actuator/**
+      - /fallback/**

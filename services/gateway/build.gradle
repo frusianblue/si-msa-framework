@@ -10,5 +10,10 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-reactor-resilience4j'
     // 레이트리밋: Redis 기반 RequestRateLimiter(토큰버킷). 분산/전역 한도 — KeyResolver(principalKeyResolver)와 함께 동작.
     implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
+    // 엣지 인증: JWT 검증(jjwt). framework-security 와 "동일 버전" — 같은 비밀키로 서명한 토큰을 검증.
+    //   framework-security(서블릿)를 의존하면 WebFlux 와 충돌하므로 jjwt 만 직접 가져온다.
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }

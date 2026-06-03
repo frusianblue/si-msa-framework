@@ -1,5 +1,6 @@
 package com.company.gateway.config;
 
+import com.company.gateway.auth.GatewayAuthGlobalFilter;
 import java.net.InetSocketAddress;
 import java.security.Principal;
 import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
@@ -23,11 +24,18 @@ public class RateLimitConfiguration {
 
     @Bean
     public KeyResolver principalKeyResolver() {
-        return exchange -> exchange.getPrincipal()
-                .map(Principal::getName)
-                .filter(StringUtils::hasText)
-                .map(name -> "u:" + name)
-                .switchIfEmpty(Mono.fromSupplier(() -> "ip:" + clientIp(exchange)));
+        return exchange -> {
+            // 엣지 인증 필터가 검증한 userId 가 있으면 사용자 기준(없으면 Principal → IP 로 강등).
+            String verifiedUserId = exchange.getAttribute(GatewayAuthGlobalFilter.USER_ID_ATTRIBUTE);
+            if (StringUtils.hasText(verifiedUserId)) {
+                return Mono.just("u:" + verifiedUserId);
+            }
+            return exchange.getPrincipal()
+                    .map(Principal::getName)
+                    .filter(StringUtils::hasText)
+                    .map(name -> "u:" + name)
+                    .switchIfEmpty(Mono.fromSupplier(() -> "ip:" + clientIp(exchange)));
+        };
     }
 
     private String clientIp(ServerWebExchange exchange) {
