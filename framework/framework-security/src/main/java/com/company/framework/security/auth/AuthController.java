@@ -69,3 +69,4 @@ public class AuthController {
         Map<String, Object> payload = Map.of("terminatedSessions", terminated);
         return ApiResponse.ok(payload, "모든 기기에서 로그아웃 되었습니다.");
     }
+}

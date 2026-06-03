@@ -221,6 +221,8 @@ public class LoginService {
         publish(LoginAuditEvent.Type.LOGOUT, userId, clientIp, "logout-all:" + terminated);
         return terminated;
     }
+
+    private TokenResponse issue(String userId, List<String> roles) {
         String access = jwtProvider.createAccessToken(userId, roles);
         String refresh = UUID.randomUUID().toString().replace("-", "");
         applyConcurrentSessionLimit(userId, refresh, jwtProvider.getJti(access)); // 한도 적용(거부 시 예외, 그 전엔 미저장)
