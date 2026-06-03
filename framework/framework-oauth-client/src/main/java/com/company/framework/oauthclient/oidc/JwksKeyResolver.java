@@ -37,26 +37,33 @@ public class JwksKeyResolver {
     private final Duration cacheTtl;
     private final ConcurrentHashMap<String, Snapshot> cache = new ConcurrentHashMap<>();
 
+    /** 가짜 kid 남용으로 인한 JWKS 재조회 폭주를 막기 위한 강제 재조회 최소 간격. */
+    private static final Duration FORCED_REFETCH_COOLDOWN = Duration.ofSeconds(60);
+
+    private final ConcurrentHashMap<String, Instant> lastForcedRefetch = new ConcurrentHashMap<>();
+
     public JwksKeyResolver(RestClient restClient, Duration cacheTtl) {
         this.restClient = restClient;
         this.cacheTtl =
                 (cacheTtl == null || cacheTtl.isZero() || cacheTtl.isNegative()) ? Duration.ofHours(1) : cacheTtl;
     }
 
-    /** kid(없으면 null)로 키를 해석. 회전 대비 1회 재조회. */
+    /** kid(없으면 null)로 키를 해석. 미발견 시 키 회전 가능성 → 강제 재조회(쿨다운 throttle) 후 1회 더 시도. */
     public Key resolve(String jwksUri, String kid) {
         if (jwksUri == null || jwksUri.isBlank()) {
             throw new BusinessException(ErrorCode.Common.INTERNAL_ERROR, "jwks-uri 가 설정되지 않았습니다(OIDC 검증 불가).");
         }
         Snapshot snapshot = cache.get(jwksUri);
         if (snapshot == null || snapshot.expired()) {
-            snapshot = refresh(jwksUri);
+            snapshot = lazyRefresh(jwksUri);
         }
         Key key = pick(snapshot, kid);
         if (key == null) {
-            // kid 미발견 → 키 회전 가능성: 강제 재조회 후 1회 더 시도.
-            snapshot = refresh(jwksUri);
-            key = pick(snapshot, kid);
+            Snapshot refreshed = forcedRefresh(jwksUri); // 회전 대비 강제 재조회(쿨다운 내면 기존 스냅샷 반환)
+            if (refreshed != null) {
+                snapshot = refreshed;
+                key = pick(snapshot, kid);
+            }
         }
         if (key == null) {
             throw new BusinessException(ErrorCode.Common.UNAUTHORIZED, "JWKS 에서 서명키를 찾지 못했습니다(kid=" + kid + ").");
@@ -65,6 +72,9 @@ public class JwksKeyResolver {
     }
 
     private static Key pick(Snapshot snapshot, String kid) {
+        if (snapshot == null) {
+            return null;
+        }
         if (kid != null && !kid.isBlank()) {
             return snapshot.byKid().get(kid);
         }
@@ -74,12 +84,26 @@ public class JwksKeyResolver {
                 : null;
     }
 
-    private synchronized Snapshot refresh(String jwksUri) {
-        // 동기화 구간 재진입 시 막 갱신된 스냅샷이 있으면 재사용.
+    /** 만료/부재 시에만 조회(동시 갱신은 막 갱신된 스냅샷 재사용). */
+    private synchronized Snapshot lazyRefresh(String jwksUri) {
         Snapshot existing = cache.get(jwksUri);
         if (existing != null && !existing.expired()) {
             return existing;
         }
+        return doFetch(jwksUri);
+    }
+
+    /** kid 미발견 시 강제 재조회. 단, 직전 강제 재조회로부터 쿨다운 내면 재조회를 생략(폭주 방지). */
+    private synchronized Snapshot forcedRefresh(String jwksUri) {
+        Instant last = lastForcedRefetch.getOrDefault(jwksUri, Instant.EPOCH);
+        if (Instant.now().isBefore(last.plus(FORCED_REFETCH_COOLDOWN))) {
+            return cache.get(jwksUri); // 쿨다운 내 → 기존 스냅샷(없으면 null)
+        }
+        lastForcedRefetch.put(jwksUri, Instant.now());
+        return doFetch(jwksUri);
+    }
+
+    private Snapshot doFetch(String jwksUri) {
         String body = fetchJwksJson(jwksUri);
         if (body == null || body.isBlank()) {
             throw new BusinessException(ErrorCode.Common.UNAUTHORIZED, "JWKS 응답이 비어 있습니다: " + jwksUri);

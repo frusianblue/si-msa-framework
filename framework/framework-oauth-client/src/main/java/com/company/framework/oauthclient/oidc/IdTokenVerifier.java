@@ -20,7 +20,7 @@ import java.util.Set;
  * OIDC id_token 검증기. 서명(JWKS 의 RSA/EC, 또는 HS 계열은 client-secret HMAC) + 표준 클레임을 확인한다.
  *
  * <ol>
- *   <li>서명: 헤더 alg 가 HS* 면 client-secret 으로 HMAC 검증, 그 외(RS/ES/PS)는 JWKS 에서 kid 로 공개키 해석.
+ *   <li>서명: 헤더 alg 가 HS 계열이면 client-secret 으로 HMAC 검증, 그 외(RS/ES/PS 계열)는 JWKS 에서 kid 로 공개키 해석.
  *   <li>exp/nbf: jjwt 가 clock-skew 허용범위로 검증.
  *   <li>iss: 설정된 issuer 와 일치.
  *   <li>aud: client-id 포함.
