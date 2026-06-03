@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.owasp.dependencycheck)
     alias(libs.plugins.sonarqube)
-    alias(libs.plugins.spotless) apply false   // 서브프로젝트에서 apply 하려면 클래스패스에 올려둠
+    alias(libs.plugins.spotless)               // 루트에도 적용: 루트 build.gradle/settings.gradle 및 yaml/sql/md 검사용
 }
 
 allprojects {
@@ -100,14 +100,82 @@ subprojects {
     // 최초 1회 ./gradlew spotlessApply 로 전체 정렬(이후 diff 안정).
     // CI 에서는 ./gradlew spotlessCheck 로 게이트.
     spotless {
+        // 한글 주석이 많아 인코딩을 UTF-8 로 못박는다(미지정 시 Windows 는 플랫폼 charset(MS949)로
+        // 읽어 한글 주석이 깨질 수 있음). 전 포맷 공통 적용.
+        encoding 'UTF-8'
+        // 설정 캐시(org.gradle.configuration-cache=true) 호환: 기본 줄바꿈 정책 GIT_ATTRIBUTES 는
+        // 직렬화 불가능한 provider 라 spotless 태스크가 설정 캐시 저장에 실패한다(gradle#19113/spotless#987).
+        // 정적 LF 로 고정해 그 provider 를 제거한다. Windows 개발 + Linux CI 일관성에도 LF 가 적합.
+        lineEndings = com.diffplug.spotless.LineEnding.UNIX
         java {
             target 'src/**/*.java'
-            palantirJavaFormat()
+            toggleOffOn()              // // spotless:off ~ // spotless:on 구간은 포맷 제외(수동 정렬/ASCII 표 보호)
+            palantirJavaFormat()       // (재현성 필요 시 버전 고정 가능: palantirJavaFormat('x.y.z'))
+            formatAnnotations()        // 타입 애너테이션 줄정리(8.x 기본 목록에 @Valid/jakarta 제약 포함)
             removeUnusedImports()
             importOrder()
             trimTrailingWhitespace()
             endWithNewline()
         }
+    }
+}
+
+// ===== Spotless (루트 적용): Java 외 소스도 검사 =====
+// Java 는 위 subprojects 에서 모듈별로 처리. 여기서는 루트 기준 재귀 target 으로
+// 모든 모듈의 gradle/yaml/sql/markdown 까지 한곳에서 검사한다.
+// ⚠️ YAML/SQL/Gradle 은 의미가 깨지면 안 되므로 공격적 재포맷터(jackson/greclipse/dbeaver) 대신
+//    화이트스페이스 위생만 적용한다. 더 강한 포맷이 필요하면 주석의 옵션을 켜라.
+spotless {
+    encoding 'UTF-8'
+    // 설정 캐시 호환(위 subprojects 와 동일 이유) — 정적 LF 로 고정.
+    lineEndings = com.diffplug.spotless.LineEnding.UNIX
+
+    // (선택) 변경분만 게이트하고 싶으면 주석 해제 — 기존 파일 대량 재포맷 diff 를 피한다.
+    // ratchetFrom 'origin/master'
+
+    // --- Gradle 빌드 스크립트 (루트 + 전 모듈 build.gradle, settings.gradle) ---
+    groovyGradle {
+        target '**/*.gradle', 'settings.gradle'
+        targetExclude '**/build/**', '**/.gradle/**'
+        // greclipse()                 // (선택) 구조까지 재정렬하는 Groovy 포맷터. 주석/정렬이 바뀔 수 있어 기본 off.
+        leadingTabsToSpaces(4)
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+
+    // --- YAML (application*.yml 등) ---
+    format 'yaml', {
+        target '**/*.yml', '**/*.yaml'
+        targetExclude '**/build/**', '**/.gradle/**'
+        // yaml { jackson() }          // (선택) 구조 재정렬. 멀티문서(---)/앵커/따옴표를 바꿀 수 있어 기본 off.
+        leadingTabsToSpaces(2)         // YAML 은 탭 금지 → 혹시 섞인 탭을 공백으로(2칸)
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+
+    // --- SQL (Flyway 마이그레이션 등) ---
+    format 'sql', {
+        target '**/*.sql'
+        targetExclude '**/build/**', '**/.gradle/**'
+        // sql { dbeaver() }           // (선택) 키워드 대문자화/재들여쓰기. 수기 정렬 DDL 이 바뀔 수 있어 기본 off.
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+
+    // --- Markdown (docs/*.md 등) ---
+    // 주의: 마크다운은 줄 끝 공백 2개가 의도적 줄바꿈일 수 있어 trimTrailingWhitespace 를 걸지 않는다.
+    format 'markdown', {
+        target '**/*.md'
+        targetExclude '**/build/**', '**/.gradle/**'
+        endWithNewline()
+    }
+
+    // --- 기타 텍스트 ---
+    format 'misc', {
+        target '.gitignore', '.gitattributes'
+        trimTrailingWhitespace()
+        leadingTabsToSpaces(2)
+        endWithNewline()
     }
 }
 
