@@ -22,10 +22,11 @@ framework/
 services/
   gateway             Spring Cloud Gateway (라우팅 + CircuitBreaker + 엣지 JWT 인증)
   user-service        샘플 업무 서비스 (프레임워크 사용 예시)
+  auth-server         OAuth2/OIDC Authorization Server(OP) — 외부/그룹사 위임 토큰 발급(:9000) — 선택 배포
 deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
-> 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
+> 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)·`services/auth-server`(9000, OAuth2/OIDC OP — `docs/modules/AUTH_SERVER.md`)는 아래 상세 섹션 참고.
 > 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거) · `framework-archive`(아카이빙/압축: ZIP+GZIP·zip-slip/폭탄 가드) · `framework-file-batch`(파일 일괄처리: 다건 동일작업 + 부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임) · `framework-file-sftp`(SFTP 원격 저장: MINA SSHD 위임·Range 지원, `storage.type=sftp`).
 
 ## 핵심 설계

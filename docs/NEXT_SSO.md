@@ -15,14 +15,14 @@
   - ✅ **A) 사내 다중 서비스 SSO — 중앙 로그아웃/logout-all**(2026-06-03 완료)
   - ✅ **B-OIDC) 표준 프로토콜 SSO — OIDC RP 강화**(2026-06-03 완료)
   - ✅ **B-SAML) 표준 프로토콜 SSO — SAML 2.0 SP**(2026-06-04 완료, `framework-saml-sp`) (§5)
-  - ⬜ **C) 우리가 IdP — Authorization Server**(별도 `services/auth-server`, 후순위)
+  - ✅ **C) 우리가 IdP — Authorization Server**(2026-06-04 완료·기동검증, `services/auth-server`) (§6.3)
 - ⬜ 4) Passwordless(패스키/WebAuthn) — 그 다음.
 
 현재 자산: `JwtProvider`/`TokenStore`(memory|jdbc|redis)/`AuthenticatedUser`/`TokenResponse`, RBAC, MFA(`MfaGate`),
 게이트웨이 엣지 검증(jjwt)+**jti 블랙리스트 reactive 조회**, `framework-context`(헤더 신원 전파),
 `framework-oauth-client`(OAuth2 **+ OIDC RP 강화**), `framework-saml-sp`(**SAML 2.0 SP**).
 
-> **➡️ 다음 세션 = §6.3 C) Authorization Server**(사용자 지정, 2026-06-04). 완료: ~~**6.1** SAML redis AuthnRequest~~ ✅ · ~~**6.2-A** SAML SLO IdP-initiated 수신~~ ✅. 보류: **6.2-B** SP-initiated SLO(우리앱→IdP, 명시 요구 시) · **6.4** Passwordless(WebAuthn). 착수 설계 = 아래 **§6.3**.
+> **➡️ 다음 세션 = §6.3 후속**(2026-06-04). 완료: ~~**6.1** SAML redis AuthnRequest~~ ✅ · ~~**6.2-A** SAML SLO IdP-initiated 수신~~ ✅ · ~~**6.3 C) Authorization Server**~~ ✅(골격+실기동 검증, `services/auth-server`). **후속**: 리소스 서버 **이중 issuer 정합**(프레임워크 무변경, `iss` 분기+AS jwks 검증) · **서명키 회전 스케줄러**(framework-lock 리더선출+개인키 암호화) · 토큰 발급 라운드트립 통합테스트. 보류: **6.2-B** SP-initiated SLO · **6.4** Passwordless(WebAuthn).
 
 ---
 
@@ -189,7 +189,7 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 - **테스트**: `SamlSloService`(매핑/무매핑/blank·null no-op/SessionIndex 방어복사) + `SamlSloLogoutHandler.registrationIdFromUri`(경로 파싱) 순수 단위 — JDK 단독 15/15. 서명검증·LogoutResponse 라운드트립은 받는 쪽 통합/실앱 기동으로 검증.
 - **다음(B, SP-initiated)**: 로그인 시 SAML 로그아웃 주체(`{registrationId,nameId,sessionIndex}`)를 redis 영속(6.1 코덱 패턴) → 별도 브라우저 엔드포인트(`GET /saml2/logout`)에서 무상태 복원 후 IdP 로 LogoutRequest. 명시 요구 시 착수.
 
-### 6.3 C) Authorization Server — 우리가 IdP/OP 가 되기 (별도 `services/auth-server`) — 🚧 골격 착수(2026-06-04)
+### 6.3 C) Authorization Server — 우리가 IdP/OP 가 되기 (별도 `services/auth-server`) — ✅ 완료·기동검증(2026-06-04)
 
 > **진행(2026-06-04, 1세션)**: 결정 4건 확정 + 최소 골격 + 리소스서버 정합 가이드 생성. 상세 = `docs/modules/AUTH_SERVER.md`.
 > **버전 정합 결론(web_search)**: SAS 는 **SS7 에 흡수**(1.5.x 마지막 독립). 좌표 `org.springframework.security:spring-security-oauth2-authorization-server`, **버전=Boot/Security BOM**(오버라이드 불가) → STACK 핀 불필요(SAML OpenSAML 과 달리 깔끔). **Jackson 3 기본**(`tools.jackson.*`) → `com.fasterxml` 누수 0. 우리 스택(Boot 4.0.6/SF7.0.x/SS7.0.x/SpringCloud 2025.1.1)에 정합 레퍼런스 존재.

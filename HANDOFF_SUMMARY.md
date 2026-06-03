@@ -6,29 +6,29 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**SSO §6.3 C) Authorization Server 골격 착수.** 우리가 OP(OAuth2/OIDC Provider)가 되어 외부/그룹사에 토큰을 발급하는 **별도 배포 서비스 `services/auth-server`** 신설. 결정 4건 확정 + 최소 골격 + 리소스서버 정합 가이드. **버전 정합 핵심 발견: Spring Authorization Server 는 SS7 에 흡수돼 버전=Boot/Security BOM 관리(핀 불필요), Jackson 3 기본(`tools.jackson.*`)이라 우리 규칙과 충돌 0.**
+**SSO §6.3 C) Authorization Server 완료 — 골격 + 실기동 검증.** 우리가 OP(OAuth2/OIDC Provider)가 되어 외부/그룹사에 토큰을 발급하는 **별도 배포 서비스 `services/auth-server`** 신설. 결정 4건 확정 + 골격 + 리소스서버 정합 가이드. **✅ 받는 쪽 bootRun 으로 실기동 검증 완료**: `localhost:9000/.well-known/openid-configuration` 200(전 엔드포인트·PKCE S256·id_token RS256)·서명키 부트스트랩·demo 클라이언트 등록. 기동 경로 6관문(BOM·SS7 패키지재배치·commons-logging#18372·H2 SQL·mapper-locations·RBAC eager) 전부 해소. **버전 정합 핵심: SAS=SS7 흡수(버전 BOM, 핀 불필요)·Jackson 3 기본(`tools.jackson.*`)이라 우리 규칙과 충돌 0.**
 
 핵심 설계: ① OP **범위 한정** — 내부 1차 인증/세션은 기존 자체 JWT 유지, **외부/그룹사 위임 발급만** AS. ② 경계 = 독립 포트(9000)/도메인, 키·동의·인가코드·클라이언트 등록 **전부 JDBC**(다중 파드 공유). ③ **이중 발급기** — 리소스 서버가 `iss` 로 분기(AS 토큰=RS256/JWKS 검증, `framework-oauth-client.JwksKeyResolver` 재사용). ④ JDBC `RegisteredClientRepository`. framework-security 는 **사용자 소스(`Authenticator`/RBAC)만 재사용** — 기본 체인이 `@ConditionalOnMissingBean(SecurityFilterChain)` 라 우리 AS 체인 2개 정의 시 자동 백오프(충돌 0), `menu=false`.
 
 ## 최종 갱신
-- 일자: 2026-06-04 · 갱신자: SSO §6.3 Authorization Server 골격 세션
+- 일자: 2026-06-04 · 갱신자: SSO §6.3 Authorization Server 완료·기동검증 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done) — 신규 서비스 `services/auth-server`
 - **`config/AuthorizationServerConfig`**: AS 체인 2개(`@Order(1)` 프로토콜 엔드포인트 + OIDC + resourceServer.jwt / `@Order(2)` 폼로그인) · `JdbcRegisteredClientRepository` · `JdbcOAuth2AuthorizationService` · `JdbcOAuth2AuthorizationConsentService` · `JWKSource=JdbcRotatingJwkSource` · `JwtDecoder` · `AuthorizationServerSettings(issuer)` · `OAuth2TokenCustomizer`(roles 클레임) · `PasswordEncoder`(@ConditionalOnMissingBean).
 - **`config/AuthServerProperties`**: `issuer`(blank 면 기동 차단) · `jwkCacheTtl`(기본 5m).
 - **`jose/JdbcRotatingJwkSource`**: DB 공유 + 회전 오버랩 JWKS. 서명=최신 ACTIVE, 검증=ACTIVE+RETIRED 전체 노출. TTL 캐시 + 부트스트랩(키 없으면 RSA2048 1개 생성). 회전 스케줄러는 `framework-lock` 리더선출로 확장(미구현 확장점).
-- **`jose/SigningKey`·`SigningKeyMapper`(MyBatis)·`SigningKeyMapper.xml`**: 서명키 저장(ON CONFLICT DO NOTHING).
+- **`jose/SigningKey`·`SigningKeyMapper`(MyBatis)·`SigningKeyMapper.xml`**: 서명키 저장(평문 INSERT — H2 이식성; kid=UUID+앱 가드로 중복 차단).
 - **`user/FrameworkAuthenticationProvider`**: 폼로그인 → `Authenticator.authenticate`. principal=표준 `User`(Jackson3 PolymorphicTypeValidator 안전), roles→`ROLE_*`.
 - **`user/RoleClaimTokenCustomizer`**: access/id 토큰에 `roles` 클레임.
 - **`config/LocalDemo`(@Profile local)**: demo 인증기(demo/demo) + demo 클라이언트 2종(demo-web PKCE, demo-service client_credentials) 코드 등록.
-- **resources**: `application.yml`(3프로파일·issuer·framework.security menu=false) · `application-local.yml`(H2 MODE=PostgreSQL) · `application-local-postgres.yml` · Flyway `V1__authorization_server_schema.sql`(SAS 정본 스키마 PG 적응본) · `V2__auth_signing_key.sql`.
-- **`build.gradle`**: SAS 좌표(버전 미기재=BOM) + web/jdbc starter + framework-core/security/mybatis + flyway/postgres/h2 (user-service 패턴).
+- **resources**: `application.yml`(3프로파일·issuer·framework.security menu=false·**`mybatis.mapper-locations`**) · `application-local.yml`(H2 MODE=PostgreSQL) · `application-local-postgres.yml` · Flyway `V1`(SAS 스키마, **TIMESTAMP**)·`V2`(서명키)·**`V3`(RBAC 빈 테이블 — SecurityMetadataService eager 로딩용)**.
+- **`build.gradle`**: SAS 좌표(버전 미기재=BOM) + web/jdbc starter + framework-core/security/mybatis + flyway/postgres/h2 + **`commons-logging:commons-logging:1.3.5`**(SAS POM 제외 회피, #18372). SS7 체인 배선=DSL `new OAuth2AuthorizationServerConfigurer()`+`securityMatcher(getEndpointsMatcher()).with(...)`.
 - **`settings.gradle`**: `include 'services:auth-server'`.
 - **문서**: `docs/modules/AUTH_SERVER.md`(서비스 가이드 + 리소스서버 이중 issuer 정합) · `docs/NEXT_SSO.md` §6.3 결정/진행 기록.
 
-## 검증 (이 환경)
-- 작성 환경 Maven Central 차단 → **SAS 본체 컴파일 불가**(SAML 과 동일 제약). 순수 JDK 단독 테스트 대상 없음(전부 SAS/Spring/Nimbus 바인딩). **받는 쪽 gradle 컴파일 필수**.
+## 검증
+- 작성 환경 Maven Central 차단 → 여기선 컴파일/기동 불가(전부 SAS/Spring/Nimbus 바인딩). **✅ 받는 쪽 실기동 검증 완료(2026-06-04)**: `compileJava` → `bootRun` → discovery 200 · 서명키 부트스트랩 · demo 클라이언트 등록. 컴파일 후 기동 경로에서 SS7 API/패키지·commons-logging·H2 SQL·mapper-locations·RBAC eager 6건을 순차 해소(전부 §6 등록).
 
 ## 새로 밟은/확정한 함정 (HANDOFF §6 등록 대상)
 1. **SAS = SS7 흡수** — 좌표 `org.springframework.security:spring-security-oauth2-authorization-server`, **버전 오버라이드 불가**(Boot/Security BOM). `libs.versions.toml` 미등록·build.gradle 버전 미기재. (SAML OpenSAML 처럼 "핀 예외"가 아니라 BOM 으로 해결.)
@@ -59,5 +59,5 @@
 unzip -o si-msa-auth-server.zip   # services/auth-server/** + settings.gradle + docs/** 덮어쓰기(신규 위주)
 # 신규 파일이라 삭제 대상 없음. settings.gradle/NEXT_SSO.md/HANDOFF_SUMMARY.md 는 덮어쓰기.
 ```
-> 코드+문서 드롭. SAS 본체는 작성 환경 컴파일 불가 → **받는 쪽 compileJava 로 SS7 import/API 확정**이 첫 작업.
+> 코드+문서 드롭. **이미 받는 쪽에서 기동 검증 완료** — 다음 세션은 후속(리소스서버 이중 issuer 정합/서명키 회전)부터.
 <!-- 갱신 끝 -->

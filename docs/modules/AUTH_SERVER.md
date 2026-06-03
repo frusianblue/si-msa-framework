@@ -67,7 +67,22 @@ db/migration: V1(SAS 스키마) · V2(서명키)
 # 데모 클라이언트: demo-web(PKCE) · demo-service(client_credentials, secret=demo-secret)
 ```
 
-## 7. 검증 메모
+## 7. 검증 상태
 
-작성 환경은 Maven Central 차단 → SAS 본체 컴파일 불가(SAML 과 동일 제약). **받는 쪽 gradle 로 컴파일/기동 확인** 필요:
-`./gradlew :services:auth-server:compileJava` → import 경로(SS7 재배치)·SAS API 시그니처 확정 → bootRun 으로 discovery/토큰 라운드트립.
+**✅ 받는 쪽 실기동 검증 완료(2026-06-04)**: `./gradlew :services:auth-server:compileJava` → `bootRun` → `http://localhost:9000/.well-known/openid-configuration` 200(issuer·authorize·token·jwks·userinfo·revoke·introspect·PKCE S256·id_token RS256) · 서명키 부트스트랩(`auth_signing_key` 1건) · demo 클라이언트(demo-web/demo-service) 등록 확인.
+
+컴파일 통과 후 기동 경로에서 순차로 해소한 6관문(전부 §2/HANDOFF §6 SAS 묶음 등록):
+1. SS7 패키지 재배치(config 클래스 메인 모듈 이동, `applyDefaultSecurity` 제거→DSL).
+2. `JdbcRotatingJwkSource.get()` 의 `current().jwkSet()` 이중 호출(자체 버그) → `current()` 가 이미 JWKSet.
+3. SAS POM 의 commons-logging 제외(#18372) → `commons-logging:1.3.5` 재추가.
+4. 로컬 H2 SQL 이식성(`TIMESTAMPTZ`/`ON CONFLICT` → `TIMESTAMP`/평문 INSERT).
+5. `mybatis.mapper-locations` 누락 → yml 추가.
+6. framework-security RBAC `SecurityMetadataService` eager 로딩 → 빈 RBAC 테이블(V3).
+
+> 작성 환경은 Maven Central 차단으로 SAS 본체 컴파일/기동 불가 → 받는 쪽 `bootRun` 로그가 최종 검증(상기 완료).
+
+## 8. 다음 (후속)
+
+- **리소스 서버 이중 issuer 정합**(프레임워크 무변경): 게이트웨이/리소스서버가 토큰 `iss` 로 분기 — AS issuer 면 `framework-oauth-client.JwksKeyResolver` 로 `{issuer}/oauth2/jwks` 검증(RS256), 내부 issuer 면 기존 자체 JWT 경로(§4).
+- **서명키 회전 스케줄러**: `framework-lock @SchedulerLock`(리더 선출)로 단일 파드만 새 ACTIVE 발급 + 오래된 키 RETIRE. 개인키 저장 암호화(KMS/Vault).
+- **토큰 발급 라운드트립 통합테스트**: demo-web authorization_code+PKCE, demo-service client_credentials.
