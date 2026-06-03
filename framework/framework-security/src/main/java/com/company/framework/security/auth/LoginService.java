@@ -222,6 +222,43 @@ public class LoginService {
         return terminated;
     }
 
+    /**
+     * 사용자 id 로 직접 전 세션을 무효화한다(access token 없이). SAML SLO(IdP-initiated — 외부 IdP 가 NameID 로
+     * 중앙 로그아웃을 통지)·관리자 강제 로그아웃·계정 도용 대응 등에 쓴다. 동시세션 레지스트리에 등록된 해당 사용자의
+     * 모든 세션의 refresh 를 제거하고 access jti 를 블랙리스트한다.
+     *
+     * <p><b>완전 커버는 {@code concurrent-session.enabled=true} + 공유 TokenStore(redis) 가 전제다.</b> 레지스트리가
+     * 없거나 동시세션 추적이 꺼져 있으면 무효화할 jti/refresh 를 열거할 수 없어 0 을 반환한다(무상태 JWT 의 구조적 한계 —
+     * access token 을 제시한 {@link #logoutAll} 과 달리 여기선 "현재 토큰" 정보가 없다).
+     *
+     * @return 무효화한 세션 수(레지스트리 미사용 시 0).
+     */
+    public int logoutAllByUserId(String userId, String clientIp, String reason) {
+        if (userId == null || userId.isBlank()) {
+            throw new BusinessException(ErrorCode.Common.INVALID_INPUT, "userId 가 필요합니다.");
+        }
+        int terminated = 0;
+        if (concurrentSessions != null) {
+            List<ConcurrentSessionService.ActiveSession> sessions = concurrentSessions.activeSessions(userId);
+            for (ConcurrentSessionService.ActiveSession s : sessions) {
+                if (s.refreshToken() != null) {
+                    tokenStore.removeRefresh(s.refreshToken());
+                }
+                if (s.accessJti() != null) {
+                    tokenStore.blacklist(s.accessJti(), jwtProvider.accessTtl());
+                }
+                concurrentSessions.unregister(s.sessionId());
+            }
+            terminated = sessions.size();
+        }
+        publish(
+                LoginAuditEvent.Type.LOGOUT,
+                userId,
+                clientIp,
+                (reason == null || reason.isBlank() ? "logout-by-user" : reason) + ":" + terminated);
+        return terminated;
+    }
+
     private TokenResponse issue(String userId, List<String> roles) {
         String access = jwtProvider.createAccessToken(userId, roles);
         String refresh = UUID.randomUUID().toString().replace("-", "");

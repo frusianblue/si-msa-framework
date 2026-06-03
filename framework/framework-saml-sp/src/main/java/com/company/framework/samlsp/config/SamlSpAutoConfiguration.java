@@ -2,14 +2,20 @@ package com.company.framework.samlsp.config;
 
 import com.company.framework.core.error.BusinessException;
 import com.company.framework.core.error.ErrorCode;
+import com.company.framework.samlsp.core.SamlLogoutUserResolver;
 import com.company.framework.samlsp.core.SamlUserResolver;
+import com.company.framework.samlsp.slo.SamlSessionTerminator;
+import com.company.framework.samlsp.slo.SamlSloService;
 import com.company.framework.samlsp.store.RedisSaml2AuthenticationRequestRepository;
 import com.company.framework.samlsp.token.SamlTokenIssuer;
 import com.company.framework.samlsp.web.SamlAuthenticationSuccessHandler;
 import com.company.framework.samlsp.web.SamlRelyingPartyRegistrations;
+import com.company.framework.samlsp.web.SamlSloLogoutHandler;
+import com.company.framework.security.auth.LoginService;
 import com.company.framework.security.config.SecurityAutoConfiguration;
 import com.company.framework.security.jwt.JwtProvider;
 import com.company.framework.security.token.TokenStore;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -117,21 +123,80 @@ public class SamlSpAutoConfiguration {
         return new SamlAuthenticationSuccessHandler(userResolver, tokenIssuer, properties);
     }
 
+    // ── IdP-initiated SLO(Single Logout) 수신 (6.2, slo.enabled=true 일 때) ──────────────────────────────
+    //   SS 의 saml2Logout 필터가 <LogoutRequest> 서명검증·파싱·<LogoutResponse> 생성을 담당하고, 검증 후
+    //   SamlSloLogoutHandler(LogoutHandler)가 NameID→우리 사용자 역매핑(SamlLogoutUserResolver)→토큰 무효화로 잇는다.
+
+    /**
+     * 기본 세션 종료기: {@code LoginService.logoutAllByUserId} 위임. {@code LoginService} 가 있을 때만 등록한다
+     * (비밀번호 로그인 {@code Authenticator} 없는 SAML 전용 앱은 이 빈을 직접 등록해 무효화 경로를 제공).
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "framework.saml-sp.slo", name = "enabled", havingValue = "true")
+    @ConditionalOnBean(LoginService.class)
+    @ConditionalOnMissingBean(SamlSessionTerminator.class)
+    public SamlSessionTerminator samlSessionTerminator(LoginService loginService) {
+        return (userId, reason) -> loginService.logoutAllByUserId(userId, null, reason);
+    }
+
+    /**
+     * SLO 오케스트레이션(무상태). {@code SamlLogoutUserResolver}(앱이 NameID→우리 사용자 역매핑 구현)와 종료기가
+     * 모두 있어야 활성화된다(역매핑 SPI 미등록이면 SLO 수신 비활성).
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "framework.saml-sp.slo", name = "enabled", havingValue = "true")
+    @ConditionalOnBean({SamlLogoutUserResolver.class, SamlSessionTerminator.class})
+    @ConditionalOnMissingBean
+    public SamlSloService samlSloService(SamlLogoutUserResolver userResolver, SamlSessionTerminator terminator) {
+        return new SamlSloService(userResolver, terminator);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "framework.saml-sp.slo", name = "enabled", havingValue = "true")
+    @ConditionalOnBean(SamlSloService.class)
+    @ConditionalOnMissingBean
+    public SamlSloLogoutHandler samlSloLogoutHandler(SamlSloService sloService) {
+        return new SamlSloLogoutHandler(sloService);
+    }
+
     /**
      * SAML 전용 체인. {@code /saml2/**}(AuthnRequest·SP 메타데이터)와 {@code /login/saml2/**}(ACS) 만 매칭하고
      * permitAll(인증 자체가 이 경로에서 일어난다). 성공 시 {@link SamlAuthenticationSuccessHandler} 가 자체 JWT 를 발급한다.
      * 메인 체인보다 우선순위가 높아(작은 Order) 먼저 평가된다.
+     *
+     * <p>{@code slo.enabled=true} 면 {@code /logout/saml2/**}(IdP-initiated SLO 수신)도 매칭하고 {@code saml2Logout} 을
+     * 켠다. SS 필터가 LogoutRequest 검증·LogoutResponse 생성을 담당하고, 검증 후 {@link SamlSloLogoutHandler} 가 우리
+     * 토큰 무효화로 잇는다(핸들러 빈이 있을 때 — {@code SamlLogoutUserResolver} 미등록이면 핸들러도 없어 SS 기본 SLO 만 동작).
      */
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE + 50)
     public SecurityFilterChain samlSecurityFilterChain(
-            HttpSecurity http, SamlAuthenticationSuccessHandler successHandler) throws Exception {
-        http.securityMatcher("/saml2/**", "/login/saml2/**")
+            HttpSecurity http,
+            SamlAuthenticationSuccessHandler successHandler,
+            SamlSpProperties properties,
+            ObjectProvider<SamlSloLogoutHandler> sloLogoutHandler)
+            throws Exception {
+
+        boolean sloEnabled = properties.getSlo().isEnabled();
+        String[] matchers = sloEnabled
+                ? new String[] {"/saml2/**", "/login/saml2/**", "/logout/saml2/**"}
+                : new String[] {"/saml2/**", "/login/saml2/**"};
+
+        http.securityMatcher(matchers)
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .saml2Login(saml2 -> saml2.successHandler(successHandler))
                 // saml2Metadata 는 SS7 의 정식 SAML2 DSL(saml2Login/saml2Logout/saml2Metadata) → SP 메타데이터 자동노출.
                 .saml2Metadata(Customizer.withDefaults());
+
+        if (sloEnabled) {
+            http.saml2Logout(Customizer.withDefaults());
+            SamlSloLogoutHandler handler = sloLogoutHandler.getIfAvailable();
+            if (handler != null) {
+                // 검증된 LogoutRequest 이후 우리 JWT 블랙리스트로 잇는 브리지(OpenSAML 무의존).
+                http.logout(logout -> logout.addLogoutHandler(handler));
+            }
+        }
         return http.build();
     }
 }

@@ -2,7 +2,7 @@
 
 > 목적: 무엇을, 왜, 어디에, 어떤 버전으로 쓰는지 한곳에서 추적한다.
 > 단일 버전 소스는 `gradle/libs.versions.toml`. **버전을 바꿀 땐 카탈로그를 고치고 이 표를 갱신**한다.
-> 최종 갱신: 2026-06-04 · 갱신자: SAML redis AuthnRequest 저장소(6.1) 세션
+> 최종 갱신: 2026-06-04 · 갱신자: SAML IdP-initiated SLO 수신(6.2-A) 세션
 
 ---
 
@@ -62,6 +62,7 @@
 | `spring-security-saml2-service-provider` | SAML 2.0 SP(외부 SAML IdP 연동) — **Spring Security(=Boot import) 관리, 버전 미명시** | framework-saml-sp(선택) |
 | `org.opensaml:opensaml-*`(core/saml-api/saml-impl) | SAML XML 서명·marshalling(위 SP 가 **전이로** 끌어옴, 버전=SS 관리, 명시 핀 금지) — ⚠️ **OpenSAML 4+ 는 Maven Central 에 없음** → 루트 `build.gradle` 의 **Shibboleth 저장소**(`build.shibboleth.net/maven/releases`, `org.opensaml`/`net.shibboleth` 그룹 한정)에서 해소. **이 프레임워크 최초의 비-Central 저장소.** | framework-saml-sp(선택, 전이) |
 | `spring-boot-starter-data-redis`(saml-sp) | redis AuthnRequest 저장소(6.1, `request-repository: redis`) — `StringRedisTemplate`. **`compileOnly`+test 재선언**(Boot BOM 관리, 부재 시 guard 빈 fail-fast) | framework-saml-sp(선택) |
+| *(SLO 6.2-A: 새 의존성 0)* | IdP-initiated SLO 수신은 **SAML 본체를 SS `saml2Logout` 기본구현에 위임** → 우리 기여물(SPI·`SamlSloService`·`SamlSloLogoutHandler`·`LoginService.logoutAllByUserId`)은 OpenSAML 무의존. slf4j(core 전이)·기존 security 만 사용 | framework-saml-sp + framework-security |
 
 > **공통기능 토대 4종(2026-05: idempotency·i18n·idgen·client) + 보안 완성(framework-audit·framework-secure-web, framework-security 확장)은 새 버전 의존성을 추가하지 않는다.**
 > 모두 `framework-core`/`framework-security` + (필요 시) `spring-boot-starter-web/jdbc/data-redis` 를 `compileOnly`(호스트 제공)로만 사용하고,

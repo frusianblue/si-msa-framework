@@ -423,6 +423,18 @@ framework:
 
 엔드포인트(SS 기본): 메타데이터 `GET /saml2/service-provider-metadata/{id}` · 로그인 `GET /saml2/authenticate/{id}` · ACS `POST /login/saml2/sso/{id}`.
 
+**IdP-initiated SLO 수신(6.2-A, 선택)** — 외부 IdP 가 중앙에서 로그아웃할 때 우리 앱의 자체 JWT 도 함께 끊는다(규제/공공의 "중앙 로그아웃 준수"). 기본 비활성. 켜는 법: `framework.saml-sp.slo.enabled=true` + 앱이 `SamlLogoutUserResolver` 빈 등록(NameID→우리 userId 역매핑, 로그인의 `SamlUserResolver` 대칭).
+
+```java
+@Bean
+SamlLogoutUserResolver samlLogoutUserResolver(UserLinkRepository links) {
+    // 미매칭이면 null 반환(알 수 없는 주체로는 아무것도 무효화하지 않음 — graceful)
+    return info -> links.findUserIdByNameId(info.registrationId(), info.nameId()).orElse(null);
+}
+```
+
+흐름: `POST/GET /logout/saml2/slo/{id}`(LogoutRequest) → SS `saml2Logout` 이 서명검증·`<LogoutResponse>` 생성 → 검증 후 우리 핸들러가 그 사용자 전 세션 무효화. ⚠️ 토큰 무효화 **완전 커버는 `framework.security.concurrent-session.enabled=true` + 공유 TokenStore(redis)** 전제(사용자별 세션 열거 필요; 없으면 0건). 완전 무상태 NameID-XML 직접추출은 OpenSAML 디코더 확장점이다. **상세/한계 → `docs/modules/SAML_SP.md` §7.**
+
 ⚠️ **이 프레임워크 최초의 "새 외부 의존성 0" 예외** — SAML 은 XML 서명 검증 때문에 OpenSAML 이 불가피하다. `spring-security-saml2-service-provider` 가 OpenSAML 을 전이로 끌어오고(버전=Spring Security 관리, 직접 핀하지 않음) **OpenSAML 4+ 는 Maven Central 밖이라** 루트 `build.gradle` 에 Shibboleth 저장소를 그룹 한정으로 추가해 두었다(반영 완료). 멀티 파드는 `request-repository: redis`(운영 HTTPS) 로 AuthnRequest 를 redis 공유해 스티키 세션을 제거하거나, 게이트웨이/인그레스 **스티키 세션**으로 SAML 핸드셰이크(수초) 구간을 묶는다. ⚠️ redis 저장소의 상관관계 쿠키는 POST 바인딩 ACS(크로스사이트 top-level POST) 때문에 `SameSite=None; Secure` 가 필수다. **상세 → `docs/modules/SAML_SP.md`.**
 
 ## 데이터·연계 / 업무 생산성 모듈 (2026-06 추가, 선택형)

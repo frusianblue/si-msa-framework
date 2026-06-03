@@ -99,6 +99,7 @@ public class MySamlUserResolver implements SamlUserResolver {
 - **SP 메타데이터**: `GET /saml2/service-provider-metadata/{registrationId}` (IdP 에 등록)
 - **로그인 시작(SP-initiated)**: `GET /saml2/authenticate/{registrationId}` → IdP SSO 로 302
 - **ACS(assertion 수신)**: `POST /login/saml2/sso/{registrationId}`
+- **IdP-initiated SLO 수신**(slo.enabled=true): `POST|GET /logout/saml2/slo/{registrationId}` (LogoutRequest 수신 → §7)
 
 전용 `SecurityFilterChain`(`securityMatcher("/saml2/**","/login/saml2/**")`, 높은 우선순위)이 이 경로만 처리하고 permitAll
 (인증 자체가 여기서 일어난다). 매처 밖 모든 요청은 framework-security 의 메인 체인(catch-all)이 그대로 처리한다.
@@ -116,18 +117,72 @@ SAML 속성 키는 IdP 마다 제각각(friendly: `email`/`displayName`, 또는 
 `SamlAttributeMapper` 는 **설정 키 우선 → 표준 후보(friendly + OID)** 순으로 처음 발견된 비어있지 않은 값을 채택한다(다중값은 첫 원소).
 OpenSAML/Spring 타입 무의존(입력은 추출된 nameId + `Map<String,List<Object>>`)이라 네트워크 없이 JDK 단독 단위검증된다.
 
-## 7. 다음 단계 (이 모듈의 후속)
+## 7. IdP-initiated SLO 수신 (Single Logout, 6.2-A)
+
+외부 IdP 가 **중앙에서 로그아웃**할 때(IdP-initiated SLO) 우리 SLO 엔드포인트로 `<LogoutRequest>` 가 오면, NameID 를 우리
+사용자로 역매핑해 그 사용자의 **자체 JWT(access/refresh)를 전부 무효화**한다(= "중앙 로그아웃 준수", 규제/공공 요구에 직접 답).
+기본 비활성.
+
+### 7.1 켜는 법
+
+```yaml
+framework:
+  saml-sp:
+    enabled: true
+    slo:
+      enabled: true            # IdP-initiated SLO 수신 ON (기본 false)
+  security:
+    concurrent-session:
+      enabled: true            # ★ 토큰 무효화 완전 커버 전제(사용자별 세션 열거). redis TokenStore 권장.
+```
+
+추가로 앱이 **`SamlLogoutUserResolver` 빈**을 등록해야 활성화된다(NameID→우리 userId 역매핑; 로그인의 `SamlUserResolver` 대칭).
+
+```java
+@Bean
+SamlLogoutUserResolver samlLogoutUserResolver(UserLinkRepository links) {
+    return info -> links.findUserIdByNameId(info.registrationId(), info.nameId()) // 없으면 null=graceful no-op
+            .orElse(null);
+}
+```
+
+`SamlUserResolver`(로그인)가 저장한 nameId↔userId 연동을 역조회하면 된다. 미매칭이면 `null` 반환(알 수 없는 주체로는 아무것도
+무효화하지 않음 — 예외 금지).
+
+### 7.2 흐름
+
+`IdP 중앙 로그아웃` → `POST/GET /logout/saml2/slo/{registrationId}` (LogoutRequest) → **SS `saml2Logout` 필터가 서명검증·XML
+파싱·`<LogoutResponse>` 생성** → 검증 후 `SamlSloLogoutHandler`(LogoutHandler) 호출 → `SamlSloService` 가 `SamlLogoutUserResolver`
+로 userId 해소 → `LoginService.logoutAllByUserId` 로 그 사용자 전 세션 무효화(refresh 제거 + accessJti 블랙리스트) → SS 가
+`<LogoutResponse>` 를 IdP 로 돌려줌.
+
+**SAML 본체(서명검증·XML·LogoutResponse)는 전부 SS 기본구현에 위임** → 우리 기여물(SPI·서비스·핸들러·`logoutAllByUserId`)은
+**OpenSAML 무의존**이라 JDK 단독 검증된다(6.1 코덱과 동일 분리).
+
+### 7.3 한계/주의 (필독)
+
+- **토큰 무효화 완전 커버 = `concurrent-session.enabled=true` + 공유 TokenStore(redis) 전제.** 무상태 JWT 는 사용자별 발급
+  토큰을 레지스트리로 열거해야 일괄 블랙리스트가 가능하다. 레지스트리가 없으면 `logoutAllByUserId` 는 0 건 반환(무효화 못 함).
+- **완전 무상태 NameID 추출**: SS SLO 필터는 파싱된 NameID 를 LogoutHandler 에 직접 넘기지 않고 현재 `Authentication` 에
+  의존한다. 서버 세션 없는 순수 Bearer 배포에서 LogoutRequest XML 의 NameID 를 완전 무상태로 뽑으려면 **OpenSAML 디코더
+  확장**(커스텀 `LogoutHandler`/필터에서 XML 파싱)이 필요하다 — 본 모듈은 신원이 해소된 이후의 토큰 무효화 브리지를 제공하며,
+  그 디코더는 확장점으로 남긴다(받는 쪽 IdP 별 상호운용 검증과 함께).
+- **SAML 전용 앱**(비밀번호 로그인 `Authenticator` 없음): `LoginService` 빈이 없을 수 있어 기본 `SamlSessionTerminator`
+  (LoginService 위임)가 등록되지 않는다 → 앱이 `SamlSessionTerminator` 빈을 직접 등록해 무효화 경로를 제공한다.
+- **RP 등록**: SLO 엔드포인트(singleLogoutService) + 서명 인증서가 RP 등록/IdP 메타데이터에 있어야 한다(상호운용은 IdP 별 까다로움).
+
+## 8. 다음 단계 (이 모듈의 후속)
 
 - **`Saml2AuthenticatedPrincipal` deprecation 마이그레이션(SS8 전)**: SS7 이 assertion 세부를 principal 에서 분리하며 `Saml2AuthenticatedPrincipal` 을 deprecated 했다(정식 후속 = `Saml2AssertionAuthentication.getRelyingPartyRegistrationId()` + `Saml2ResponseAssertionAccessor`). 현재 `SamlAuthenticationSuccessHandler` 는 검증된 deprecated 경로를 유지하고 경고만 메서드 한정 `@SuppressWarnings("deprecation")` 으로 억제(7.0.x 완전 동작, 제거는 빨라야 SS8). IDE 에서 새 접근자 메서드를 확정한 뒤 교체.
 - ✅ **redis 기반 `Saml2AuthenticationRequestRepository`(구현됨, 6.1)**: 멀티 파드에서 스티키 세션 없이 동작하도록 AuthnRequest 를
   redis 공유. `request-repository: redis` + 운영 HTTPS 면 `RedisSaml2AuthenticationRequestRepository` 빈이 등록되어 SS7 이 자동 주입한다(§2 참조).
   직렬화는 `AbstractSaml2AuthenticationRequest` 네이티브 직렬화/Jackson 대신 **고정형 수기 코덱**(`Saml2AuthnRequestCodec`)으로 처리(클래스 진화/serialVersionUID 취약성 회피).
-- **다음**: SLO(Single Logout, `saml2Logout` + 우리 JWT 블랙리스트 연계, 6.2) · (선택) 메타데이터 없는 IdP(엔드포인트/인증서 수동 입력) 지원.
+- ✅ **IdP-initiated SLO(Single Logout, 6.2-A)**: 외부 IdP 중앙 로그아웃 시 우리 JWT 도 무효화(§7). **다음**: SP-initiated SLO(우리앱→IdP, 6.2-B, redis 로그아웃 주체 영속) · (선택) 메타데이터 없는 IdP(엔드포인트/인증서 수동 입력) 지원.
 
-## 8. 검증 (받는 쪽)
+## 9. 검증 (받는 쪽)
 
 ```bash
-./gradlew :framework:framework-saml-sp:test :framework:framework-archtest:test spotlessApply
+./gradlew :framework:framework-saml-sp:test :framework:framework-security:test :framework:framework-archtest:test spotlessApply
 # OpenSAML 해소 출처/버전 확인:
 ./gradlew :framework:framework-saml-sp:dependencies --configuration runtimeClasspath
 ```

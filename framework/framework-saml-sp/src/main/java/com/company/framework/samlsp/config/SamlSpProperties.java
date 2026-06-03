@@ -55,6 +55,9 @@ public class SamlSpProperties {
     /** {@code request-repository=redis} 일 때의 redis/쿠키 세부 설정. */
     private Redis redis = new Redis();
 
+    /** IdP-initiated SLO(Single Logout) 수신 설정(6.2). */
+    private Slo slo = new Slo();
+
     public enum RequestRepository {
         SESSION,
         REDIS
@@ -98,6 +101,14 @@ public class SamlSpProperties {
 
     public void setRedis(Redis redis) {
         this.redis = redis;
+    }
+
+    public Slo getSlo() {
+        return slo;
+    }
+
+    public void setSlo(Slo slo) {
+        this.slo = slo;
     }
 
     /**
@@ -174,6 +185,29 @@ public class SamlSpProperties {
 
         public void setCookiePath(String cookiePath) {
             this.cookiePath = cookiePath;
+        }
+    }
+
+    /**
+     * IdP-initiated SLO(Single Logout) 수신 설정(6.2). 외부 IdP 가 중앙 로그아웃 시 우리 SLO 엔드포인트로
+     * {@code <LogoutRequest>} 를 보내면, NameID 를 우리 사용자로 역매핑({@code SamlLogoutUserResolver})해
+     * 그 사용자의 자체 JWT 를 전부 무효화한다.
+     *
+     * <p>기본 비활성. 활성화하려면 {@code enabled=true} + {@code SamlLogoutUserResolver} 빈 등록이 필요하다
+     * (그래야 NameID→우리 사용자 매핑이 가능). 토큰 무효화 완전 커버는 {@code framework.security.concurrent-session.enabled=true}
+     * + 공유 TokenStore(redis) 가 전제다(레지스트리로 사용자별 세션을 열거해야 하므로).
+     */
+    public static class Slo {
+
+        /** IdP-initiated SLO 수신 활성화(기본 false). */
+        private boolean enabled = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
         }
     }
 

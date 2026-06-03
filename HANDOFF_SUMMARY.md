@@ -6,70 +6,57 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**SSO 6.1) SAML redis `Saml2AuthenticationRequestRepository` 구현 완료** — 멀티 파드에서 스티키 세션 없이 SP-initiated 흐름(AuthnRequest↔Response 상관)을 묶도록 redis 공유 저장소를 추가하고, `framework-saml-sp` 의 `request-repository: redis` fail-fast 가드를 **redis 빈 등록**으로 교체. 다음 세션 = `docs/NEXT_SSO.md` **§6.2 SAML SLO**(`saml2Logout` + 우리 JWT 블랙리스트, 6.1 선행 충족) · 그 다음 6.3 Authorization Server(후순위)/6.4 Passwordless.
+**SSO 6.2-A) SAML IdP-initiated SLO 수신 구현 완료** — 외부 IdP 가 중앙에서 로그아웃할 때 우리 앱의 자체 JWT 도 함께 무효화("중앙 로그아웃 준수"). 방향 택1에서 **A) IdP-initiated 수신**(무상태/멀티 파드 친화·규제 직답) 채택, B) SP-initiated(우리앱→IdP)는 후속. **SAML 본체(서명검증·XML·LogoutResponse 생성)는 SS `saml2Logout` 기본구현에 위임 → 우리 기여물은 OpenSAML 무의존**(6.1 코덱과 동일 분리 철학). 다음 세션 = `docs/NEXT_SSO.md` **§6.2-B**(SP-initiated SLO) 또는 **§6.3** Authorization Server(후순위).
 
-핵심 설계: ① 직렬화 = `AbstractSaml2AuthenticationRequest` 네이티브 직렬화/Jackson 대신 **순수 JDK 고정형 수기 코덱**(`Saml2AuthnRequestCodec` — serialVersionUID/클래스 진화 취약성 회피, "robust over fragile"). ② save↔load 상관 = **서버 발급 UUID 쿠키**(세션 없는 멀티 파드). ③ ⚠️ **쿠키 `SameSite=None; Secure` 필수** — POST 바인딩 ACS 콜백은 IdP→SP 크로스사이트 top-level POST 라 Lax/Strict 쿠키가 미전송. ④ 하위타입 복원에 `RelyingPartyRegistrationRepository` 주입(public 팩토리가 `withRelyingPartyRegistration` 뿐). ⑤ **빈 등록만으로 SS7 이 자동 주입**(`Saml2LoginConfigurer#getBeanOrNull` → save/load/remove 측 모두) — 체인 DSL 수정 불필요.
+핵심 설계: ① 우리 SAML 로그인은 **무상태**(ACS 성공 즉시 자체 JWT, 서버 SAML 세션 없음) → SS `saml2Logout` 의 SP-initiated 는 세션의 `Saml2Authentication` 의존이라 충돌. IdP-initiated 만 `{registrationId}` URL 경로로 무상태 수신(SS 이슈 #10820). ② NameID→우리 userId **역매핑 SPI `SamlLogoutUserResolver`**(로그인 `SamlUserResolver` 대칭, 미매칭=null graceful). ③ userId 로 전 세션 무효화 = `LoginService.logoutAllByUserId` 신설(access token 불요). ④ SAML 모듈이 security `LoginService` 에 하드결합 안 되도록 `SamlSessionTerminator` 로 분리(SAML 전용 앱 확장점). ⑤ 토글 `framework.saml-sp.slo.enabled=false` 기본 — 켜야 체인에 `/logout/saml2/**`+`saml2Logout`+핸들러 추가, 끄면 기존 SAML SP 무변경.
 
 ## 최종 갱신
-- 일자: 2026-06-04 · 갱신자: SSO 6.1(SAML redis AuthnRequest 저장소) 세션
+- 일자: 2026-06-04 · 갱신자: SSO 6.2-A(SAML IdP-initiated SLO 수신) 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-### framework-saml-sp 신규 `store/` (멀티 파드 redis AuthnRequest 저장소)
-- **`store/Saml2AuthnRequestCodec`(신규)**: 순수 JDK(SS/redis 무의존). nested `record Data(binding, samlRequest, relayState, authenticationRequestUri, relyingPartyRegistrationId, id, sigAlg, signature)`. `encode(Data)`/`decode(String)`. 포맷 v1 = 매직 `siv1` + 9라인 개행 구분, 각 값 presence 플래그('1'/'0') + Base64(UTF-8)(Base64 에 개행 없음→구분자 충돌 불가). POST 는 sigAlg/signature 를 명시 null. 손상/매직 불일치/필드수 불일치/필수 누락 → decode 가 **null 반환**(예외 아님). encode 는 필수값 blank 면 `IllegalArgumentException`.
-- **`store/RedisSaml2AuthenticationRequestRepository`(신규)**: `implements Saml2AuthenticationRequestRepository<AbstractSaml2AuthenticationRequest>`. 생성자 `(StringRedisTemplate, RelyingPartyRegistrationRepository, SamlSpProperties.Redis)`. save=UUID 키 mint→redis set(keyPrefix+key, encode, ttl)→`ResponseCookie`(httpOnly/secure/sameSite/path/maxAge=ttl) 헤더. load=쿠키→redis get→rebuild. remove=쿠키→`getAndDelete`(원자 1회 소비)→쿠키 만료(maxAge=0)→rebuild. rebuild=decode→registrationId 로 `findByRegistrationId`(없으면 null)→`withRelyingPartyRegistration` 빌더 재구성(id null 이면 `.id()` 생략). 사용자 제어값(쿠키/samlRequest/relayState) 미로깅, registrationId 만 debug.
-- **`config/SamlSpProperties`(수정)**: `requestRepository` javadoc 갱신(redis=구현됨, 쿠키 함정·starter 부재 fail-fast). nested `Redis`(keyPrefix=`saml:authnreq:`/ttl=`Duration` 5m/cookieName=`SAML_AUTHN_KEY`/cookieSameSite=`None`/cookieSecure=`true`/cookiePath=`/`) + getter/setter.
-- **`config/SamlSpAutoConfiguration`(수정)**: `samlRelyingPartyRegistrationRepository` 에서 redis fail-fast throw 제거(이제 항상 RP 등록만 빌드). **신규 빈** `redisSaml2AuthenticationRequestRepository`(`@ConditionalOnClass(StringRedisTemplate)`+`@ConditionalOnProperty(request-repository=redis)`+`@ConditionalOnMissingBean(Saml2AuthenticationRequestRepository)`): SameSite=None&&!secure 면 `BusinessException` fail-fast, 아니면 redis 저장소 반환. **guard 빈** `samlSpRedisRepositoryRequiredGuard`(redis 빈 **뒤** 선언, `@ConditionalOnProperty(redis)`+`@ConditionalOnMissingBean`): redis 요청인데 저장소 빈 없으면(starter 부재) `BusinessException`(redis 타입 미참조→안전).
-- **`build.gradle`(수정)**: `compileOnly`+`testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'`.
-- **`store/Saml2AuthnRequestCodecTest`(신규, JUnit/assertj 8)**: round-trip post/redirect·null vs "" 구분·구분자/유니코드·POST sig 드롭·tamper→null·blank 필수→throw.
-### 문서
-- `docs/NEXT_SSO.md`(§6.1 완료 마킹+설계 대비 차이 2건 기록·§6 배너·§5 체크리스트/§5.9 갱신, 다음=6.2) · `docs/modules/SAML_SP.md`(§2 멀티 파드/§3 redis YAML/§7 완료) · `docs/FRAMEWORK_MODULES.md`(변경이력+카탈로그) · `HANDOFF.md`(§6 함정 4건 교체·트리·저널) · `README.md`(redis YAML+쿠키 주의) · `STACK.md`(data-redis 행·SAML 주의·갱신일).
+### framework-security (userId 기반 전 세션 무효화)
+- **`auth/LoginService.logoutAllByUserId(userId, clientIp, reason)`(신규)**: access token 없이 userId 로 직접 전 세션 무효화 — 동시세션 레지스트리 열거 → refresh 제거 + accessJti 블랙리스트 + unregister, 감사 이벤트 발행. userId blank 면 `BusinessException(INVALID_INPUT)`. 레지스트리 미사용 시 0 반환(무상태 JWT 한계). SAML SLO 외 **관리자 강제 로그아웃·계정도용 대응**에도 재사용.
 
-## 현재 상태 (적용/검증)
-- ✅ **코덱 라운드트립 JDK 단독 20케이스 실행 통과**(round-trip post/redirect·null vs ""·POST sig 드롭·유니코드/구분자(`\n`/`:`/`,`/`|`/`\t`)·20KB samlRequest·tamper/매직 불일치/필드수→null·blank→throw). 외부 의존 0.
-- ⚙️ **작성 환경 SAML 본체 컴파일 불가**(Shibboleth repo 차단=allowlist 밖, sshd/MINA 와 동일 패턴) → SAML 본체·redis 풀와이어링·체인 자동 주입은 **받는 쪽 gradle 로 검증**. JUnit 코덱 테스트는 동일 로직(받는 쪽 실행).
+### framework-saml-sp (IdP-initiated SLO 수신)
+- **`core/SamlLogoutInfo`(신규)**: `record(registrationId, nameId, List<String> sessionIndexes)`. null sessionIndexes→`List.of()` 방어복사, 단축 생성자(registrationId, nameId).
+- **`core/SamlLogoutUserResolver`(신규 SPI)**: `String resolveUserId(SamlLogoutInfo)`. NameID→우리 userId 역매핑(로그인 `SamlUserResolver` 대칭). **이 빈을 등록해야 SLO 수신 활성**. 미매칭이면 null(예외 금지 — IdP LogoutRequest 처리는 관용적이어야).
+- **`slo/SamlSessionTerminator`(신규)**: `@FunctionalInterface int terminateAll(userId, reason)`. SLO 오케스트레이션을 security `LoginService` 에서 분리(테스트 fake/SAML 전용 앱 확장점).
+- **`slo/SamlSloService`(신규)**: 무상태 오케스트레이션(slf4j 만 의존). `int onLogoutRequest(SamlLogoutInfo)` — null/blank nameId→0, resolver→userId(null→0 graceful), terminator 호출. 사용자 제어값(nameId) 미로깅(registrationId 만 debug).
+- **`web/SamlSloLogoutHandler`(신규)**: `implements LogoutHandler`. SS `Saml2LogoutRequestFilter` 가 LogoutRequest **검증 후** 호출 → registrationId(경로) + nameId(`Authentication#getName()`) → `SamlSloService`. auth==null 이면 no-op. 순수 `static registrationIdFromUri(String)` 분리(servlet 무의존, JDK 검증용).
+- **`config/SamlSpProperties.Slo`(신규 nested)**: `enabled=false`.
+- **`config/SamlSpAutoConfiguration`(수정)**: SLO 빈 3종 전부 `@ConditionalOnProperty(slo.enabled=true)` — `samlSessionTerminator`(`@ConditionalOnBean(LoginService)`, 람다 `(u,r)->loginService.logoutAllByUserId(u,null,r)`)·`samlSloService`(`@ConditionalOnBean({SamlLogoutUserResolver,SamlSessionTerminator})`)·`samlSloLogoutHandler`(`@ConditionalOnBean(SamlSloService)`). 체인 빈에 `SamlSpProperties`+`ObjectProvider<SamlSloLogoutHandler>` 주입, slo.enabled 면 matcher 에 `/logout/saml2/**` 추가 + `http.saml2Logout(withDefaults())` + (핸들러 있으면) `http.logout(l->l.addLogoutHandler(handler))`.
+- **테스트(신규)**: `slo/SamlSloServiceTest`(매핑/무매핑 no-op/blank·null nameId no-op·resolver 미호출/SessionIndex 방어복사) · `web/SamlSloLogoutHandlerTest`(`registrationIdFromUri` 경로/끝슬래시/slo무id→null/null·empty·root·슬래시없음→null).
 
-## 켜는 법
+## 검증 (이 환경)
+- **SLO 순수 결정로직 JDK 단독 15/15 통과**(`registrationIdFromUri` 10 + `onLogoutRequest` 분기 5). `com.fasterxml` 누수 0 확인.
+- SAML 본체(서명검증·XML·LogoutResponse 라운드트립)는 작성 환경 OpenSAML 컴파일 불가 → 받는 쪽 gradle.
+
+## 새로 밟은/확정한 함정 (HANDOFF §6 등록)
+1. **SS `saml2Logout` 은 세션결합** — SP-initiated 는 SecurityContext 의 `Saml2Authentication`(보통 HttpSession) 의존. 무상태 Bearer 와 충돌 → **IdP-initiated 만 `{registrationId}` URL 경로로 무상태 수신**(#10820: principal 이 `Saml2AuthenticatedPrincipal` 아니면 registrationId 를 URL 에서 해소).
+2. **SS 가 파싱된 NameID 를 LogoutHandler 에 안 넘김** — 현재 `Authentication` 의존. 서버 세션 없는 순수 Bearer 배포에서 LogoutRequest XML 의 NameID 를 **완전 무상태로** 뽑으려면 OpenSAML 디코더 확장 필요(확장점으로 남김).
+3. **`LoginService` 는 `@ConditionalOnBean(Authenticator)`** — 비번 로그인 없는 **SAML 전용 앱엔 없을 수 있음** → `SamlSessionTerminator` 로 분리, 기본 종료기 `@ConditionalOnBean(LoginService)`. 없으면 앱이 `SamlSessionTerminator` 빈 직접 등록.
+4. **토큰 무효화 완전 커버 전제** = `framework.security.concurrent-session.enabled=true` + 공유 TokenStore(redis). 사용자별 세션을 레지스트리로 열거해야 일괄 블랙리스트 가능(없으면 `logoutAllByUserId`=0).
+
+## 켜는 법 (요약)
 ```yaml
 framework:
   saml-sp:
     enabled: true
-    request-repository: redis          # 멀티 파드. 생략/session = 기본(단일/스티키)
-    redis:
-      key-prefix: "saml:authnreq:"     # 기본
-      ttl: 5m                          # AuthnRequest 수명
-      cookie-name: "SAML_AUTHN_KEY"
-      cookie-same-site: "None"         # POST 바인딩 ACS=크로스사이트 → None 필수
-      cookie-secure: true              # None 은 Secure(HTTPS) 필수. None+!secure → 시작 실패
-    registrations:
-      corp:
-        metadata-uri: "https://idp.example.com/realms/corp/protocol/saml/descriptor"
+    slo:
+      enabled: true            # IdP-initiated SLO 수신 ON (기본 false)
+  security:
+    concurrent-session:
+      enabled: true            # ★ 토큰 무효화 완전 커버 전제. redis TokenStore 권장.
 ```
-- **운영 HTTPS 필수**(Secure 쿠키). 로컬 평문 HTTP 는 `request-repository: session`.
-- `spring-boot-starter-data-redis` 부재 시 redis 요청은 **시작 실패**(조용한 session 폴백 금지).
++ 앱이 `SamlLogoutUserResolver` 빈 등록(NameID→우리 userId; 미매칭 null=graceful). (SAML 전용 앱이면 `SamlSessionTerminator` 빈도 직접 등록.)
+
+## 다음 (Next)
+- **§6.2-B SP-initiated SLO**(우리앱→IdP): 로그인 시 SAML 로그아웃 주체(`{registrationId,nameId,sessionIndex}`)를 redis 영속(6.1 코덱 패턴) → 별도 브라우저 엔드포인트 `GET /saml2/logout` 에서 무상태 복원 후 LogoutRequest. 명시 요구 시.
+- 또는 **§6.3** Authorization Server(별도 `services/auth-server`, 명시 요구 시·후순위) · **§6.4** Passwordless.
+
+## 받는 쪽 검증
 ```bash
-# 검증(받는 쪽)
-./gradlew :framework:framework-saml-sp:test :framework:framework-archtest:test spotlessApply
+./gradlew :framework:framework-saml-sp:test :framework:framework-security:test :framework:framework-archtest:test spotlessApply
 ```
-
-## 바로 다음 할 일 (Next)
-1. **받는 쪽 빌드 검증**: `:framework-saml-sp:test :framework-archtest:test spotlessApply` → BUILD SUCCESSFUL 확인(코덱 JUnit 8 + 기존 토글/매핑 테스트). 풀와이어링(redis 빈 등록·SS7 자동 주입)·redis 라운드트립 통합은 받는 쪽에서.
-2. **SSO 6.2 — SAML SLO(`saml2Logout`)**: 우리 로그아웃(JWT 블랙리스트)과 SAML SLO 트리거 순서·단일 진입점·SP 서명 키(RP 등록 signing credential)·IdP SLO 미지원 시 우리 토큰만 무효화(graceful). 6.1(redis 상태 공유) 선행 충족됨. 설계 = `docs/NEXT_SSO.md` §6.2. **이때 `Saml2AuthenticatedPrincipal` deprecation 도 함께 정식 교체 검토**(IDE 에서 `Saml2AssertionAuthentication`+`Saml2ResponseAssertionAccessor` 접근자 확정 후).
-3. (병행, devops) CI 게이트(`:framework-archtest:test`+전 모듈 `:test` PR 차단)+멀티모듈 jacoco 집계 · 게이트웨이 런타임 점검(CORS preflight·rate-limit 429)·k8s 멀티서비스.
-
-## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **redis `Saml2AuthenticationRequestRepository` 는 빈 등록만으로 SS7 이 자동 주입**: `Saml2LoginConfigurer#getAuthenticationRequestRepository` 가 `getBeanOrNull(Saml2AuthenticationRequestRepository.class)` 로 컨텍스트 빈을 감지해 save 측(`Saml2WebSsoAuthenticationRequestFilter`)·load/remove 측(`OpenSaml5AuthenticationTokenConverter`/`Saml2WebSsoAuthenticationFilter`) 모두에 주입(미발견 시 HttpSession 기본). **`saml2Login` DSL 수정 불필요** — `@Bean` 만 등록.
-- **⚠️ 상관관계 쿠키는 `SameSite=None; Secure` 필수**: POST 바인딩 ACS 콜백은 IdP→SP **크로스사이트 top-level POST** → `SameSite=Lax/Strict` 쿠키가 전송되지 않아 save↔load 상관이 깨진다. 따라서 상관 쿠키는 `SameSite=None`(+`Secure`=HTTPS). `None`+비-Secure 조합은 시작 시 fail-fast. 로컬 평문 HTTP 는 `request-repository: session`. (상관 키로 RelayState 를 쓰지 않는 이유 = 앱 의미값이라 키 부적합 → 서버 발급 UUID 쿠키.)
-- **starter 부재 시 guard 빈으로 fail-fast(조용한 폴백 금지)**: redis 저장소 빈은 `@ConditionalOnClass(StringRedisTemplate)`+`@ConditionalOnProperty(request-repository=redis)`+`@ConditionalOnMissingBean`. redis 요청인데 `spring-boot-starter-data-redis` 가 없으면 redis 타입을 참조하지 않는 별도 guard 빈(redis 빈 **뒤** 선언)이 `BusinessException` 으로 시작을 실패시킨다(조용한 session 폴백 방지).
-- **`AbstractSaml2AuthenticationRequest` 직렬화 = 고정형 수기 코덱(네이티브/Jackson 금지)**: Java 네이티브 직렬화(serialVersionUID 620L·파드/SS 버전 간 취약)·Jackson 대신 매직+presence+Base64 고정 셰이프. 복원은 하위타입(Redirect/Post) 모두 public 팩토리가 `withRelyingPartyRegistration(RelyingPartyRegistration)` 뿐 → `RelyingPartyRegistrationRepository.findByRegistrationId`(코덱 보관 registrationId) 주입 필수, 없으면 null.
-- (지난·유효) Jackson3(tools.jackson, annotation만 예외) / OpenSAML 핀 금지(SS 관리·Shibboleth 그룹 한정 repo) / SAML 체인은 메인 뒤(`after=SecurityAutoConfiguration`+securityMatcher+높은 우선순위) / compileOnly 타입 test 재선언(introspection) / 새 오토컨피그 `.imports`+등록 가드 / 새 모듈=settings+archtest+imports 동시 / 필터·EPP·SAML 핸들러는 GlobalExceptionHandler 밖(수기 JSON) / spotless Palantir·`lineEndings=UNIX`·설정캐시 / 작성 환경 SAML 본체 컴파일 불가→받는 쪽 검증 / 블록 주석 내 `*/` 금지 / prod 가드(JWT·DevAuth·Password·AES마스터키).
-
-## 모듈 추가/확장 레시피 (검증된 반복 절차)
-1. 신규 모듈/기존 확장. 순수 로직은 Spring/라이브러리 무의존 코어로 분리해 JDK 단독 검증(이번 `Saml2AuthnRequestCodec` 20케이스).
-2. 기존 인터페이스는 capability/구현체로 확장. 생성자 변경 시 빈 배선(autoconfig)도 같이. **단 SS DSL 이 빈 자동 감지(`getBeanOrNull`)하는 확장점은 빈 등록만으로 충분**(SAML AuthnRequest 저장소).
-3. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+test 재선언), BOM 밖=`implementation`(+카탈로그/ext 핀). SS/Boot 가 버전 관리하는 전이 의존은 핀 금지(저장소만 필요하면 루트 repositories 그룹 한정).
-4. 새 오토컨피그면 `.imports`+등록 가드. 신규 모듈은 settings include + archtest testImplementation.
-5. 토글/`@ConditionalOnProperty` + `@ConditionalOnClass`(라이브러리) 백오프 + (조용한 no-op 위험 시) **별도 guard 빈으로 fail-fast**.
-6. 테스트: 순수 알고리즘(JDK 단독) + 오토컨피그 토글/백오프. 미컴파일 본체(SAML/redis 풀와이어링)는 받는 쪽 gradle.
-7. 드롭인: 신규+변경 파일 한 zip, 루트 `unzip -o`. 문서 동기화(README/STACK/FRAMEWORK_MODULES/HANDOFF/HANDOFF_SUMMARY/NEXT_SSO). 받는 쪽 `./gradlew :...:test :framework-archtest:test spotlessApply`.
 <!-- 갱신 끝 -->

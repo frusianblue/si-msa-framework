@@ -22,7 +22,7 @@
 게이트웨이 엣지 검증(jjwt)+**jti 블랙리스트 reactive 조회**, `framework-context`(헤더 신원 전파),
 `framework-oauth-client`(OAuth2 **+ OIDC RP 강화**), `framework-saml-sp`(**SAML 2.0 SP**).
 
-> **➡️ 다음 세션 후보(택1, 착수 설계 = §6)**: ~~**6.1** SAML redis `Saml2AuthenticationRequestRepository`(멀티 파드)~~ ✅**완료(2026-06-04)** · **6.2** SAML SLO(`saml2Logout`) ← **다음 권장** · **6.3** C) Authorization Server(별도 서비스, 명시 요구 시·후순위) · (그 다음) **6.4** 4) Passwordless. 권장 순서 = ~~6.1~~ → **6.2** → (필요 시) 6.3.
+> **➡️ 다음 세션 후보(택1, 착수 설계 = §6)**: ~~**6.1** SAML redis `Saml2AuthenticationRequestRepository`(멀티 파드)~~ ✅**완료(2026-06-04)** · ~~**6.2** SAML SLO IdP-initiated 수신~~ ✅**완료(A) (2026-06-04)** · **6.2-B** SP-initiated(우리앱→IdP, 후속) · **6.3** C) Authorization Server(별도 서비스, 명시 요구 시·후순위) · (그 다음) **6.4** 4) Passwordless. 권장 순서 = ~~6.1~~ → ~~6.2-A~~ → (필요 시) 6.2-B/6.3.
 
 ---
 
@@ -149,7 +149,7 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 - ✅ **받는 쪽 BUILD SUCCESSFUL + 컴파일 정상 확인(2026-06-04)**: `:framework-saml-sp:test :framework-archtest:test spotlessApply` 통과, OpenSAML `5.1.6`(Shibboleth)·`spring-security-saml2-service-provider:7.0.5` 정상 해소.
 - ✅ **`Saml2AuthenticatedPrincipal` deprecation 경고 처리(2026-06-04)**: SS7 이 assertion 세부를 principal 에서 분리하며 deprecated(후속=`Saml2AssertionAuthentication.getRelyingPartyRegistrationId()`+`Saml2ResponseAssertionAccessor`). 7.0.x 완전 동작·제거는 빨라야 SS8 → `SamlAuthenticationSuccessHandler.onAuthenticationSuccess` 에 **메서드 한정 `@SuppressWarnings("deprecation")`+마이그레이션 TODO**. 정식 교체는 §6.2(또는 별도)에서 IDE 컴파일로 접근자 메서드 확정 후.
 - ✅ **redis 기반 `Saml2AuthenticationRequestRepository`(완료 2026-06-04)** — 설계·구현 **§6.1**(고정형 코덱 + 상관 쿠키 `SameSite=None;Secure`).
-- ⏭️ **SLO(Single Logout, `saml2Logout`)** → 설계 **§6.2**.
+- ✅ **SLO(Single Logout) IdP-initiated 수신(완료 2026-06-04)** — 설계·구현 **§6.2-A**(`slo.enabled` 토글 + `SamlLogoutUserResolver` SPI + `LoginService.logoutAllByUserId`; SAML 본체는 SS `saml2Logout` 위임 → OpenSAML 무의존). SP-initiated 는 §6.2-B 후속.
 - (선택) 메타데이터 없는 IdP(엔드포인트/인증서 수동 입력) 지원.
 
 ---
@@ -176,12 +176,18 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 - **배선**: `SamlSpAutoConfiguration` 에서 `request-repository=redis` & `StringRedisTemplate` 존재 시 `RedisSaml2AuthenticationRequestRepository` 빈 등록(현 fail-fast 분기 대체), `@ConditionalOnClass(StringRedisTemplate)`+`compileOnly spring-boot-starter-data-redis`(+test 재선언). OAuth `RedisOAuthStateStore` 패턴 그대로.
 - **테스트**: 직렬화 왕복(라운드트립) 순수 단위(redis/SS 없이 fake map 또는 직렬화 함수 직접) + 오토컨피그 토글(redis 빈 등록/세션 백오프). 본체는 받는 쪽.
 
-### 6.2 SAML SLO (Single Logout, `saml2Logout`)
-- **왜**: 현재 중앙 로그아웃(SSO A)은 우리 토큰(jti 블랙리스트)만 무효화. SAML 로그인 사용자를 **IdP 세션까지** 끊으려면 SAML SLO(SP-initiated LogoutRequest → IdP → LogoutResponse) 필요. 규제/공공에서 요구되기도 함.
-- **구현 방향**: SS7 DSL `http.saml2Logout(Customizer)` 를 SAML 체인에 추가. RP 메타데이터에 SLO 엔드포인트가 있어야 함(메타데이터 등록이면 자동). 우리 토큰 무효화(`LoginService.logout`/`logoutAll`)와 **순서/연계** 결정 필요 = SAML SLO 성공 핸들러에서 우리 JWT 블랙리스트도 함께 태움.
-- **결정 필요**: ① 우리 로그아웃(JWT 블랙리스트)과 SAML SLO 의 트리거 순서·단일 진입점(`POST /api/v1/auth/logout` 확장 vs 별도 `/saml2/logout`) · ② SLO 서명 키(SP 서명 인증서 = RP 등록의 signing credential, 메타데이터/설정) · ③ 멀티 파드 LogoutRequest 상관도 §6.1 과 동일한 세션/redis 이슈 → §6.1 선행 권장 · ④ IdP 가 SLO 미지원 시 우리 토큰만 무효화(graceful).
-- **함정**: SLO 는 IdP 별 상호운용성이 까다로움(바인딩·서명·NameID/SessionIndex 매칭). RP 등록에 SLO location + signing credential 필요. **§6.1(redis 상태) 이후**가 자연스러움.
-- **테스트**: LogoutRequest 빌드/서명 검증은 본체(받는 쪽). 우리 토큰 연계(블랙리스트 호출)는 순수 단위.
+### 6.2 SAML SLO (Single Logout) — A) IdP-initiated 수신 ✅ 완료 / B) SP-initiated 다음
+- **왜**: 중앙 로그아웃(SSO A)은 우리 토큰(jti 블랙리스트)만 무효화했음. 외부 IdP 가 **중앙에서 로그아웃**시킬 때(IdP-initiated SLO) 우리 앱도 그 사용자의 자체 JWT 를 끊어 "중앙 로그아웃 준수"를 만족 — 규제/공공 요구에 직접 답.
+- **결정(택1)**: 무상태/멀티 파드 친화 + 규제요구 직답이라 **A) IdP-initiated 수신 우선** 채택(B) SP-initiated 우리앱→IdP 는 후속).
+- **구조 충돌 핵심**: 우리 SAML 로그인은 **무상태**(ACS 성공 즉시 자체 JWT 교환, 서버 SAML 세션 없음). SS7 `saml2Logout` 의 SP-initiated 는 로그아웃 시점 SecurityContext 의 `Saml2Authentication`(세션) 의존 → 무상태 Bearer 와 충돌. IdP-initiated 는 `{registrationId}` URL 경로로 registration 을 해소해 무상태로 받을 수 있음(이슈 #10820).
+- **구현(A, 완료)**:
+  - `framework-security` `LoginService.logoutAllByUserId(userId, clientIp, reason)` 신규 — access token 없이 userId 로 직접 전 세션 무효화(레지스트리 열거 → refresh 제거 + accessJti 블랙리스트). 관리자 강제 로그아웃·계정도용 대응에도 재사용.
+  - `framework-saml-sp`: `SamlLogoutInfo`(registrationId/nameId/sessionIndexes) + `SamlLogoutUserResolver` SPI(NameID→우리 userId 역매핑, `SamlUserResolver` 대칭, 미매칭 시 null=graceful) + `SamlSessionTerminator`(LoginService 결합 분리) + `SamlSloService`(무상태 오케스트레이션) + `SamlSloLogoutHandler`(SS SLO 필터가 검증 후 호출하는 LogoutHandler → 우리 토큰 무효화 브리지).
+  - 토글 `framework.saml-sp.slo.enabled=false`(기본). 켜면 체인에 `/logout/saml2/**` 매칭 + `saml2Logout` + 핸들러 등록. **SAML 본체(서명검증·XML·LogoutResponse 생성)는 SS `saml2Logout` 기본구현에 위임 → 우리 기여물은 OpenSAML 무의존**(6.1 코덱과 동일 분리 철학).
+- **설계 대비 차이(2건)**: ① 단일 진입점 `POST /api/v1/auth/logout` 확장이 아니라 **IdP-initiated 수신**이 1순위(무상태 적합) — 우리 API 로그아웃은 Bearer 라 IdP 로의 302 내비게이션 불가. ② "SLO 성공 핸들러에서 블랙리스트"가 아니라 **SS 검증 후 `LogoutHandler` 브리지**로 연계(필터 레이어 표준 훅).
+- **무상태 NameID 한계(중요)**: SS SLO 필터는 파싱된 NameID 를 LogoutHandler 에 직접 넘기지 않고 현재 `Authentication` 에 의존. 서버 세션 없는 순수 Bearer 배포에서 LogoutRequest XML 의 NameID 를 **완전 무상태로** 뽑으려면 OpenSAML 디코더 확장이 필요(확장점, `docs/modules/SAML_SP.md`). 토큰 무효화 **완전 커버는 `concurrent-session.enabled=true` + 공유 TokenStore(redis)** 전제(사용자별 세션 열거 필요; 없으면 0건).
+- **테스트**: `SamlSloService`(매핑/무매핑/blank·null no-op/SessionIndex 방어복사) + `SamlSloLogoutHandler.registrationIdFromUri`(경로 파싱) 순수 단위 — JDK 단독 15/15. 서명검증·LogoutResponse 라운드트립은 받는 쪽 통합/실앱 기동으로 검증.
+- **다음(B, SP-initiated)**: 로그인 시 SAML 로그아웃 주체(`{registrationId,nameId,sessionIndex}`)를 redis 영속(6.1 코덱 패턴) → 별도 브라우저 엔드포인트(`GET /saml2/logout`)에서 무상태 복원 후 IdP 로 LogoutRequest. 명시 요구 시 착수.
 
 ### 6.3 C) Authorization Server — 우리가 IdP/OP 가 되기 (별도 `services/auth-server`)
 - **언제**: 대부분 SI 는 **불필요**(우리는 지금까지 RP/SP = 소비자). 우리 서비스가 **다른 시스템에 토큰을 발급하는 OAuth2/OIDC Provider** 가 되어야 할 때만(예: 그룹사 공통 인증, 외부 파트너 OIDC). **명시 요구 시에만 착수.**
