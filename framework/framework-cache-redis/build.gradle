@@ -1,0 +1,24 @@
+// 선택형 모듈: 분산 캐시(Redis 백엔드). framework.cache.redis.enabled=true 로만 활성.
+//
+// 왜 별도 모듈인가:
+//   framework-core 의 CacheAutoConfiguration 이 @ConditionalOnMissingBean(CacheManager) + matchIfMissing=true 로
+//   Caffeine CacheManager 를 "항상" 등록한다. 그 결과 Boot 네이티브 redis 캐시(spring.cache.type=redis)는
+//   이미 CacheManager 빈이 있어 백오프 → 적용되지 않는다. k8s 다중 파드 공유 캐시(분산)를 쓰려면
+//   core 보다 먼저 RedisCacheManager 를 등록해 core 가 자기 @ConditionalOnMissingBean 으로 물러나게 해야 한다.
+//   본 모듈이 그 역할(@AutoConfiguration(before = core CacheAutoConfiguration))을 한다.
+//
+// 새 외부 의존성 0: spring-data-redis 는 Boot BOM 관리. 호스트 앱이 spring-boot-starter-data-redis 를
+//   실제로 제공(드래그인 방지 위해 여기서는 compileOnly) → RedisConnectionFactory 가 런타임 클래스패스+컨텍스트에 존재.
+dependencies {
+    api project(':framework:framework-core') // CacheManager 추상 + core CacheAutoConfiguration(before 참조)
+
+    // redis 백엔드 타입은 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지). lock 모듈과 동일 패턴.
+    compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    // 테스트 API(JUnit5 + AssertJ) — BOM 버전. (실행 런처 junit-platform-launcher 는 루트 subprojects 에서 일괄)
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // ⚠️ compileOnly 는 test 클래스패스로 전이되지 않는다. 테스트가 main 의 compileOnly 클래스(RedisConnectionFactory/
+    //    RedisCacheManager)를 직접 쓰므로 재선언 필요(lock 모듈과 동일 교훈).
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
+}

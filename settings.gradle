@@ -25,6 +25,8 @@ include 'framework:framework-mfa'            // 선택형: 규제특화 2단계 
 include 'framework:framework-observability'  // 선택형: 관측(공통 메트릭 태그/구조화 로그/OTel 익스포터 표준)
 include 'framework:framework-lock'           // 선택형: 분산 락 / 스케줄러 리더 선출(@SchedulerLock 다중 파드 @Scheduled 중복 방지)
 include 'framework:framework-pdf'            // 선택형: PDF 산출물 생성(OpenPDF, 한글 TTF 임베딩 + 표 기반 거래내역서/통지서)
+include 'framework:framework-cache-redis'    // 선택형: 분산 캐시(Redis 백엔드 — core Caffeine 로컬 캐시를 파드 간 공유 캐시로 대체)
+include 'framework:framework-log-masking'    // 선택형: 개인정보 로그 마스킹(자유 텍스트 PII 정규식 탐지 → core MaskingUtils 형식 위임)
 include 'framework:framework-archtest'        // 테스트 전용: ArchUnit 아키텍처/레이어/네이밍/순환 규칙 강제(배포 산출물 아님)
 
 // ----- 업무 / 인프라 서비스 -----

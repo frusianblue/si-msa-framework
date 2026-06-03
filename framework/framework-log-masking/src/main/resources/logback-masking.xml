@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  로그 마스킹 Logback 조각. 서비스의 logback-spring.xml 에서 core 조각과 함께 포함:
+
+      <include resource="logback-common.xml"/>     <!- 공통(CONSOLE/FILE) ->
+      <include resource="logback-masking.xml"/>    <!- 마스킹 컨버터 + 마스킹 appender ->
+
+  그리고 root 를 마스킹 appender 로 교체:
+
+      <root level="INFO">
+          <appender-ref ref="CONSOLE_MASKED"/>
+          <appender-ref ref="FILE_MASKED"/>
+      </root>
+
+  핵심: %mmsg 는 표준 %msg 와 동일하나 최종 메시지를 MaskingMessageConverter 로 마스킹한다(인자 치환 후 텍스트 기준).
+  마스킹 규칙은 Spring 부팅 시 설치된 SensitiveDataMasker 빈(없으면 내장 기본 규칙)이 제공한다.
+
+  주의: %msg/%message 자체를 재정의(conversionWord 충돌)하면 Logback 경고가 날 수 있어 일부러 별도 단어 %mmsg 를 둔다.
+-->
+<included>
+    <conversionRule conversionWord="mmsg"
+                    converterClass="com.company.framework.logmask.logback.MaskingMessageConverter"/>
+
+    <property name="PATTERN_MASKED"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [${APP:-app},%X{traceId:-},%X{spanId:-}] [%thread] %logger{36} - %mmsg%n"/>
+
+    <appender name="CONSOLE_MASKED" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder><pattern>${PATTERN_MASKED}</pattern></encoder>
+    </appender>
+
+    <appender name="FILE_MASKED" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR:-./logs}/${APP:-app}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR:-./logs}/${APP:-app}.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder><pattern>${PATTERN_MASKED}</pattern></encoder>
+    </appender>
+</included>

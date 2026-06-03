@@ -1,0 +1,22 @@
+// 선택형 모듈: 개인정보 로그 마스킹. framework.log-masking.enabled=true 로만 활성.
+//
+// core 의 MaskingUtils 는 "값을 이미 아는" 필드 단위 마스킹(maskPhone(phone)…)이다. 본 모듈은 그 보완으로
+// "자유 형식 로그 라인 안에 섞인 개인정보"를 정규식으로 탐지·마스킹한다(주민번호/휴대폰/카드/이메일…).
+// 탐지 후 실제 마스킹 모양은 core MaskingUtils 에 위임 → 전사 마스킹 형식 일관.
+//
+// 두 가지 사용 경로:
+//   1) (1차·확실) SensitiveDataMasker 빈을 주입받아 감사로그/응답 등에 명시적으로 mask() — 구조화 로그에도 적용 가능.
+//   2) (2차·방어망) Logback 컨버터(%mmsg)로 패턴 텍스트 로그의 메시지를 자동 마스킹 — 실수로 흘린 PII 차단.
+//
+// 새 외부 의존성 0: logback-classic 은 Boot 기본 로깅이라 런타임에 "항상" 존재(드래그인 아님) → compileOnly 로 참조만.
+dependencies {
+    api project(':framework:framework-core') // MaskingUtils 재사용(전사 마스킹 형식 일관)
+
+    // Logback 컨버터는 ch.qos.logback.* 를 컴파일 참조. Boot 기본 로깅으로 런타임 항상 존재 → compileOnly.
+    compileOnly 'ch.qos.logback:logback-classic'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    // 테스트 API(JUnit5 + AssertJ + Mockito) — BOM 버전. starter-test 가 logback 도 가져오지만 명시 재선언.
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'ch.qos.logback:logback-classic'
+}

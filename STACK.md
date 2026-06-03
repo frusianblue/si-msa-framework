@@ -69,6 +69,10 @@
 > **framework-saga(2026-06: 경량 오케스트레이션)도 새 의존성 0.** `api framework-core`(JsonMapper=Jackson3) + `compileOnly framework-messaging`(OutboxEventPublisher) + `compileOnly spring-kafka`(ConsumerRecord, **비전이→의존 서비스가 messaging/kafka 재선언**) + `compileOnly spring-boot-starter-jdbc`(JdbcTemplate/TransactionTemplate). Jackson 읽기는 `readValue(.,Map/Object.class)` 만(JsonNode 메서드명 회피). 순수 코어(상태머신)는 Spring/Jackson 무의존 분리 → JDK 단독 검증. 모두 Boot BOM 관리라 `libs.versions.toml` 무변경.
 >
 > **framework-lock(2026-06-03: 분산 락 / `@Scheduled` 중복방지)도 새 의존성 0.** `api framework-core`, redis 백엔드는 `compileOnly spring-boot-starter-data-redis`(`StringRedisTemplate`+`DefaultRedisScript` Lua), jdbc 백엔드는 `compileOnly spring-boot-starter-jdbc`(`JdbcTemplate`), `@SchedulerLock` 애스펙트는 core 가 `api` 로 노출하는 `spring-boot-starter-aspectj`(Boot4 에서 starter-aop→starter-aspectj 개명) 전이로 충족. 테스트는 data-redis/jdbc(testImplementation, **compileOnly 비전이**) + H2(testRuntimeOnly) — 모두 Boot BOM 관리라 카탈로그 무변경.
+>
+> **framework-cache-redis(2026-06-03: 분산 캐시)도 새 의존성 0.** `api framework-core` + `compileOnly spring-boot-starter-data-redis`(`RedisConnectionFactory`/`RedisCacheManager`/`RedisCacheConfiguration`) — 모두 Boot BOM 관리. 값 직렬화는 `RedisSerializer.java()`(JDK), 키는 String → **Jackson2 `GenericJackson2JsonRedisSerializer` 의도적 회피**(Jackson 3 규약). JSON 직렬화가 필요하면 앱이 `RedisCacheConfiguration` 빈 직접 등록(`@ConditionalOnMissingBean` 우선). 테스트는 data-redis(testImplementation, compileOnly 비전이) — BOM 관리라 카탈로그 무변경.
+>
+> **framework-log-masking(2026-06-03: 개인정보 로그 마스킹)도 새 의존성 0.** `api framework-core`(`MaskingUtils` 재사용) + `compileOnly ch.qos.logback:logback-classic`(`MessageConverter`/`ILoggingEvent` — Boot 기본 로깅이라 런타임 상존). 탐지 정규식·엔진은 순수 JDK(외부 라이브러리 무), Logback 컨버터는 DI 불가라 정적 다리로 연결. 테스트는 logback-classic(testImplementation, compileOnly 비전이) — BOM 관리라 카탈로그 무변경.
 
 ## 4. 테스트 / 개발 도구
 | 항목 | 버전 | 용도 | 적용 위치 |

@@ -24,6 +24,9 @@
 - ✅ **독립 다중 DB 완료(2026-06-03)**: framework-datasource 에 `multi.*` 추가 — 서로 다른 물리 DB 마다 `<k>DataSource`/`<k>SqlSessionFactory`/`<k>SqlSessionTemplate`/`<k>TransactionManager` 세트를 `ImportBeanDefinitionRegistrar` 로 동적 등록. `@MapperScan(sqlSessionFactoryRef)`/`@Transactional("<k>TransactionManager")` 는 앱이 배선. 라우팅과 **상호 배타**(fail-fast). 새 외부 의존성 0. 분산 원자성은 여전히 XA 대신 Outbox/Saga로.
 - ✅ **분산 락 / 스케줄러 리더 선출(2026-06-03)**: **framework-lock 신설** — `DistributedLock` SPI(소유자 토큰 리스 기반 `tryLock/unlock/keepUntil` + 편의 `runIfLocked`), 백엔드 memory(단일JVM·기본)|redis(`SET NX PX` + Lua CAS)|jdbc(PK INSERT 충돌 선점·만료 재획득, idempotency JDBC 패턴 복제, DDL `db/lock-postgres.sql`). **`@SchedulerLock` 애스펙트**로 k8s 다중 파드 `@Scheduled` 중복 실행 방지(ShedLock 동등 `atMostFor`/`atLeastFor`, atLeastFor 는 조기종료 시 `keepUntil` 로 구현, 네이티브). batch(Quartz job-store 클러스터링)와 구분=평범한 `@Scheduled` 갭. **외부 의존성 0개**(redis/jdbc=compileOnly, H2=test-scope). ⚠️ 작성환경 컴파일 미검증 → 받는 쪽 `:framework:framework-lock:test`+`spotlessApply` 확인.
 - ✅ **PDF 산출물 생성(2026-06-03)**: **framework-pdf 신설** — 표 기반 `PdfReport`/`PdfColumn` 스펙 → `PdfExporter` 가 OutputStream 스트리밍(거래내역서/통지서). 한글 **TTF IDENTITY_H 임베딩**(`PdfFontProvider`, 폰트 미설정/깨진바이트는 라틴 폴백·생성 성공), 표 헤더 페이지 반복 + 하단 페이지번호, A4/A5/LETTER/LEGAL·가로·여백·폰트크기 토글. 엔진 **OpenPDF 2.0.2**(iText4 LGPL/MPL fork·AGPL 회피, `com.lowagie.text` 패키지; **3.0+ 는 `org.openpdf` 리네임이라 2.x 고정**; BOM 밖 → 카탈로그+ext 고정·`implementation` 비노출). 3단 토글+레지스트레이션 가드. **사용자 환경 컴파일 BUILD 통과 확인(2026-06-03)**.
+- ✅ **분산 캐시(2026-06-03)**: **framework-cache-redis 신설** — k8s 다중 파드 공유 캐시. core 의 로컬 Caffeine `CacheManager` 를 Redis 로 **대체**(`@AutoConfiguration(before=CacheAutoConfiguration.class)` 로 core 가 `@ConditionalOnMissingBean` 백오프하도록 먼저 등록). 값=**JDK 직렬화**(`RedisSerializer.java()`, Jackson2 직렬화기 회피)·키=String, 기본 TTL/keyPrefix/null정책 + 캐시별 `ttls`. JSON 직렬화 필요 시 앱이 `RedisCacheConfiguration` 빈 직접 등록(우선). 끄면(기본) core Caffeine. 3단 토글+레지스트레이션 가드. **외부 의존성 0개**(spring-data-redis=compileOnly+test, Boot BOM). ⚠️ 작성환경 컴파일 미검증 → 받는 쪽 `:framework:framework-cache-redis:test`+`spotlessApply` 확인.
+- ✅ **개인정보 로그 마스킹(2026-06-03)**: **framework-log-masking 신설** — core `MaskingUtils`(값 단위)의 보완으로 **자유 텍스트 로그**에 섞인 PII 를 정규식 탐지 후 `MaskingUtils` 형식에 위임(전사 일관). 두 경로: **(1)** `SensitiveDataMasker` 빈 명시 호출(구조화 로그까지, 1차) **(2)** Logback `%mmsg` 컨버터(`MaskingMessageConverter`+정적 다리 `MaskingSupport` 폴백+`LogMaskingInstaller`, 패턴 로그 자동, 2차 방어망). 내장 규칙 RRN/카드/휴대폰/이메일(계좌는 오탐 위험 기본 off)+커스텀 정규식. 순수 엔진은 Spring 무의존 JDK 검증. 3단 토글+레지스트레이션 가드. **외부 의존성 0개**(logback-classic=Boot 기본 로깅·compileOnly+test). ⚠️ 작성환경 컴파일 미검증 → 받는 쪽 `:framework:framework-log-masking:test`+`spotlessApply` 확인.
+- 🏁 **기본기능 갭 정리 종료(2026-06-03)**: 분산 락(lock)·PDF(pdf)·분산 캐시(cache-redis)·로그 마스킹(log-masking) 4종 완료. 이후는 갭이 아니라 심화/운영.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
 ---
@@ -89,6 +92,7 @@ public class XxxAutoConfiguration {
 | ✅ framework-security (확장) | **동시(중복) 로그인 제어** | `framework.security.concurrent-session.enabled` | [코어] | 공통 |
 | ✅ framework-audit | 접속/감사 로그 **DB 적재·조회** 표준(현 AOP 영속화) + **kafka 싱크**(messaging Outbox 발행) | `framework.audit.enabled` + `store.type=logging\|jdbc\|kafka` | [선택] | 공통 |
 | ✅ framework-secure-web | 보안헤더·경로조작·인젝션 스크리닝·CSRF 더블서브밋(SQLi 등, XSS는 core) | `framework.secure-web.enabled` (+`headers`/`path-traversal`/`injection`/`csrf`) | [선택] | 공통 |
+| ✅ framework-log-masking | **개인정보 로그 마스킹** — 자유 텍스트 로그 PII(주민/카드/휴대폰/이메일, 계좌 기본 off) 정규식 탐지 → core `MaskingUtils` 위임. (1) `SensitiveDataMasker` 빈 명시 호출 (2) Logback `%mmsg` 컨버터(정적 다리+폴백). 외부 의존성 0개(logback=compileOnly) | `framework.log-masking.enabled` (+`rules.*`/`custom-patterns`/`strip-newlines`/`install-converter`) | [선택] | 공통 |
 
 ### 2.4 신규 — 업무 생산성 (업무개발자 직접 사용)
 
@@ -124,6 +128,7 @@ public class XxxAutoConfiguration {
 |---|---|---|---|---|
 | framework-observability ✅ | 구조화(JSON) 로그·Micrometer 메트릭(공통 태그)·OTel 트레이스/메트릭 OTLP 익스포터 | `framework.observability.enabled` | [선택] | 공통 |
 | ✅ framework-lock | **분산 락 / 스케줄러 리더 선출** — `DistributedLock` SPI(소유자 토큰 리스 기반 `tryLock/unlock/keepUntil` + 편의 `runIfLocked`), 백엔드 memory(단일JVM)\|redis(SET NX + Lua CAS)\|jdbc(INSERT 충돌·만료 재획득). **`@SchedulerLock`**(애스펙트)로 k8s 다중 파드 `@Scheduled` 중복 실행 방지(ShedLock 동등 `atMostFor`/`atLeastFor`, 네이티브). **외부 의존성 0개**(redis/jdbc=compileOnly, H2=test-scope) | `framework.lock.enabled` + `type=memory\\|redis\\|jdbc` (+`scheduler.enabled`) | [선택] | 공통 |
+| ✅ framework-cache-redis | **분산 캐시(Redis 백엔드)** — core 로컬 Caffeine `CacheManager` 를 파드 간 공유 Redis 로 **대체**(`@AutoConfiguration(before=CacheAutoConfiguration)` 로 core 백오프). 값=JDK 직렬화(Jackson2 회피)·키=String, TTL/keyPrefix/null+캐시별 `ttls`, 앱 `RedisCacheConfiguration` 우선. 끄면 core Caffeine. **외부 의존성 0개**(spring-data-redis=compileOnly+test) | `framework.cache.redis.enabled` (+`time-to-live`/`key-prefix`/`cache-null-values`/`ttls`) | [선택] | 공통 |
 
 > ✅ 구현완료(2026-06-03). **batch 모듈과의 차이**: Spring Batch 잡의 클러스터 중복방지는 Quartz `job-store-type=jdbc`. 본 모듈은 <b>평범한 `@Scheduled`</b>(Quartz 아님)의 중복방지 갭을 메우고, 임의의 단발 작업 단일 실행(`runIfLocked`)도 제공. 소유자 토큰으로 "내 락 만료 후 타 인스턴스 재획득분을 잘못 해제"를 차단(Redis=Lua CAS, JDBC=`WHERE lock_owner=?`). 운영(다중 replica)은 `type=redis\|jdbc` 필수(memory 는 파드 간 미배타). JDBC DDL `db/lock-postgres.sql`. 상세는 `framework/framework-lock/README.md`.
 
@@ -156,6 +161,8 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
        ├── client ──── messaging/saga(연계)
        ├── observability   (전 모듈 횡단)
        ├── lock            (분산 락; impl: redis/jdbc, 횡단)
+       ├── cache-redis     (분산 캐시; core Caffeine 대체, before=CacheAutoConfiguration)
+       ├── log-masking     (로그 PII 마스킹; core MaskingUtils 위임, Logback %mmsg)
        └── pdf             (PDF 산출물; OpenPDF impl 비노출, 한글 TTF 임베딩)
 ```
 원칙: 상위(토대)는 하위를 모른다. 순환 금지. impl 모듈(redis 등)이 추상(security/idempotency)을 의존. **saga 는 messaging(Outbox) 위에 오케스트레이션만 얹는다**(전송/멱등 소비 재사용, compileOnly 비전이라 의존 서비스가 messaging 도 명시).
@@ -169,7 +176,7 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
 3. **금융 핵심** — **framework-idempotency**, framework-messaging(+Outbox), framework-datasource
 4. **업무 생산성** — framework-excel, framework-batch, framework-notification, framework-pdf
 5. **규제 특화** — framework-pki, framework-mfa, framework-crypto-hsm, framework-recon, (공공 시) framework-egov-compat
-6. **운영/관측** — framework-observability ✅ · framework-lock ✅(분산 락·`@Scheduled` 중복방지)
+6. **운영/관측** — framework-observability ✅ · framework-lock ✅(분산 락·`@Scheduled` 중복방지) · framework-cache-redis ✅(분산 캐시) · framework-log-masking ✅(개인정보 로그 마스킹)
 7. **그릇 정비** — 게이트웨이(폴백·CORS·rate-limit)·k8s(redis/secret/멀티서비스)·CI/CD 멀티서비스화
 
 > 1·2단계 산출물은 3단계 이후 모든 모듈이 재사용한다(메시지·채번·연계·감사). 토대를 건너뛰면 각 모듈이 재발명한다.
