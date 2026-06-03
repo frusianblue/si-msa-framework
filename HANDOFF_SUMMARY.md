@@ -6,7 +6,7 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**SFTP 원격 저장 모듈 `framework-file-sftp` 완료** — 사용자 추가 요청(QR/OTP/SFTP 점검 중 SFTP 우선). `framework-file` 의 `FileStorage` SPI 에 **SFTP 백엔드**(`storage.type=sftp`)를 `framework-file-s3` 와 동일 구조로 추가. 순수 JDK 에 SSH 가 없어 **Apache MINA SSHD**(`sshd-core`+`sshd-sftp` **2.16.0**, BOM 밖·`implementation` 비노출) 위임. **연결 모델**: `SshClient` 1회 start 후 재사용·**작업마다 세션 개폐**(풀 없음), `load`/`loadRange` 반환 스트림은 `SessionBoundInputStream` 으로 **close 시 세션 함께 정리**. **`RangeReadableStorage` 구현**(skip+`BoundedInputStream` → 컨트롤러 206, S3 동등; presigned 는 SFTP 미적용). 호스트키 **기본 strict**(known_hosts·fail-closed, `false`로 개발 완화+경고)·인증 password/private-key(+passphrase). 순수 경로/Range 헬퍼 JDK 단독 **22/22 통과**, 정식 JUnit 3종(경로 단위·오토컨피그 토글/`FilteredClassLoader` 백오프/.imports·**내장 MINA SFTP 서버 실제 왕복**). 참고: **OTP 는 이미 있음**(`framework-mfa`), **QR 은 의도적으로 otpauth URI 만**(zxing 회피). **다음 세션 최우선 = (devops) CI 게이트 + 멀티모듈 jacoco 집계** 또는 그릇 정비(게이트웨이 런타임/k8s 멀티서비스).
+**SFTP 원격 저장 모듈 `framework-file-sftp` 완료** — 사용자 추가 요청(QR/OTP/SFTP 점검 중 SFTP 우선). `framework-file` 의 `FileStorage` SPI 에 **SFTP 백엔드**(`storage.type=sftp`)를 `framework-file-s3` 와 동일 구조로 추가. 순수 JDK 에 SSH 가 없어 **Apache MINA SSHD**(`sshd-core`+`sshd-sftp` **2.16.0**, BOM 밖·`implementation` 비노출) 위임. **연결 모델**: `SshClient` 1회 start 후 재사용·**작업마다 세션 개폐**(풀 없음), `load`/`loadRange` 반환 스트림은 `SessionBoundInputStream` 으로 **close 시 세션 함께 정리**. **`RangeReadableStorage` 구현**(skip+`BoundedInputStream` → 컨트롤러 206, S3 동등; presigned 는 SFTP 미적용). 호스트키 **기본 strict**(known_hosts·fail-closed, `false`로 개발 완화+경고)·인증 password/private-key(+passphrase). 순수 경로/Range 헬퍼 JDK 단독 **22/22 통과**, 정식 JUnit 3종(경로 단위·오토컨피그 토글/`FilteredClassLoader` 백오프/.imports·**내장 MINA SFTP 서버 실제 왕복**). **사용자 환경 컴파일 BUILD 통과 확인(2026-06-03).** 참고: **OTP 는 이미 있음**(`framework-mfa`), **QR 은 의도적으로 otpauth URI 만**(zxing 회피). **다음 세션 최우선 = (devops) CI 게이트 + 멀티모듈 jacoco 집계** 또는 그릇 정비(게이트웨이 런타임/k8s 멀티서비스).
 
 ## 최종 갱신
 - 일자: 2026-06-03 · 갱신자: SFTP 원격 저장 세션
@@ -26,7 +26,7 @@
 ## 현재 상태 (적용/검증)
 - ✅ **순수 경로/Range 헬퍼 JDK 단독 하니스 22/22**(join 6·parentOf 4·ancestorDirs 4·extOf 3·range 10..19/EOF클램프·skipFully 폴백·bounded 단건).
 - ✅ **archtest 7규칙 정적 무충돌**(autoconfig=`@AutoConfiguration`·`Sftp`는 nested(top-level *Properties 규칙 비대상)·Jackson0·필드주입0).
-- ⚠️ 작성 환경 **Maven Central 차단** → MINA(`org.apache.sshd.*`) 컴파일·JUnit(왕복 포함) 미실행. 받는 쪽 검증 경로 아래. (MINA API 호출은 javadoc/web 으로 시그니처 확인하며 보수적으로 작성 — 가장 위험한 건 내장서버 왕복 테스트라 문제 시 그 파일만 조정 가능.)
+- ✅ **사용자 환경 컴파일 BUILD 통과 확인(2026-06-03)** — MINA(`org.apache.sshd.*`) 포함 컴파일 그린. 잔여는 받는 쪽 `:framework:framework-file-sftp:test`(내장 SFTP 서버 왕복)+`spotlessApply` 실행뿐. (작성 환경은 Maven Central 차단이라 MINA API 호출은 javadoc/web 으로 시그니처 확인하며 보수적으로 작성했고, 컴파일로 최종 확인됨.)
 - 신규 파일: 모듈 main 2(`SftpFileStorage`·autoconfig)+`.imports`+build.gradle / test 3(Path 단위·AutoConfig 토글·RoundTrip 내장서버) / 변경 5(libs.versions.toml·root build.gradle·settings.gradle·archtest build.gradle·`FileStorageProperties`). **framework-file-batch 는 이미 전달·컴파일 확인됨 → 이번 드롭인 제외.**
 
 ## 켜는 법
