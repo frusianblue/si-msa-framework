@@ -34,8 +34,7 @@ public class GatewayAuthProperties {
     private String userIdHeader = "X-User-Id";
     private String rolesHeader = "X-User-Roles";
     private String tenantHeader = "X-Tenant-Id";
-    private List<String> permitAllPatterns =
-            new ArrayList<>(List.of("/api/*/auth/**", "/actuator/**", "/fallback/**"));
+    private List<String> permitAllPatterns = new ArrayList<>(List.of("/api/*/auth/**", "/actuator/**", "/fallback/**"));
 
     public boolean isEnabled() {
         return enabled;
