@@ -23,8 +23,8 @@
 8. **문서 5종 동기화**: `framework/framework-pdf/README.md` 신설 · 루트 `README.md`(의존성·요약줄·카탈로그) · `HANDOFF.md`(1·6·7절) · `docs/FRAMEWORK_MODULES.md`(0·2.4·3·4절) · `STACK.md`(OpenPDF 행).
 
 ## 현재 상태 (적용/검증)
-- ⚠️ **작성 환경 컴파일 미검증**(Maven Central/Gradle 차단·JRE-only). OpenPDF API 는 `com.lowagie` **2.x javadoc 경로로 교차확인**(2.0.2 javadoc `.../com.github.librepdf.openpdf/com/lowagie/text/pdf/...` → 모듈명은 librepdf, **실제 패키지는 com.lowagie.text**). 받는 쪽 빌드 필요.
-- 검증 명령: `./gradlew :framework:framework-pdf:test :framework:framework-archtest:test spotlessApply`
+- ✅ **사용자 환경 컴파일 BUILD 통과 확인(2026-06-03)**. OpenPDF API 는 `com.lowagie` **2.x javadoc 경로로 교차확인**(2.0.2 javadoc `.../com.github.librepdf.openpdf/com/lowagie/text/pdf/...` → 모듈명은 librepdf, **실제 패키지는 com.lowagie.text**)했고 실제 빌드로 검증됨.
+- 검증 완료: `./gradlew :framework:framework-pdf:test :framework:framework-archtest:test spotlessApply` (사용자 환경 정상)
 - 신규 의존성 **1종(OpenPDF 2.0.2)**: `implementation`(소비자 비노출), Boot BOM 밖→카탈로그+ext 고정. 그 외 0(config-processor=annotationProcessor, starter-test=test). `@ConditionalOnClass(Document)` 는 implementation 이 런타임 클래스패스에 있어 동작(excel 의 `@ConditionalOnClass(Workbook)`+POI 와 동일 패턴).
 
 ## 켜는 법
