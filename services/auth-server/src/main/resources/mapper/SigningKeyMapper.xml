@@ -28,10 +28,12 @@
         LIMIT 1
     </select>
 
+    <!-- kid 는 UUID 라 충돌이 사실상 없음 + 부트스트랩 중복은 앱 레벨 가드(synchronized + findNewestActive)로 차단.
+         H2 는 PostgreSQL 의 ON CONFLICT 구문을 파싱 못 하므로 이식성 위해 평문 INSERT 사용.
+         (다중 파드 동시 cold-start 의 정식 해법은 framework-lock 리더 선출 — 회전 스케줄러 확장점.) -->
     <insert id="insert">
         INSERT INTO auth_signing_key (kid, jwk_json, status, created_at)
         VALUES (#{kid}, #{jwkJson}, #{status}, #{createdAt})
-        ON CONFLICT (kid) DO NOTHING
     </insert>
 
     <update id="updateStatus">

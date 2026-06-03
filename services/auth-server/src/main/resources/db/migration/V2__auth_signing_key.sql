@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS auth_signing_key (
     kid        VARCHAR(100) NOT NULL,
     jwk_json   TEXT         NOT NULL,   -- Nimbus RSAKey JSON(개인키 포함). 운영=암호화 필요.
     status     VARCHAR(20)  NOT NULL,   -- ACTIVE | RETIRED
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_at TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (kid)
 );
 CREATE INDEX IF NOT EXISTS idx_signing_key_status_created ON auth_signing_key(status, created_at DESC);

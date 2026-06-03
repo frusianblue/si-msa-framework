@@ -25,6 +25,11 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+# MyBatis: 매퍼 XML 을 인터페이스와 다른 mapper/ 폴더에 두므로 위치를 명시(user-service 와 동일 규약).
+#   미설정 시 SigningKeyMapper 가 바인딩 안 돼 "Invalid bound statement (not found)" 로 기동 실패.
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+
 # ===== Authorization Server =====
 auth-server:
   # iss — 외부 접근 가능한 안정 URL(토큰/discovery 에 박힘). 운영은 환경변수로 주입.

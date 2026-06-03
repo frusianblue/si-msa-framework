@@ -20,6 +20,8 @@
 - SAS 는 **Spring Security 7.0 에 흡수**됨(1.5.x 가 마지막 독립 세대). 좌표 `org.springframework.security:spring-security-oauth2-authorization-server`, **버전=Boot/Security BOM 관리**(오버라이드 불가) → `libs.versions.toml` 미등록, build.gradle 에 버전 미기재.
 - 그랜트: `authorization_code` + **PKCE**(SS7 기본 활성) · `client_credentials`. implicit/password 미채택.
 - **Jackson 3**: SAS 가 기본으로 `tools.jackson.*` 사용 → `com.fasterxml` 누수 없음. `JdbcOAuth2AuthorizationService` 기본 매퍼가 이미 Jackson 3. 커스텀 principal 직렬화 시 `SecurityJacksonModules.getModules(loader)` + `JsonMapper.builder()` + `BasicPolymorphicTypeValidator.allowIfSubType(...)`. 구버전 `SecurityJackson2Modules`(ObjectMapper, com.fasterxml) **금지**.
+- ⚠️ **SAS POM 버그 — commons-logging 제외(spring-security#18372)**: `spring-security-oauth2-authorization-server:7.0.x` POM 이 spring-core 에서 `commons-logging` 을 낡은(구 spring-jcl 시절) 제외로 빼버린다. SF7 은 spring-jcl 을 폐지하고 실제 Apache Commons Logging 을 쓰므로(SF#32459) `org.apache.commons.logging.LogFactory` 가 사라져 기동 시 `NoClassDefFoundError`(SpringApplication 정적 초기화). → build.gradle 에 `implementation 'commons-logging:commons-logging:1.3.5'` 명시 추가로 되돌림(SAS 가 제외 수정하면 제거 가능). SAS 미사용 서비스는 영향 없음.
+- **로컬 H2 SQL 이식성**: Flyway 마이그레이션은 `TIMESTAMP`(+`CURRENT_TIMESTAMP`)·평문 INSERT 로 작성(SAS 정본도 `timestamp`). `TIMESTAMPTZ`·`ON CONFLICT` 는 PG 전용이라 로컬 H2(MODE=PostgreSQL)에서 50004 로 기동 실패.
 - **SS7 패키지 재배치(확정, 7.0.5)**: SAS config 가 메인 config 모듈로 이동. `OAuth2AuthorizationServerConfiguration` → `org.springframework.security.config.annotation.web.configuration`, `OAuth2AuthorizationServerConfigurer` → `org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization`, `OAuth2TokenType` → `org.springframework.security.oauth2.server.authorization`(`.token` 아님). `applyDefaultSecurity`/static `authorizationServer()` 제거 → `new OAuth2AuthorizationServerConfigurer()` + `http.securityMatcher(getEndpointsMatcher()).with(...)` DSL.
 
 ## 3. 구조
@@ -36,7 +38,7 @@ services/auth-server
 db/migration: V1(SAS 스키마) · V2(서명키)
 ```
 
-- **사용자 소스 재사용**: `framework.security.enabled=true` 로 `Authenticator`/`LoginService` 빈 재사용. framework-security 기본 체인은 `@ConditionalOnMissingBean(SecurityFilterChain)` 이라 우리 AS 체인 정의 시 자동 백오프(충돌 없음). RBAC 메뉴는 `framework.security.menu=false`.
+- **사용자 소스 재사용**: `framework.security.enabled=true` 로 `Authenticator`/`LoginService` 빈 재사용. framework-security 기본 체인은 `@ConditionalOnMissingBean(SecurityFilterChain)` 이라 우리 AS 체인 정의 시 자동 백오프(충돌 없음). RBAC 메뉴는 `framework.security.menu=false`. 단 `SecurityMetadataService` 는 enabled=true 면 무조건 생성+생성자 eager 로딩이라, RBAC 테이블(resources/roles/role_resources)을 빈 채로 마련(Flyway V3)해 기동 WARN 을 없앤다(enabled=false 는 AuthAutoConfiguration→LoginService 의존 누락으로 기동 실패).
 - **서명키 회전**: 읽기 측 + 부트스트랩만 구현. 주기적 회전(새 ACTIVE 발급 + 오래된 키 RETIRE)은 **`framework-lock` 의 `@SchedulerLock`(리더 선출)**로 단일 파드만 수행하는 스케줄러로 확장(다중 파드 중복 회전 방지). [확장점]
 - ⚠️ **서명키 개인키**: `auth_signing_key.jwk_json` 은 RSA 개인키 원문 포함 → 운영은 **반드시 암호화 저장**(컬럼 암호화/KMS/Vault). 골격은 평문(데모 한정). [TODO]
 
@@ -55,6 +57,8 @@ db/migration: V1(SAS 스키마) · V2(서명키)
 `/oauth2/authorize` · `/oauth2/token` · `/oauth2/jwks` · `/.well-known/openid-configuration` · `/userinfo` · `/oauth2/revoke` · `/oauth2/introspect`
 
 ## 6. 로컬 실행
+
+> 새 서비스 설정 주의: 매퍼 XML 을 `mapper/` 폴더에 두므로 `application.yml` 에 `mybatis.mapper-locations: classpath*:mapper/**/*.xml` 필수(user-service 규약). 미설정 시 `Invalid bound statement (not found)`.
 
 ```bash
 ./gradlew :services:auth-server:bootRun         # H2 인메모리, demo 클라이언트 자동 등록

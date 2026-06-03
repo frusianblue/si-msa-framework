@@ -37,6 +37,10 @@
 4. **SS7 패키지 재배치(확정, 7.0.5 소스로 검증·수정 완료)** — `OAuth2AuthorizationServerConfiguration`→`org.springframework.security.config.annotation.web.configuration`, `OAuth2AuthorizationServerConfigurer`→`...config.annotation.web.configurers.oauth2.server.authorization`, `OAuth2TokenType`→`...oauth2.server.authorization`(`.token`아님). `applyDefaultSecurity`/static `authorizationServer()` **제거** → `new OAuth2AuthorizationServerConfigurer()`+`http.securityMatcher(getEndpointsMatcher()).with(...)` DSL.
 5. **이중 발급기 혼란** — 검증/로그아웃/블랙리스트 경로가 자체JWT vs AS 로 갈림 → `iss` 분기, 경계 문서화(`AUTH_SERVER.md` §4).
 6. **서명키 개인키 평문저장 금지** — `auth_signing_key.jwk_json` 운영 암호화(KMS/Vault). 회전은 `framework-lock` 리더선출.
+7. **SAS POM 의 commons-logging 제외(spring-security#18372)** — SAS 7.0.x POM 이 spring-core 에서 `commons-logging` 을 (구 spring-jcl 시절) 낡은 제외. SF7 은 실제 Apache Commons Logging 사용(SF#32459) → `LogFactory` 누락 → 기동 시 `NoClassDefFoundError`(SpringApplication.<clinit>). **컴파일은 통과, 런타임만 실패**. SAS 쓰는 서비스만 해당(user-service 등 무영향). 해결: build.gradle 에 `implementation 'commons-logging:commons-logging:1.3.5'` 재추가.
+8. **로컬 H2 SQL 이식성** — `TIMESTAMPTZ`(PG 약어)·`ON CONFLICT`(PG 전용)는 H2(MODE=PostgreSQL)가 파싱/인식 못 함(에러 50004). Flyway V1 기동 실패. → `TIMESTAMP`(+`CURRENT_TIMESTAMP`, SAS 정본도 timestamp 사용)·평문 INSERT 로 통일(H2·PG 양립).
+9. **MyBatis mapper-locations** — 매퍼 XML 을 `mapper/` 폴더(인터페이스와 다른 위치)에 두는 프로젝트 규약상, 새 서비스는 `mybatis.mapper-locations: classpath*:mapper/**/*.xml` 를 yml 에 줘야 함(미설정 시 `Invalid bound statement (not found)`). user-service 와 동일.
+10. **framework-security RBAC eager 로딩** — `framework.security.enabled=true` 면 `SecurityMetadataService` 빈이 무조건 생성되고 생성자에서 `findAllResources()` 를 즉시 호출(eager). RBAC 테이블(resources/roles/role_resources) 없으면 기동 시 WARN(비치명적). `menu=false` 로도 안 꺼짐(menu 토글과 별개). enabled=false 는 LocalDemo Authenticator→AuthAutoConfiguration→LoginService 의존 누락으로 기동 깨짐 → **대신 빈 RBAC 테이블(V3) 마련**으로 해결(user-service DDL 동일).
 
 ## 실행/검증 (받는 쪽)
 ```bash
