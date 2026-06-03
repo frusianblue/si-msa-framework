@@ -31,10 +31,9 @@
 11. **문서 5종 동기화**: 두 모듈 `README.md` 신설 · 루트 `README.md` · `HANDOFF.md` · `docs/FRAMEWORK_MODULES.md` · `STACK.md`(신규 버전 없음 명시 — 둘 다 의존성 0).
 
 ## 현재 상태 (적용/검증)
-- ⏳ **이 세션 환경에선 빌드 미검증**(프록시 allowlist 에 maven central/repo.spring.io 부재로 `./gradlew` 불가) → **코드만 작성**. 사용자 환경에서 아래 검증 필요:
-  ```
-  ./gradlew :framework:framework-cache-redis:test :framework:framework-log-masking:test :framework:framework-archtest:test spotlessApply
-  ```
+- ✅ **사용자 환경 빌드 검증 완료(2026-06-03)**: `./gradlew :framework:framework-cache-redis:test :framework:framework-log-masking:test :framework:framework-archtest:test spotlessApply`. **log-masking 테스트 1건 실패→수정**(아래) 후 전부 통과. cache-redis·archtest 는 이상 없음.
+  - **수정한 실패**: `LogMaskingAutoConfigurationTest#appliesRuleTogglesAndCustomPatterns` 의 phone-off 단언이 **테스트 결함**이었음 — 같은 테스트에서 `account=true` 를 켜는데, 계좌 정규식(`\d{2,6}-\d{2,6}-\d{2,6}`)이 **구분자 있는 휴대폰 `010-1234-5678` 도 매칭**해 마스킹 → "변경 없음" 단언이 깨짐. 모듈 코드는 정상(계좌가 dash-grouped 숫자열을 잡는 건 의도된 동작). → phone-off 검증을 **구분자 없는 `01012345678`**(휴대폰 규칙만 매칭, 계좌는 dash 필수라 미매칭)로 교체.
+  - 재검증: `./gradlew :framework:framework-log-masking:test spotlessApply` → 22 통과.
 - 설계상 arch 규칙 통과 예상: `*AutoConfiguration`→`@AutoConfiguration` ✓ / top-level `*Properties`→`@ConfigurationProperties` ✓(중첩 `Rules` 제외) / 필드주입 0(`MaskingSupport` 정적필드는 `@Autowired` 아님 → `NO_CLASSES_SHOULD_USE_FIELD_INJECTION` 무관) / Jackson2 이동패키지 0 / 슬라이스 cache·logmask→core 단방향.
 - **신규 외부 의존성 0**: 둘 다 Boot BOM 관리(spring-data-redis·logback-classic) → 카탈로그/ext/STACK 버전 추가 불필요. compileOnly 비노출 + 테스트 재선언(established 패턴).
 
@@ -78,6 +77,7 @@ log.info("AUDIT payload={}", masker.mask(dto.toString()));
 - **Logback 컨버터는 DI 불가**: `MessageConverter`/conversionRule 은 Logback 이 직접 인스턴스화 → Spring 빈 주입 불가. 그래서 **정적 다리(`MaskingSupport`)** 에 라이프사이클 빈(`LogMaskingInstaller`)이 마스커를 꽂는 패턴. 부팅 초기/순수 Logback 사용 대비 **미설치 시 기본규칙 폴백**(원문 노출 0).
 - **`%msg` 재정의 금지**: Logback 에서 표준 conversionWord(`msg`/`message`) 를 재정의하면 경고 → 별도 단어 **`%mmsg`** 를 둔다.
 - **로그 마스킹 오탐 정책**: 자유 로그에서 임의 숫자열 과잉 마스킹은 운영 가독성 저하 → 경계 엄격(`(?<![0-9])…(?![0-9])`, 카드=16자리/4-4-4-4 한정). **계좌는 오탐 커서 기본 off**. 규칙 순서는 자릿수 긴 카드 먼저(상호 오삼킴 방지).
+- **계좌 규칙은 dash-grouped 숫자열 전반을 잡는다(설계상 광범위, 2026-06-03 테스트 교훈)**: 계좌 정규식 `\d{2,6}-\d{2,6}-\d{2,6}` 은 구분자(`-`)로 묶인 2~6자리 그룹이면 **휴대폰 `010-1234-5678`·기타 코드도 매칭**한다(그래서 기본 off, 켤 땐 환경의 숫자열 형태 점검 필요). 테스트 교훈: account=on 상태에서 다른 규칙(예: phone off)을 검증할 땐 **구분자 없는 입력**으로 격리해야 계좌 매칭에 오염되지 않는다(`LogMaskingAutoConfigurationTest` 1차 실패가 바로 이 중첩 — 모듈 결함 아님, 테스트 결함이었음).
 - **Boot 구조화 로깅엔 %mmsg 미적용**: observability 의 JSON 로그는 PatternLayout 우회 → 컨버터 안 먹음. 그 경로는 1차(SensitiveDataMasker 빈 명시 호출)로 커버(README 명시).
 - (지난·유효) BOM 밖 의존=`implementation` 비노출+카탈로그/ext/STACK 고정(이번엔 의존성 0이라 해당 없음) / compileOnly 타입은 test 재선언 / 레지스트레이션 가드(`.imports` union 직접 단언) / 토글 3단 기본 off / Jackson3(`tools.jackson.*`, `.annotation` 만 예외) / 필터·로그 컨버터처럼 컨테이너 밖 컴포넌트는 GlobalExceptionHandler/DI 밖 / Boot4 패키지·외부 라이브러리 리네임 추측 금지 / JUnit launcher·starter-test 모듈마다 / 콘솔 UTF-8(미해결 보류).
 

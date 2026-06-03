@@ -83,6 +83,8 @@ void audit(SomeDto dto) {
 
 `account` 는 일반 숫자열과 충돌이 잦아 기본 off — 필요한 프로젝트만 `rules.account=true`. 적용 순서는 자릿수가 긴 카드를 먼저 둬 상호 오삼킴을 막는다(card → rrn → phone → email → account → custom).
 
+> **계좌 규칙을 켤 때 주의**: `account` 정규식은 구분자(`-`)로 묶인 2~6자리 3그룹이면 매칭하므로, **구분자 있는 휴대폰 `010-1234-5678` 같은 비계좌 숫자열도 함께 가린다**(설계상 광범위 — 이것이 기본 off 인 이유). 운영에서 계좌만 정확히 가리려면, 로그에 휴대폰/코드가 계좌와 같은 dash-그룹 형태로 섞이는지 점검하고 필요하면 `custom-patterns` 로 더 좁은 패턴을 쓰는 편이 안전하다.
+
 ## 한계 / 주의
 
 - **Boot 구조화 로깅(observability 모듈의 JSON 로그)** 은 `PatternLayout` 을 우회하므로 `%mmsg` 컨버터가 적용되지 않는다. 이 경우 **1차 경로(`SensitiveDataMasker` 빈 명시 호출)** 로 마스킹해야 한다.

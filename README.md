@@ -493,6 +493,7 @@ log.info("AUDIT payload={}", masker.mask(dto.toString()));
 ```
 - `%mmsg` 는 `%msg` 와 같되 인자 치환 후 최종 텍스트를 마스킹(인자로 흘러든 PII 도 잡힘). 마스커 미설치 시에도 기본 규칙으로 폴백.
 - **주의**: Boot 구조화(JSON) 로그는 `PatternLayout` 을 우회해 `%mmsg` 가 안 먹는다 → 그 경로는 1차(빈 명시 호출)로. 상세 `framework/framework-log-masking/README.md`.
+- **계좌(`account`) 규칙을 켤 때**: 정규식이 구분자로 묶인 2~6자리 3그룹을 잡으므로 `010-1234-5678` 같은 dash형 휴대폰/코드도 함께 가린다(기본 off 인 이유). 켤 땐 로그 숫자열 포맷 점검 또는 `custom-patterns` 로 좁히기 권장.
 
 ## 추가된 공통 (이번 보강)
 - **보안 예외 표준화**: 401/403 도 `ApiResponse` JSON 으로 통일(`RestAuthenticationEntryPoint`/`RestAccessDeniedHandler`).
