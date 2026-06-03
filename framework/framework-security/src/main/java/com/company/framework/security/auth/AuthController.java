@@ -52,4 +52,20 @@ public class AuthController {
         loginService.logout(accessToken, refreshToken, clientIp);
         return ApiResponse.ok(null, "로그아웃 되었습니다.");
     }
-}
+
+    /**
+     * 전 기기 로그아웃. Authorization 의 access token 으로 사용자를 식별해 그 사용자의 모든 세션을 무효화한다.
+     * 완전한 "모든 기기" 커버는 동시세션 추적(framework.security.concurrent-session.enabled=true) + 공유
+     * TokenStore(redis) 가 전제다. 그 외 환경에서는 최소한 현재 토큰이 무효화된다.
+     */
+    @PostMapping("/logout-all")
+    public ApiResponse<Map<String, Object>> logoutAll(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            HttpServletRequest request) {
+        String accessToken =
+                (authorization != null && authorization.startsWith("Bearer ")) ? authorization.substring(7) : null;
+        String clientIp = ClientIpResolver.resolve(request, loginAttemptProperties.getClientIpHeader());
+        int terminated = loginService.logoutAll(accessToken, clientIp);
+        Map<String, Object> payload = Map.of("terminatedSessions", terminated);
+        return ApiResponse.ok(payload, "모든 기기에서 로그아웃 되었습니다.");
+    }

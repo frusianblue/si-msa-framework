@@ -181,7 +181,46 @@ public class LoginService {
         publish(LoginAuditEvent.Type.LOGOUT, loginId, clientIp, null);
     }
 
-    private TokenResponse issue(String userId, List<String> roles) {
+    /**
+     * 전 기기(세션) 로그아웃. 제시한 access token 의 사용자에 대해 동시세션 레지스트리에 등록된 <b>모든 세션</b>의
+     * refresh 를 제거하고 access jti 를 블랙리스트한다(게이트웨이 엣지 + 서비스에서 즉시 무효).
+     *
+     * <p>레지스트리가 없거나 동시세션 추적이 꺼져 있어도 <b>현재 토큰</b>은 항상 무효화한다(호출자 안전망).
+     * 따라서 "모든 기기" 완전 커버는 {@code framework.security.concurrent-session.enabled=true} 가 전제다
+     * (그래야 사용자별 세션이 레지스트리에 쌓인다). 무효화 전파는 공유 저장소(redis TokenStore) 가 필요하다.
+     *
+     * @return 레지스트리에서 무효화한 세션 수(현재 토큰 단독 무효화만 된 경우 0).
+     */
+    public int logoutAll(String accessToken, String clientIp) {
+        if (accessToken == null || !jwtProvider.validate(accessToken)) {
+            throw new BusinessException(ErrorCode.Common.UNAUTHORIZED, "유효한 access token 이 필요합니다.");
+        }
+        String userId = jwtProvider.getSubject(accessToken);
+
+        // 현재 토큰은 레지스트리 유무와 무관하게 항상 무효화(남은 TTL 만큼).
+        Duration remaining = Duration.between(Instant.now(), jwtProvider.getExpiresAt(accessToken));
+        if (!remaining.isNegative() && !remaining.isZero()) {
+            tokenStore.blacklist(jwtProvider.getJti(accessToken), remaining);
+        }
+
+        int terminated = 0;
+        if (concurrentSessions != null) {
+            List<ConcurrentSessionService.ActiveSession> sessions = concurrentSessions.activeSessions(userId);
+            for (ConcurrentSessionService.ActiveSession s : sessions) {
+                if (s.refreshToken() != null) {
+                    tokenStore.removeRefresh(s.refreshToken());
+                }
+                if (s.accessJti() != null) {
+                    // 각 토큰의 실제 만료시각은 알 수 없으므로 access TTL 상한으로 블랙리스트(만료 후엔 자연 정리).
+                    tokenStore.blacklist(s.accessJti(), jwtProvider.accessTtl());
+                }
+                concurrentSessions.unregister(s.sessionId());
+            }
+            terminated = sessions.size();
+        }
+        publish(LoginAuditEvent.Type.LOGOUT, userId, clientIp, "logout-all:" + terminated);
+        return terminated;
+    }
         String access = jwtProvider.createAccessToken(userId, roles);
         String refresh = UUID.randomUUID().toString().replace("-", "");
         applyConcurrentSessionLimit(userId, refresh, jwtProvider.getJti(access)); // 한도 적용(거부 시 예외, 그 전엔 미저장)

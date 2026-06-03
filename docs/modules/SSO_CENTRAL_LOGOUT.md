@@ -89,10 +89,37 @@ Redis 가 없으면 기동 시 명확히 실패한다(fail-fast).
 
 ---
 
+## 전 기기 로그아웃 ("모든 기기에서 로그아웃")
+
+```
+POST /api/v1/auth/logout-all
+Authorization: Bearer <access token>
+→ 200 { "terminatedSessions": <N> }  "모든 기기에서 로그아웃 되었습니다."
+```
+
+access token 으로 사용자를 식별해 **동시세션 레지스트리에 등록된 그 사용자의 모든 세션**의 refresh 를 제거하고
+각 access jti 를 블랙리스트한다(게이트웨이 + 서비스에서 즉시 무효). 레지스트리가 없거나 동시세션 추적이
+꺼져 있어도 **현재 토큰은 항상 무효화**된다(호출자 안전망, 그 경우 `terminatedSessions=0`).
+
+전제(완전 커버):
+
+```yaml
+framework:
+  security:
+    concurrent-session:
+      enabled: true          # 사용자별 세션이 레지스트리에 쌓여야 전 기기 열거 가능
+      max-sessions: 5
+    token:
+      store: redis           # 무효화 전파(공유 저장소)
+```
+
+설계 메모:
+
+- 레지스트리 세션의 access 토큰은 실제 만료시각을 알 수 없으므로 access TTL 상한으로 블랙리스트한다(만료 후 자연 정리).
+- 동시세션 추적이 off 면 레지스트리가 비어 있어 전 기기 열거가 불가 — 현재 토큰만 무효화된다(엔드포인트는 항상 안전).
+- 무효화 즉시성은 게이트웨이 `blacklist-check.enabled=true` + 공유 redis 가 전제(엣지 차단).
+
 ## 후속(선택)
 
-- **전 세션 로그아웃("모든 기기에서 로그아웃")**: 현재는 제시된 access 토큰 1개의 jti 만 무효화. 동시세션 레지스트리
-  (`applyConcurrentSessionLimit` 가 user→sessions(refresh+jti) 추적)를 순회해 사용자의 모든 jti 를 블랙리스트하면
-  "전 기기 로그아웃" 이 된다.
 - **SSO 로그인 리다이렉트 흐름**: 미인증 브라우저 요청을 로그인 서비스로 보내고 로그인 후 원위치 복귀(`continue` 파라미터).
 - 다음 SSO 단계: (B) 표준 프로토콜 — OIDC 강화 + SAML SP, (C) Authorization Server(별도 서비스).
