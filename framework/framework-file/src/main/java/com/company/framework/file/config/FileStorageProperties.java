@@ -121,6 +121,7 @@ public class FileStorageProperties {
                 "jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "hwp", "txt", "csv",
                 "zip");
         private S3 s3 = new S3();
+        private Sftp sftp = new Sftp();
 
         // 보안: 실행 가능/위험 확장자는 항상 차단
         public static final Set<String> BLOCKED = Set.of(
@@ -190,6 +191,14 @@ public class FileStorageProperties {
         public void setS3(S3 s3) {
             this.s3 = s3;
         }
+
+        public Sftp getSftp() {
+            return sftp;
+        }
+
+        public void setSftp(Sftp sftp) {
+            this.sftp = sftp;
+        }
     }
 
     public static class S3 {
@@ -219,6 +228,113 @@ public class FileStorageProperties {
 
         public void setEndpoint(String endpoint) {
             this.endpoint = endpoint;
+        }
+    }
+
+    /**
+     * SFTP(원격 SSH) 저장소 설정(framework-file-sftp 모듈, storage.type=sftp).
+     * 인증은 password 또는 private-key-path 중 하나 이상(둘 다 주면 키 우선 시도 후 비번 폴백).
+     * strict-host-key-checking=true(기본) 면 known-hosts 에 없는 서버를 거부(fail-closed) — 운영 권장.
+     */
+    public static class Sftp {
+        private String host;
+        private int port = 22;
+        private String username;
+        private String password;
+        private String privateKeyPath;
+        private String privateKeyPassphrase;
+        private String baseDir = ""; // 비우면 서버 홈 상대. 예: /home/app/upload
+        private boolean strictHostKeyChecking = true;
+        private String knownHostsPath; // 비우면 ~/.ssh/known_hosts
+        private Duration connectTimeout = Duration.ofSeconds(10);
+        private Duration authTimeout = Duration.ofSeconds(10);
+
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+
+        public String getPrivateKeyPath() {
+            return privateKeyPath;
+        }
+
+        public void setPrivateKeyPath(String privateKeyPath) {
+            this.privateKeyPath = privateKeyPath;
+        }
+
+        public String getPrivateKeyPassphrase() {
+            return privateKeyPassphrase;
+        }
+
+        public void setPrivateKeyPassphrase(String privateKeyPassphrase) {
+            this.privateKeyPassphrase = privateKeyPassphrase;
+        }
+
+        public String getBaseDir() {
+            return baseDir;
+        }
+
+        public void setBaseDir(String baseDir) {
+            this.baseDir = baseDir;
+        }
+
+        public boolean isStrictHostKeyChecking() {
+            return strictHostKeyChecking;
+        }
+
+        public void setStrictHostKeyChecking(boolean strictHostKeyChecking) {
+            this.strictHostKeyChecking = strictHostKeyChecking;
+        }
+
+        public String getKnownHostsPath() {
+            return knownHostsPath;
+        }
+
+        public void setKnownHostsPath(String knownHostsPath) {
+            this.knownHostsPath = knownHostsPath;
+        }
+
+        public Duration getConnectTimeout() {
+            return connectTimeout;
+        }
+
+        public void setConnectTimeout(Duration connectTimeout) {
+            this.connectTimeout = connectTimeout;
+        }
+
+        public Duration getAuthTimeout() {
+            return authTimeout;
+        }
+
+        public void setAuthTimeout(Duration authTimeout) {
+            this.authTimeout = authTimeout;
         }
     }
 

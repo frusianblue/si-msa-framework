@@ -25,6 +25,7 @@ dependencies {
     testImplementation project(':framework:framework-commoncode')
     testImplementation project(':framework:framework-file')
     testImplementation project(':framework:framework-file-s3')
+    testImplementation project(':framework:framework-file-sftp')
     testImplementation project(':framework:framework-idempotency')
     testImplementation project(':framework:framework-i18n')
     testImplementation project(':framework:framework-idgen')

@@ -23,6 +23,7 @@
 | 10 | 안티바이러스 훅 | ✅ | `framework-file` `scan/` (ClamAV INSTREAM) |
 | 11 | 아카이빙/압축(ZIP·GZIP) | ✅ | `framework-archive` (스트리밍·zip-slip·압축폭탄 가드) |
 | 12 | 파일 일괄처리(다건 동일작업) | ✅ | `framework-file-batch` (부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임) |
+| 13 | SFTP 원격 저장(스토리지 백엔드) | ✅ | `framework-file-sftp` (MINA SSHD 위임·Range 지원·호스트키 strict, `storage.type=sftp`) |
 
 > 범례 — ✅ 있음 · 🟡 부분(보강 필요) · 🔴 없음 · 🔧 작업 중
 
@@ -98,13 +99,15 @@
 - 2026-06-03: **#8+#9+#10 파일 하드닝 묶음 완료**(`framework-file*` 확장) — Range 206 스트리밍 다운로드 + S3 presigned PUT/GET(대용량 직행) · 확장자↔MIME 계열 정합(Tika 확장) · ClamAV INSTREAM AV 게이트(순수 소켓, 외부 의존성 0). 기존 `FileStorage` 불변(ISP capability 추가). 순수 JDK 코어 javac+하니스 35/35 통과(ByteRange 파서·확장자 정책·ClamAV mock 소켓 왕복·FileSystem Range), 정식 JUnit 6종 추가. **사용자 환경 빌드/테스트 통과 확인** — `:framework:framework-file:test :framework:framework-file-s3:test :framework:framework-archtest:test spotlessApply` 그린(S3 오토컨피그 테스트는 신규 `S3Presigner` 빈에 맞춰 mock 추가로 수정). image deprecation(PAYLOAD_TOO_LARGE→CONTENT_TOO_LARGE) 동봉.
 - 2026-06-03: **환경정비 + 보안·검증 + spotless 확장** — 프로파일 local/dev/prod 통일 + `local-xx` 오버레이, 감사 로그 DB 적재 활성화(`audit_log` 마이그레이션 추가), JWT 시크릿 prod 가드, 요청 검증 빈틈 보강(Spring7 `HandlerMethodValidationException`·로그인 `@Valid`), spotless 다소스 확장 + 설정 캐시 충돌 해결(`lineEndings=UNIX`). 문서: LOCAL_SETUP/CHANGES_AND_DEPRECATIONS/SECURITY_VALIDATION_ADDITIONS/SPOTLESS_NOTES. 신규 의존성 0.
 - 2026-06-03(예정): **★ 설정값(YAML) 패스워드 암호화** = 다음 세션 최우선. 커스텀 Boot4 `EnvironmentPostProcessor` 가 `ENC(...)` 를 기존 `AesCryptoService`(AES-GCM)로 복호화(Jasypt 보류, 신규 의존성 0). 설계서 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
-- 2026-06-03: **파일 일괄처리 `framework-file-batch` 완료**(대기열 마지막 항목) — "같은 작업을 여러 파일에 한꺼번에"를 감싸는 얇은 오케스트레이션. (1)부분실패 격리(continueOnError 기본, fail-fast 옵션) (2)Java21 가상스레드+Semaphore 동시도 상한 (3)드라이런(IO 0·계획만) (4)입력순서 보존. `RenameOperation`(prefix/suffix/regex/sequence/template + 충돌 FAIL/SUFFIX, `BatchPreflight` 교차검증)·`ImageTransformOperation`(framework-image 위임)·`CompressOperation`(framework-archive 파일별 gzip 위임). image/archive 는 `compileOnly`+`@ConditionalOnClass`/`@ConditionalOnBean` 백오프 → **신규 외부 의존성 0**. 순수 로직(Processor/Rename/Safety) Spring 무의존 → JDK 단독 하니스 27/27 + 위임(실 ZipArchiver gzip 라운드트립/모의 ImageProcessor) 10/10 통과. 정식 JUnit 5종(Rename·Processor·Compress·ImageTransform·AutoConfig 백오프) 추가. archtest 7규칙 정적 무충돌. 설계서 `docs/NEXT_FILE_BATCH_PROCESSING.md`.
+- 2026-06-03: **SFTP 원격 저장 `framework-file-sftp` 완료**(사용자 추가 요청 — QR/OTP/SFTP 점검 중 SFTP 우선) — `framework-file` 의 `FileStorage` SPI 에 SFTP 백엔드 추가(`storage.type=sftp`). 순수 JDK SSH 부재 → Apache MINA SSHD(`sshd-core`+`sshd-sftp` 2.16.0, BOM 밖·`implementation` 비노출) 위임. `SshClient` 재사용·작업마다 세션 개폐, `load`/`loadRange` 스트림은 close 시 세션 함께 정리(`SessionBoundInputStream`). `RangeReadableStorage` 구현(skip+BoundedInputStream → 컨트롤러 206, S3 동등; presigned 미적용). 호스트키 기본 strict(known_hosts, fail-closed)·인증 password/private-key. 키 yyyy/MM/dd/{uuid}.{ext}·mkdir -p·없는 파일 삭제 멱등. 순수 경로/Range 헬퍼 JDK 단독 22/22 통과, 정식 JUnit 3종(경로 단위·오토컨피그 토글/FilteredClassLoader 백오프/.imports·내장 MINA SFTP 서버 실제 왕복). 3.0.0 마일스톤(API 비호환)이라 2.x 고정. ⚠️ MINA 컴파일·왕복은 받는 쪽 검증. — "같은 작업을 여러 파일에 한꺼번에"를 감싸는 얇은 오케스트레이션. (1)부분실패 격리(continueOnError 기본, fail-fast 옵션) (2)Java21 가상스레드+Semaphore 동시도 상한 (3)드라이런(IO 0·계획만) (4)입력순서 보존. `RenameOperation`(prefix/suffix/regex/sequence/template + 충돌 FAIL/SUFFIX, `BatchPreflight` 교차검증)·`ImageTransformOperation`(framework-image 위임)·`CompressOperation`(framework-archive 파일별 gzip 위임). image/archive 는 `compileOnly`+`@ConditionalOnClass`/`@ConditionalOnBean` 백오프 → **신규 외부 의존성 0**. 순수 로직(Processor/Rename/Safety) Spring 무의존 → JDK 단독 하니스 27/27 + 위임(실 ZipArchiver gzip 라운드트립/모의 ImageProcessor) 10/10 통과. 정식 JUnit 5종(Rename·Processor·Compress·ImageTransform·AutoConfig 백오프) 추가. archtest 7규칙 정적 무충돌. 설계서 `docs/NEXT_FILE_BATCH_PROCESSING.md`.
 
 ## 6. 추가 요청 대기열 (여기에 먼저 적어주세요 — 착수 시 위 표로 승격)
 > 형식: `- [ ] <기능명> — <왜 필요한지/기대 인수기준 한 줄>`
 
 - [x] 아카이빙(Archiving) 또는 압축(Archiving) — **완료**(`framework-archive`, 직전 세션). ZIP/GZIP 스트리밍 + zip-slip/압축폭탄 가드, 의존성 0.
 - [x] 일괄 처리(Batch Processing) - 여러 개의 파일에 대해 똑같은 작업(이름 변경, 변환 등)을 한꺼번에 적용 — **완료**(`framework-file-batch`). 부분실패 격리·결과수집·Java21 가상스레드 병렬·드라이런, image/archive 위임(compileOnly), 의존성 0.
+- [x] SFTP 원격 저장 — **완료**(`framework-file-sftp`). `FileStorage` SPI 의 SFTP 백엔드(`storage.type=sftp`), MINA SSHD 위임·Range 지원·호스트키 strict 기본.
+- [참고] OTP/QR 점검(2026-06-03): **OTP=이미 있음**(`framework-mfa` — TOTP/`OtpSender`(SMS·메일·알림톡)/ISMS-P 복구코드). **QR=의도적으로 이미지 미생성**(`otpauth://` URI 만, zxing 의존성 회피 — 범용 QR 이미지 생성은 미구현, 필요 시 zxing 옵트인 후속).
 
 - [ ] (예) 추가할 기본기능 1 — …
 - [ ] (예) 추가할 기본기능 2 — …

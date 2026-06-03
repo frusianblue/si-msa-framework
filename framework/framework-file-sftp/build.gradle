@@ -1,0 +1,19 @@
+// 선택형: SFTP(원격 SSH 파일전송) 저장이 필요한 프로젝트만 의존 추가 + storage.type=sftp.
+//   - 순수 JDK SSH 가 없어 라이브러리 필수: Apache MINA SSHD(sshd-core + sshd-sftp). Boot BOM 미관리 → libs.versions.toml(sshd) + 루트 ext(sshdVersion) 로 고정.
+//   - SSHD 타입은 이 모듈 내부 구현 디테일이므로 implementation(전이 금지) — 소비 서비스는 프레임워크 타입(FileStorage)만 의존.
+//   - 3.0.0 은 마일스톤(2.x 와 API 비호환) → 안정 2.x 고정.
+dependencies {
+    api project(':framework:framework-file')
+
+    // Apache MINA SSHD: 클라이언트 코어 + SFTP 서브시스템(클라이언트). sshd-common 은 sshd-core 가 전이.
+    implementation "org.apache.sshd:sshd-core:${sshdVersion}"
+    implementation "org.apache.sshd:sshd-sftp:${sshdVersion}"
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // 테스트는 내장 SFTP 서버(sshd 서버측 + sshd-sftp 서버 서브시스템)로 실제 왕복 검증 → test 에서도 필요.
+    testImplementation "org.apache.sshd:sshd-core:${sshdVersion}"
+    testImplementation "org.apache.sshd:sshd-sftp:${sshdVersion}"
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

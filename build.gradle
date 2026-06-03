@@ -28,6 +28,7 @@ allprojects {
         poiVersion             = libs.versions.poi.get()
         tikaVersion            = libs.versions.tika.get()
         openpdfVersion         = libs.versions.openpdf.get()
+        sshdVersion            = libs.versions.sshd.get()
     }
 }
 

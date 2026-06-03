@@ -24,7 +24,7 @@ deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거) · `framework-archive`(아카이빙/압축: ZIP+GZIP·zip-slip/폭탄 가드) · `framework-file-batch`(파일 일괄처리: 다건 동일작업 + 부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거) · `framework-archive`(아카이빙/압축: ZIP+GZIP·zip-slip/폭탄 가드) · `framework-file-batch`(파일 일괄처리: 다건 동일작업 + 부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임) · `framework-file-sftp`(SFTP 원격 저장: MINA SSHD 위임·Range 지원, `storage.type=sftp`).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -195,6 +195,7 @@ dependencies {
     implementation project(':framework:framework-image')       // 이미지 처리(리사이즈/썸네일·EXIF orientation 보정·민감 EXIF(GPS) 제거, ImageIO·의존성 0)
     implementation project(':framework:framework-archive')     // 아카이빙/압축(ZIP+GZIP, zip-slip·압축폭탄 가드, java.util.zip·의존성 0)
     implementation project(':framework:framework-file-batch')  // 파일 일괄처리(다건 동일작업 + 부분실패 격리·Java21 가상스레드 병렬·드라이런, image/archive 위임·의존성 0)
+    implementation project(':framework:framework-file-sftp')   // SFTP 원격 저장(MINA SSHD 위임·Range 지원, storage.type=sftp) — sshd-core/sshd-sftp 전이
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
@@ -637,6 +638,39 @@ BatchResult plan = fileBatch.run(items, rename, BatchOptions.defaults().withDryR
 - 결과 이름은 항상 **단일 파일명**으로 강제된다(`BatchSafety` — 경로 구분자/`..`/드라이브 표기 거부). 디렉토리 밖 기록(경로 조작) 차단.
 - `BatchItem` 은 경로 기반(결과를 같은 디렉토리에 스트리밍 기록) 또는 본문 바이트 기반(결과를 본문으로 반환) 모두 지원. 실패는 `BusinessException` 의 `ErrorCode` 를 보존해 수집한다.
 - 작업을 직접 구현하려면 `BatchFileOperation`(필요 시 `BatchPreflight` 병행)을 구현해 `run` 에 넘기면 된다.
+
+### framework-file-sftp (SFTP 원격 저장 — MINA SSHD 위임·Range 지원)
+`framework-file` 의 `FileStorage` SPI 에 **SFTP(원격 SSH) 저장 백엔드**를 추가하는 선택 모듈. `storage.type=sftp` 일 때만 활성. 순수 JDK 에는 SSH 가 없어 **Apache MINA SSHD**(`sshd-core`+`sshd-sftp`)에 위임하며, 이 타입들은 모듈 내부 `implementation`(전이 금지)이라 소비 서비스는 프레임워크 타입(`FileStorage`)만 의존한다. S3 와 동일하게 **`RangeReadableStorage`(부분 다운로드)** 를 구현해 컨트롤러의 206 처리에 그대로 올라탄다(presigned 는 SFTP 에 개념이 없어 미구현).
+```yaml
+framework:
+  file:
+    storage:
+      type: sftp
+      sftp:
+        host: sftp.example.com
+        port: 22
+        username: appuser
+        password:                 # password 또는 private-key-path 중 하나 이상
+        private-key-path: /run/secrets/id_ed25519   # 키 인증(권장). passphrase 는 private-key-passphrase
+        private-key-passphrase:
+        base-dir: /home/appuser/upload   # 비우면 서버 홈 상대. 키는 base-dir/yyyy/MM/dd/{uuid}.{ext}
+        strict-host-key-checking: true   # 기본 true — known_hosts 에 없으면 거부(fail-closed)
+        known-hosts-path:                # 비우면 ~/.ssh/known_hosts
+        connect-timeout: 10s
+        auth-timeout: 10s
+```
+```java
+@Autowired FileStorage storage; // type=sftp + sshd 클래스패스면 SftpFileStorage 주입
+
+StoredFile sf = storage.store(in, "report.pdf", "application/pdf", size); // base-dir/2026/06/03/{uuid}.pdf
+try (InputStream s = storage.load(sf.storedPath())) { ... }               // 스트림 close 시 세션도 함께 정리
+long len = ((RangeReadableStorage) storage).contentLength(sf.storedPath());
+storage.delete(sf.storedPath());                                          // 없는 파일이면 멱등 통과
+```
+- **연결 모델**: SSH 는 연결 지향·상태형이라 무상태 S3 와 다르다. `SshClient` 는 1회 start 후 재사용하고 **작업마다 세션을 새로 열고 닫는다**(풀 없음 — 예측 가능·stale 연결 회피). `load`/`loadRange` 가 돌려주는 스트림은 세션을 물고 있다가 **스트림 close 시 세션까지 함께 정리**(`SessionBoundInputStream`) — 반드시 try-with-resources 로 닫을 것.
+- **호스트 키 검증**: 기본 strict(`known_hosts` 에 없는 서버 거부 = fail-closed). 개발 편의로 `strict-host-key-checking=false` 면 모든 키 수용 + 경고 로그(중간자 공격 취약, 운영 금지).
+- **인증**: `password` 와/또는 `private-key-path`(+`private-key-passphrase`). 키는 기동 시 로드해 캐시, 잘못된 경로/암호면 기동 단계에서 명확히 실패(메시지에 평문 미포함).
+- 디렉토리는 `mkdir -p` 처럼 조상까지 자동 생성. 에러는 core `BusinessException`(`NOT_FOUND`/`INTERNAL_ERROR`)으로 매핑하며 호스트/자격증명을 노출하지 않는다. **3.0.0 은 마일스톤(2.x 와 API 비호환) → 안정 2.x(2.16.0) 고정.**
 
 ### framework-file (파일 하드닝 — Range 스트리밍·presigned·확장자 정합·안티바이러스)
 기존 파일 저장(로컬/NAS/S3)에 더해 **대용량/스트리밍·메타 정합성·안티바이러스**를 옵트인으로 얹는다. 기존 `FileStorage` 인터페이스는 불변이며, 선택 기능은 capability 인터페이스로 추가돼 미지원 저장소는 자동 폴백한다. **신규 외부 의존성 0**(Range=JDK NIO, ClamAV=순수 소켓, S3Presigner=awssdk:s3 포함).
