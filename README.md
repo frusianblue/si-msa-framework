@@ -349,6 +349,26 @@ class MyOAuthUserResolver implements OAuthUserResolver {
 
 엔드포인트: `GET /api/v1/auth/oauth/{provider}/authorize`(IdP 로 redirect) · `/callback`(자체 토큰 JSON, 자체 로그인과 동일한 `TokenResponse`). IdP 콘솔에 redirect URI `{base}/api/v1/auth/oauth/{provider}/callback` 등록 필요. **상세·resolver 전체 예제·프론트 흐름·보안메모·체크리스트 → `docs/modules/OAUTH_CLIENT.md`.**
 
+#### OIDC RP 강화 (per-provider, 기본 off)
+
+표준 OIDC IdP(Keycloak/Azure AD/사내 SSO)에는 공급자별 `oidc.enabled=true` 를 켜 **id_token 을 직접 검증**한다 — JWKS(RSA/EC) 서명 또는 HS(client-secret HMAC) · `iss` · `aud⊇client-id` · `exp/nbf`(clock-skew) · `nonce` · `sub`. `oidc.issuer`(또는 `discovery-uri`)만 주면 `/.well-known/openid-configuration` 으로 엔드포인트가 자동 보충된다. 기본 off 라 kakao/naver 등 비OIDC 흐름은 그대로다.
+
+```yaml
+framework:
+  oauth-client:
+    enabled: true
+    state: { store: { type: redis } }    # 멀티 파드면 redis(nonce 도 함께 바인딩)
+    providers:
+      corp:
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        oidc:
+          enabled: true
+          issuer: "https://sso.example.com/realms/corp"
+```
+
+**상세 → `docs/modules/OIDC_HARDENING.md`.**
+
 ### 게이트웨이 엣지 인증 (services/gateway)
 
 게이트웨이에서 JWT 를 **한 번 검증**하고 신뢰 헤더 `X-User-Id`/`X-User-Roles` 를 다운스트림에 주입한다. 클라이언트가 직접 보낸 동일 헤더는 **항상 먼저 제거**(스푸핑 차단) — `framework-context` 의 `HeaderContextResolver` 가 신뢰 헤더로 그대로 읽는 전제를 게이트웨이가 책임진다. WebFlux 라 `framework-security`(서블릿) 대신 **jjwt 만 직접 의존**하고, secret 은 양쪽에 같은 `JWT_SECRET` 을 준다.
@@ -363,6 +383,10 @@ gateway:
 ```
 
 덤: 검증한 userId 로 기존 `RequestRateLimiter` 가 **사용자 단위**로 동작한다(인증 전엔 IP 강등이었음). 신뢰 경계는 K8s NetworkPolicy 로 백엔드 인그레스를 게이트웨이 파드로 제한해 보장. **상세 → `docs/modules/GATEWAY_EDGE_AUTH.md`.**
+
+#### 중앙 로그아웃 / 모든 기기 로그아웃 (SSO A)
+
+`gateway.auth.blacklist-check.enabled=true`(redis 전용) 면 게이트웨이가 검증 시 토큰 `jti` 를 블랙리스트(`bl:{jti}`)에서 reactive 조회해 **로그아웃된 토큰을 엣지에서 401 차단**한다 — 한 곳에서 로그아웃하면 전 서비스 즉시 무효. `POST /api/v1/auth/logout-all` 은 그 사용자의 **모든 세션**을 무효화한다(완전 커버는 `framework.security.concurrent-session.enabled=true` + `token-store.type=redis`). **상세 → `docs/modules/SSO_CENTRAL_LOGOUT.md`.**
 
 ## 데이터·연계 / 업무 생산성 모듈 (2026-06 추가, 선택형)
 

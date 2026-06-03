@@ -30,7 +30,7 @@
 | 라이브러리 | 버전 | 용도 | 적용 위치 |
 |---|---|---|---|
 | `mybatis-spring-boot-starter` | 4.0.1 | MyBatis 연동 | framework-mybatis |
-| `io.jsonwebtoken:jjwt-*` | 0.12.6 | JWT 발급/검증 | framework-security · services/gateway(엣지 인증, 동일 secret 공유) |
+| `io.jsonwebtoken:jjwt-*` | 0.12.6 | JWT 발급/검증 | framework-security · services/gateway(엣지 인증, 동일 secret 공유) · framework-oauth-client(OIDC id_token 검증 — security `api` 전이 재사용, 테스트만 impl/jackson `testRuntimeOnly`) |
 | `springdoc-openapi-starter-webmvc-ui` | 3.0.3 | Swagger UI / OpenAPI | framework-openapi |
 | `org.mapstruct:mapstruct(+processor)` | 1.6.3 | DTO 컴파일타임 변환(런타임 비용 0) | framework-commoncode 등 |
 | `org.projectlombok:lombok-mapstruct-binding` | 0.2.0 | Lombok+MapStruct 병행 | (MapStruct 쓰는 모듈) |
