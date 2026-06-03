@@ -31,7 +31,7 @@
 - ✅ **이미지 처리(2026-06-03)**: **framework-image 신설** — 기본기능 카탈로그 #7. `ImageProcessor` SPI(`process`/`thumbnail`/`probe`)+`DefaultImageProcessor`(JDK `javax.imageio`+`java.awt`). 비율유지 리사이즈/썸네일(상한 박스·업스케일 옵트인·2배 초과는 단계적 절반축소 고품질), **EXIF orientation 보정**(`ExifOrientation` 순수 JDK JPEG APP1/TIFF 파서 1~8, AffineTransform·5~8 가로세로 스왑), **민감 EXIF(GPS) 제거**(디코드→리인코딩 부수효과로 메타 미보존), 출력 포맷 화이트리스트(JPEG/PNG), **디컴프레션 폭탄 방지**(디코드 전 헤더 픽셀수 검사·기본 40MP), JPEG 알파 흰배경 평탄화, 헤드리스. 웹 비의존(배치 가능). 3단 토글 기본 off+레지스트레이션 가드. **신규 외부 의존성 0개**(web 불필요·엔진 전부 JDK). 엔진 javac 단독 + 기능 하니스 **26/26** 통과, config/배선은 context·pdf 패턴 미러(사용자 Gradle 검증 예정).
 - 📋 **기본기능 카탈로그 신설(2026-06-03)**: `docs/BASELINE_FEATURES.md` — 기본기능 10항목 실측 체크(있음/부분/없음 + 위치 + 인수기준). #5 컨텍스트·#7 이미지 완료. 다음 활성=파일 하드닝 묶음(#8+#9+#10: 대용량 스트리밍/presigned·메타 정합성·AV 훅). 추가 요청은 §6 대기열로 수집.
 - 🛠️ **환경정비+보안·검증+spotless(2026-06-03)**: 프로파일 **local/dev/prod 통일 + `local-xx` 오버레이**(local-postgres/redis/noauth), **감사 로그 DB 적재 활성화**(`audit_log` 마이그레이션 추가 — store.type=jdbc 의 3요건 중 누락분), **JWT 시크릿 prod 가드**(`JwtSecretSafetyGuard`), **요청 검증 빈틈 보강**(Spring7 `HandlerMethodValidationException`·로그인 `@Valid`), **spotless 다소스 확장**(Java=Palantir + gradle/yaml/sql/md, 설정 캐시 충돌 `lineEndings=UNIX` 해결). 문서 `docs/LOCAL_SETUP.md`·`CHANGES_AND_DEPRECATIONS.md`·`SECURITY_VALIDATION_ADDITIONS.md`·`SPOTLESS_NOTES.md`.
-- ⏭️ **다음 최우선 = 설정값(YAML) 패스워드 암호화**: `framework-core` crypto 책임 확장 — 커스텀 Boot4 `EnvironmentPostProcessor` 가 `ENC(...)` 프로퍼티를 기존 `AesCryptoService`(AES-GCM, 마스터키 `framework.crypto.aes-secret`/`AES_SECRET`)로 복호화. **Jasypt 보류**(Boot4 지원 불명확), 신규 의존성 0, Jackson 무관. 설계서 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
+- ✅ **설정값(YAML) 패스워드 암호화 완료(2026-06-03)**: `framework-core` crypto 책임 확장 — 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor`(+`DecryptingPropertySource` enumerable 래퍼)가 `ENC(...)` 프로퍼티를 기존 `AesCryptoService`(AES-GCM, 마스터키 `framework.crypto.aes-secret`/`AES_SECRET`)로 지연 복호화. 등록은 `META-INF/spring.factories`(컨텍스트 이전). 토글 `framework.crypto.config-decryption.enabled`(기본 on). 토큰 생성 `CryptoCli`, prod 마스터키 가드 `AesMasterKeySafetyGuard`. **Jasypt 미도입**, 신규 의존성 0, Jackson 무관. 설계서 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
 ---
@@ -73,7 +73,7 @@ public class XxxAutoConfiguration {
 
 | 모듈 | 책임 | 대표 토글 | 분류 | 규제 |
 |---|---|---|---|---|
-| framework-core | 응답/에러/페이징/AOP/로깅/트레이스/XSS/캐시/AES + **SI 공통 유틸(`util`: 검증·마스킹·날짜/영업일·금액·한글·해시·JSON)** | `framework.core.{trace,httpLogging,xss,auditAspect,...}` (util 은 토글 없는 정적) | [코어] | 공통 |
+| framework-core | 응답/에러/페이징/AOP/로깅/트레이스/XSS/캐시/AES + **설정값 암호화(`ENC(...)` 자동 복호화)** + **SI 공통 유틸(`util`: 검증·마스킹·날짜/영업일·금액·한글·해시·JSON)** | `framework.core.{trace,httpLogging,xss,auditAspect,...}`, `framework.crypto.{enabled,aes-secret,config-decryption.enabled}` (util 은 토글 없는 정적) | [코어] | 공통 |
 | framework-mybatis | 감사필드·암호화 타입핸들러·CurrentUser | (코어 연동) | [코어] | 공통 |
 | framework-security | 인증추상화·JWT·TokenStore·RBAC·비번정책·로그인잠금 | `framework.security.*` | [코어] | 공통 |
 | framework-openapi | API 문서 | `framework.openapi.enabled` | [선택] | 공통 |

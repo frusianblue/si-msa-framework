@@ -6,68 +6,65 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**로컬 개발/운영 환경정비 + 보안·검증 보강 + spotless 확장** 묶음 완료. (1) 프로파일을 **local/dev/prod** 로 통일하고 메모리(H2)↔로컬 PostgreSQL↔Redis 를 `local-xx` 오버레이로 전환, **감사 로그 DB 적재**가 안 되던 원인(=`audit_log` 마이그레이션 부재)을 잡아 `V4/V2__audit_log.sql` 추가. (2) **JWT 시크릿 prod 가드**(`JwtSecretSafetyGuard`, DevAuth 가드 패턴) 신설 + **요청 검증 빈틈**(Spring7 `HandlerMethodValidationException` 미처리, 로그인 `LoginCommand` 무제약) 보강. (3) **spotless 를 Java 전용 → gradle/yaml/sql/md 까지 확장**하고 **설정 캐시 충돌**(`lineEndingsPolicy`)을 `lineEndings=UNIX` 로 해결. 포맷터는 google 아님 = **Palantir**. **다음 세션 최우선 = YAML(설정값) 패스워드 암호화** → 설계서 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
+**YAML(설정값) 패스워드 암호화** 완료 — 직전 세션 최우선(#0). `framework-core` 에 커스텀 Boot4 **`EncryptedPropertyEnvironmentPostProcessor`** + enumerable 지연 래퍼 **`DecryptingPropertySource`** 신설: `application*.yml`/env 의 `ENC(...)` 값을 기동 시 기존 **`AesCryptoService`(AES-GCM)** 로 복호화. 등록은 framework-core **신설 `META-INF/spring.factories`**(`org.springframework.boot.EnvironmentPostProcessor` 키). 마스터키=`framework.crypto.aes-secret`/`AES_SECRET`(평문 주입, ENC 불가=닭달걀). 토글 `framework.crypto.config-decryption.enabled`(**기본 on** — ENC 없으면 완전 무동작이라 안전). 토큰 생성 CLI **`CryptoCli`**, prod 마스터키 가드 **`AesMasterKeySafetyGuard`**(JWT 가드 패턴) 동봉. **Jasypt 미도입·신규 외부 의존성 0·Jackson 무관.** **다음 세션 최우선 = (devops) CI 게이트 + 멀티모듈 jacoco 집계.**
 
 ## 최종 갱신
-- 일자: 2026-06-03 · 갱신자: 환경정비+보안검증+spotless 세션
+- 일자: 2026-06-03 · 갱신자: YAML 설정값 암호화 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-### A. 환경(프로파일) 정비 — local/dev/prod 통일 + 로컬 인프라
-1. **프로파일 재편**(user/admin 서비스): `application.yml` 은 인프라 비종속 공통만(기본 활성 `local`). **local**=H2 메모리(설치0)·**dev**=개발 서버(env 주입)·**prod**=운영(시크릿 주입). 특수는 `local-xx` 오버레이 — **local-postgres**(DB→로컬 PG)·**local-redis**(Redis on)·**local-noauth**(로그인 우회, 과거 `dev` 역할 이전).
-2. **감사 로그 DB 적재 활성화**: `framework.audit.store.type=jdbc` 가 동작하려면 `audit_log` 테이블 필요한데 **마이그레이션이 없어 INSERT 가 조용히 실패**(WARN만)하던 문제 해결 → `db/migration/V4__audit_log.sql`(user)·`V2__audit_log.sql`(admin), H2/PG 양립 DDL(IDENTITY). local 에서 H2 콘솔로 검증하도록 `store.type=jdbc`+`h2.console` on.
-3. **로컬 설치/검증 문서**: `docs/LOCAL_SETUP.md` — 설치 목록(JDK21·PostgreSQL17/18·Redis8|Valkey·선택 ClamAV/MinIO/Kafka)·OS별 설치(Win/WSL·mac·Ubuntu)·DB/계정(sidb/siuser)·실행 매트릭스·**로그 DB 적재 검증 절차**·docker-compose 부록.
-4. **변경/Deprecated 통합문서**: `docs/CHANGES_AND_DEPRECATIONS.md` — Jackson2→3·413 명칭·Batch6 `JobOperator`·POI close·OpenPDF 패키지·Boot4 EPP 이동·게이트웨이 server.webflux/trusted-proxies·datasource-proxy 2.0·Redis Jackson2 금지·외국인등록번호 체크섬 폐지·프로파일 재편.
-
-### B. 보안·검증 보강 (framework-security / -core, 신규 의존성 0)
-5. **JWT 시크릿 prod 가드**: `JwtSecretSafetyGuard`(`InitializingBean`, DevAuth/Password 가드와 동일 패턴) — prod 에서 비었거나·`change-this`/`change-me` 흔적·32바이트 미만이면 **부팅 실패**, local/dev 는 경고. `SecurityAutoConfiguration` 에 빈 등록. 테스트 6.
-6. **요청 검증 빈틈 보강**: (a) Spring7 **`HandlerMethodValidationException`**(메서드 파라미터 검증) 미처리 → `GlobalExceptionHandler` 에 핸들러 추가(ApiResponse 400 통일; 미처리 시 기본 ProblemDetail 로 형식 깨짐). (b) 미인증 진입점 **로그인** `LoginCommand` 에 `@NotBlank` + `AuthController.login` 에 `@Valid`(빈 자격증명 400 차단). validation 은 이미 framework-core 가 전이 노출 → **신규 의존성 0**.
-
-### C. spotless 확장 + 설정 캐시 해결 (루트 build.gradle)
-7. **검사 범위 확장**: 기존 **Java(Palantir)만** + `subprojects` 안이라 루트 build.gradle 미검사 → **루트에도 적용**해 gradle/yaml/sql/md 까지. YAML/SQL/Gradle 은 의미 보존 위해 **공격적 재포맷터(jackson/dbeaver/greclipse) 대신 화이트스페이스 위생만**(옵션 주석 제공). md 는 줄끝 공백 보존 위해 `endWithNewline` 만.
-8. **컨벤션 추가**: `encoding 'UTF-8'`(한글 주석 깨짐 방지·Windows 중요)·`toggleOffOn()`·`formatAnnotations()`(8.x 기본 목록에 `@Valid` 포함).
-9. **설정 캐시 충돌 해결**: `org.gradle.configuration-cache=true` + spotless 기본 `GIT_ATTRIBUTES` 줄바꿈정책이 `lineEndingsPolicy`(DefaultProvider) 직렬화 실패 → `:spotlessGroovyGradle` BUILD FAILED. **해결 = `lineEndings = com.diffplug.spotless.LineEnding.UNIX`** 두 블록 모두(Windows 개발+Linux CI 일관성=LF). 문서 `docs/SPOTLESS_NOTES.md`.
+### 설정값 암호화 (framework-core, 신규 외부 의존성 0)
+1. **EPP 진입점** `EncryptedPropertyEnvironmentPostProcessor`(`org.springframework.boot.EnvironmentPostProcessor`, `getOrder=LOWEST_PRECEDENCE`): ① 토글 off면 무동작 ② 어느 소스에도 `ENC(...)` 없으면 무동작(마스터키 불요) ③ ENC 있으면 마스터키로 `AesCryptoService` **직접 생성**(EPP 는 빈 못 씀) ④ 각 `EnumerablePropertySource` 를 래퍼로 replace.
+2. **지연 복호화 래퍼** `DecryptingPropertySource extends EnumerablePropertySource`: 값 읽는 시점에만 `ENC(...)` 복호화(평문은 위임), `getPropertyNames()` 위임(바인딩 보존). 프로파일별 yaml 늦게 들어와도 누락 없음.
+3. **등록** framework-core 신설 `META-INF/spring.factories`(`.imports` 아님 — 컨텍스트 이전 동작). observability EPP 와 동일 패턴.
+4. **토글 필드** `CryptoProperties.ConfigDecryption.enabled`(기본 true) 추가 — 바인딩/메타데이터 일관성(판정은 EPP 가 env 직접 읽음).
+5. **CLI** `CryptoCli encrypt <평문>`(`AES_SECRET` env) → `ENC(...)` 출력(암호화 엔드포인트 노출 대신 CLI).
+6. **prod 마스터키 가드** `AesMasterKeySafetyGuard`(`InitializingBean`, JWT 가드 패턴): prod 에서 비었거나·기본 placeholder(`change-me`/`change-this`)·16바이트 미만이면 부팅 실패, 비-prod 는 경고. `CryptoAutoConfiguration` 에 빈 등록.
+7. **테스트** EPP 7(복호화/평문보존/getPropertyNames보존/ENC無 무동작/마스터키無 실패/마스터키ENC 실패/오키 읽기시 복호화실패/토글off 리터럴) + 가드 6(prod 기본·빈·짧음 실패 / prod 강한키 ok / 비-prod 경고 / 16B 경계).
+8. **문서 동기화**: STACK.md(표 ✅)·README.md(ENC 사용법+토글)·docs/FRAMEWORK_MODULES.md(core 책임 확장·완료)·docs/BASELINE_FEATURES.md(✅)·HANDOFF.md(§6 함정·§7 완료·다음순위)·본 SUMMARY.
 
 ## 현재 상태 (적용/검증)
-- ✅ **사용자 환경에서 Java 컴파일 성공 + `spotlessApply` 통과 확인(2026-06-03)**.
-- ⚠️ **build.gradle 의존성은 직접 1줄 추가 필요**(zip 미포함 — buildscript/flyway 블록 보존 목적): 감사 DB 적재=`implementation project(':framework:framework-audit')`, Redis 기능=`framework-redis`+`framework-cache-redis`+`spring-boot-starter-data-redis`. 안 넣으면 `@ConditionalOnClass` 로 해당 기능만 조용히 비활성(빌드는 정상).
-- 작성 환경(Maven Central 차단)으로 **gradle 풀빌드/테스트는 미실행** — 받는 쪽 검증 경로 제시함.
-- 신규/수정 파일: 프로파일 yml(user/admin 각 7)·audit 마이그레이션 2·`JwtSecretSafetyGuard`(+test)·`SecurityAutoConfiguration`/`AuthController`/`LoginCommand`/`GlobalExceptionHandler` 패치·루트 `build.gradle`·문서 5(LOCAL_SETUP/CHANGES_AND_DEPRECATIONS/SECURITY_VALIDATION_ADDITIONS/SPOTLESS_NOTES/NEXT_YAML_PASSWORD_ENCRYPTION).
+- ✅ **AES-GCM 바이트 스킴(SHA-256 키파생·IV(12B)선두·128bit태그·Base64) + ENC 토큰 substring 추출을 독립 재현 5/5 통과**(round-trip·랜덤IV·분류·오키 인증실패·유니코드).
+- ⚠️ 작성 환경이 **JRE-only(javac 없음) + Maven Central 차단** → Spring 의존부(EPP/가드/테스트)의 **gradle 컴파일은 미실행**. 신규 클래스는 archtest 5규칙(순환·Jackson3·레이어·네이밍·필드주입) 정적 검토상 무충돌(전부 `core.crypto` 동일 모듈·Jackson 0·생성자주입·`*AutoConfiguration`/`*Properties` 비충돌).
+- 신규 파일 6: `EncryptedPropertyEnvironmentPostProcessor`·`DecryptingPropertySource`·`CryptoCli`·`AesMasterKeySafetyGuard`(+test 2) · `META-INF/spring.factories`. 수정 2: `CryptoProperties`(토글 필드)·`CryptoAutoConfiguration`(가드 빈). 문서 6.
 
 ## 켜는 법
 ```bash
-# DB: 메모리 → 로컬 PostgreSQL → +Redis
-./gradlew :services:user-service:bootRun
-./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,local-postgres'
-./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,local-postgres,local-redis'
-# 로그인 우회 개발(과거 local,dev) → 이제:
-./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,local-noauth'
+# 1) 토큰 생성(개발자 1회) — 마스터키는 env 로만
+AES_SECRET='프로젝트마스터키' java -cp <classpath> com.company.framework.core.crypto.CryptoCli encrypt 'sipass'
+#   → ENC(Qk9k...) 를 application*.yml 에 붙여넣기
+# 2) yaml
+#   spring.datasource.password: ENC(Qk9k...)
+#   framework.crypto.aes-secret: ${AES_SECRET}   # 평문 주입(ENC 불가)
+# 3) 기동 — AES_SECRET 주입하면 자동 복호화
+AES_SECRET='프로젝트마스터키' ./gradlew :services:user-service:bootRun
 ```
-- 감사 로그 DB 적재 검증: 위 기동 후 로그인 호출 → H2 콘솔(`/h2-console`, jdbc:h2:mem:sidb) 또는 psql 에서 `SELECT * FROM audit_log;` (상세 `docs/LOCAL_SETUP.md §5`).
-- spotless: 최초 1회 `rm -rf .gradle/configuration-cache && ./gradlew spotlessApply` 후 안정.
+- 토글 끄기: `framework.crypto.config-decryption.enabled=false`(끄면 ENC 리터럴 그대로 → 권장하지 않음).
+- 검증(받는 쪽): `./gradlew :framework:framework-core:test :framework:framework-archtest:test spotlessApply` + 한 서비스에서 `ENC()` 실제 기동.
 
 ## 바로 다음 할 일 (Next)
-1. **★ YAML(설정값) 패스워드 암호화** — **설계서 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md` 그대로 진행**. 핵심: Jasypt 말고 **커스텀 `EnvironmentPostProcessor`(Boot4 패키지)** 가 `ENC(...)` 값을 **기존 `AesCryptoService`**(AES-GCM, 마스터키=`framework.crypto.aes-secret`/`AES_SECRET`)로 복호화. 신규 의존성 0. 곁들임: AES 마스터키 prod 가드(JWT 가드 패턴).
-2. (devops) **CI 게이트**(`:framework-archtest:test`+전모듈 `:test` PR 차단) + 멀티모듈 jacoco 집계.
+1. **★ (devops) CI 게이트** — `:framework-archtest:test` + 전 모듈 `:test` 를 PR 차단 게이트로. + **멀티모듈 jacoco 집계 리포트**(루트 aggregate).
+2. (devops) **그릇 정비** — 게이트웨이 런타임 점검(CORS preflight·rate-limit 429)·k8s 멀티서비스(redis/secret/configmap·observability ServiceMonitor 실배포)·CI-CD 멀티서비스화.
 3. (선택) 카탈로그 §6 대기열: 아카이빙/압축·일괄 처리 / 서버측 S3 멀티파트 병렬 업로드(TransferManager).
-4. (선택) 그릇 정비 — 게이트웨이 런타임 점검·k8s 멀티서비스(redis/secret/configmap·observability ServiceMonitor)·CI-CD 멀티서비스화.
+4. (선택) **마스터 키 회전(rotation)** 절차/스크립트(구키 복호→신키 재암호) — 설계서 §6 백로그.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **spotless 포맷터 = Palantir Java Format**(google 아님). 줄바꿈은 `lineEndings = LineEnding.UNIX` 로 고정 — 기본 `GIT_ATTRIBUTES` 는 **설정 캐시와 충돌**(gradle#19113/spotless#987). spotless 를 **루트에도 적용**해야 루트 build.gradle/yaml/sql/md 가 검사됨. 에러 후엔 `.gradle/configuration-cache` 비우고 재실행.
-- **감사 로그 DB 적재 3요건**: ① `framework-audit` 의존 ② `store.type=jdbc` ③ `audit_log` 테이블(마이그레이션). 하나라도 빠지면 `JdbcAuditEventSink` 가 **실패를 삼키고 WARN만** → "로그 안 쌓임"의 주범.
-- **프로파일 의미 변경**: 로그인 우회 = `local,local-noauth`(옛 `local,dev` 아님). `dev` 는 이제 개발 서버. `application.yml` 에 DB 하드코딩 금지(프로파일이 결정), 기본 활성=`local`.
-- **prod 시크릿 가드**: `JwtSecretSafetyGuard` 가 prod 기본/약한 JWT 시크릿을 부팅 실패시킴. 운영은 `JWT_SECRET`(32B+) 주입 필수. (AES 마스터키도 같은 가드를 다음에 추가 권장.)
-- **요청 검증**: `@Valid @RequestBody` 는 `MethodArgumentNotValidException`(처리됨), **메서드 파라미터 검증은 Spring7 `HandlerMethodValidationException`**(이번에 핸들러 추가) — 둘은 다른 예외. 패키지 `org.springframework.web.method.annotation`.
-- **EPP(다음 작업 예고)**: Boot4 `EnvironmentPostProcessor`는 `org.springframework.boot.EnvironmentPostProcessor`(구 `...boot.env.*` 아님) + `spring.factories` 키 정확히. EPP 는 빈 사용 불가(컨텍스트 전) → `AesCryptoService` 직접 생성. 마스터 키는 `ENC()` 불가(평문 주입).
-- (지난·유효) 토글3단 기본 off / Jackson3(`tools.jackson.*`, annotation만 예외) / compileOnly 타입 test 재선언 / `.imports` 가드 / 슬라이스 단방향 / 필드주입 금지 / 413=`CONTENT_TOO_LARGE` / 필터는 GlobalExceptionHandler 밖 / Boot4 패키지 리네임 추측 금지 / JUnit launcher·starter-test 모듈마다 / Redis Jackson2 직렬화기 금지.
+- **설정값 암호화 토글은 기본 on**(일반 "3단 토글 기본 off" 규약의 의도적 예외): `ENC(...)` 가 없으면 EPP 가 완전 무동작이라 켜 둬도 무해하고, 오히려 off면 토글을 잊었을 때 `ENC(...)` 리터럴이 그대로 다운스트림(예: DB 패스워드)으로 흘러 **조용히 깨진다**. 그래서 안전 측면에서 on.
+- **EPP 등록은 framework-core 신설 `META-INF/spring.factories`**(`org.springframework.boot.EnvironmentPostProcessor` 키, `.imports` 아님). framework-core 엔 spring.factories 가 없었음 → 신설. 키 한 글자만 틀려도 조용히 미등록=복호화 안 됨.
+- **마스터키는 `ENC()` 불가**(닭-달걀) → `framework.crypto.aes-secret`/`AES_SECRET` 는 항상 평문(env/시크릿). 코드가 마스터키 값이 `ENC(`로 시작하면 기동 실패시킴.
+- **enumerable 래퍼는 `getPropertyNames()` 도 위임 필수** — 누락하면 Binder 가 ENC 값을 못 봐 바인딩 실패. 지연 복호화라 사전 스캔 단계(`containsEncrypted`)는 복호화하지 않고 ENC 존재만 본다 → 오키/조작값은 **읽는 시점**에 GCM 인증 실패로 기동 중단(조용히 통과 안 함).
+- **복호화 실패=기동 실패가 정답**. 예외 메시지/로그에 평문·키 노출 금지(래퍼는 복호화값 로깅 안 함).
+- **운영 정책=권장 (a)**: prod 비밀은 env/시크릿 주입 유지, ENC 는 dev 편의 + 저장소에 평문 안 남기기 용도(prod yaml 의 `${DB_PASSWORD}` 와 ENC 를 같은 값에 이중 적용하지 말 것).
+- **작성 환경 JRE-only**: 컨테이너에 javac 없음 → 순수 JDK 로직도 Python 재현으로 검증. Spring 부는 받는 쪽 gradle 컴파일 필수.
+- (지난·유효) 토글3단 기본 off(이번 암호화 토글은 예외) / Jackson3(`tools.jackson.*`, annotation만 예외) / compileOnly 타입 test 재선언 / `.imports` 가드 / EPP 는 spring.factories(Boot4 패키지) / spotless Palantir·`lineEndings=UNIX`·설정캐시 / 감사로그 DB 적재 3요건 / JWT·DevAuth·Password·AES 마스터키 prod 가드 / 필터·EPP 는 GlobalExceptionHandler 밖 / Boot4 패키지 리네임 추측 금지.
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
 1. 신규 모듈/기존 확장. 순수 로직은 Spring 무의존 코어로 분리해 JDK 단독 검증 가능하게.
 2. 기존 인터페이스는 건드리지 말고 capability 인터페이스로 확장(ISP). 생성자 변경 시 기존 오버로드 유지.
-3. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+test 재선언), BOM 밖=`implementation`. 의존성 추가는 곧 1단(모듈) 토글 — 미추가 시 기능만 조용히 비활성.
-4. 새 오토컨피그면 `.imports`+가드 테스트. 기존 오토컨피그에 빈만 추가면 `.imports` 무변경. **EPP 는 `spring.factories`**(키 정확히, Boot4 패키지).
+3. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+test 재선언), BOM 밖=`implementation`. 의존성 추가는 곧 1단(모듈) 토글.
+4. 새 오토컨피그면 `.imports`+가드 테스트. **EPP 는 `spring.factories`**(키 정확히, Boot4 패키지) — `.imports` 아님.
 5. 오토컨피그 토글 + `@ConditionalOnMissingBean`. 선택 백엔드는 설정 분기.
-6. 테스트: 핵심 알고리즘 단위(JDK) + 오토컨피그 빈 선택 + 동작 게이트(Mockito). EPP 는 `StandardEnvironment`+`MapPropertySource` 로 단위 검증.
-7. 드롭인: 변경 파일 전부 한 zip, 루트 `unzip -o`. 문서 동기화. 사용자 환경 `./gradlew :...:test :framework-archtest:test spotlessApply` 검증. (spotless 는 UTF-8/LF·설정캐시 주의.)
+6. 테스트: 핵심 알고리즘 단위(JDK) + 오토컨피그 빈 선택 + 동작 게이트. EPP 는 `StandardEnvironment`+`MapPropertySource` 로 단위 검증.
+7. 드롭인: 변경 파일 전부 한 zip, 루트 `unzip -o`. 문서 동기화. 사용자 환경 `./gradlew :...:test :framework-archtest:test spotlessApply` 검증.
 
 <!-- 갱신 끝 -->

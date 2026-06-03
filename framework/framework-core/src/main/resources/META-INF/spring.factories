@@ -1,0 +1,6 @@
+# EnvironmentPostProcessor 는 ApplicationContext 이전에 동작하므로
+# AutoConfiguration.imports 가 아니라 spring.factories 로 등록한다.
+# (Boot 4: 인터페이스가 org.springframework.boot.env -> org.springframework.boot 로 이동)
+# 키 한 글자만 틀려도 조용히 미등록(=복호화 안 됨)되므로 정확히 유지할 것.
+org.springframework.boot.EnvironmentPostProcessor=\
+com.company.framework.core.crypto.EncryptedPropertyEnvironmentPostProcessor

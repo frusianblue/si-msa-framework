@@ -120,7 +120,7 @@
 | Awaitility | 라이브러리 | 비동기/가상스레드 테스트 검증 | 선택 |
 | `com.tngtech.archunit:archunit-junit5:1.4.2` | 라이브러리 | 모듈/레이어 의존 규칙 강제 | ✅ **도입**(테스트전용 `framework-archtest`: 순환·Jackson3·레이어·네이밍·필드주입 7규칙) |
 | Error Prone + NullAway | 플러그인 | 컴파일타임 버그/NPE 탐지 | 신규 모듈부터 점진(초기 노이즈 많음) |
-| 설정값(YAML) 암호화 | 기능 | yaml 시크릿 `ENC(...)` 자동 복호화 | ⏭️ **다음 작업** — **Jasypt 미도입**(Boot4 지원 불명확). 커스텀 Boot4 `EnvironmentPostProcessor` + 기존 `AesCryptoService`(AES-GCM, 마스터키 `AES_SECRET`) 재사용, **신규 의존성 0**. 설계 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md` |
+| 설정값(YAML) 암호화 | 기능 | yaml 시크릿 `ENC(...)` 자동 복호화 | ✅ **완료(2026-06-03)** — **Jasypt 미도입**. 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor`(+`DecryptingPropertySource`, `spring.factories` 등록) + 기존 `AesCryptoService`(AES-GCM, 마스터키 `AES_SECRET`) 재사용, 토글 `framework.crypto.config-decryption.enabled`(기본 on), 토큰 CLI `CryptoCli`, prod 마스터키 가드 `AesMasterKeySafetyGuard`. **신규 의존성 0·Jackson 무관**. 설계 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md` |
 
 ## 7. 버전 확인 / 업데이트 방법
 - 의존성 최신 여부: `./gradlew dependencyUpdates` (ben-manes 플러그인 도입 후)
