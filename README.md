@@ -17,8 +17,9 @@ framework/
   framework-core      공통 응답/예외/페이징/트레이스/로깅/AOP/XSS/시큐어유틸/가상스레드 (auto-config)
   framework-mybatis   MyBatis 공통 설정(카멜케이스 등) + BaseEntity(감사컬럼)
   framework-security  JWT 인증 + DB기반 RBAC(동적 인가) + 메뉴관리 + 시큐어 헤더 (auto-config)
+  framework-oauth-client  소셜 로그인(OAuth2/OIDC → 자체 JWT 발급, google/kakao/naver) — 선택
 services/
-  gateway             Spring Cloud Gateway (라우팅 + CircuitBreaker)
+  gateway             Spring Cloud Gateway (라우팅 + CircuitBreaker + 엣지 JWT 인증)
   user-service        샘플 업무 서비스 (프레임워크 사용 예시)
 deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
@@ -182,6 +183,7 @@ dependencies {
     implementation project(':framework:framework-client')      // 외부 API 표준 호출
     implementation project(':framework:framework-audit')       // 접속/감사 로그 적재·조회(ISMS-P)
     implementation project(':framework:framework-secure-web')  // 웹 보안 필터(헤더/경로조작/인젝션/CSRF)
+    implementation project(':framework:framework-oauth-client') // 소셜 로그인(OAuth2/OIDC → 자체 JWT)
     implementation project(':framework:framework-datasource')  // 읽기/쓰기 분리 라우팅 · 독립 다중 DB(금융)
     implementation project(':framework:framework-messaging')   // Kafka Outbox 발행 + 소비자측 멱등 소비(금융)
     implementation project(':framework:framework-excel')       // Excel 업/다운로드(POI 스트리밍 + 양식검증)
@@ -315,6 +317,52 @@ framework:
 ```
 - 필터 순서: path → injection → csrf → headers → (core) xss. 거부는 표준 `ApiResponse` JSON. XSS **본문** 이스케이프는 core 담당(중복 아님).
 - CSRF 는 Spring Security(csrf disable, stateless JWT)와 독립적인 더블서브밋. 인젝션 스크리닝은 보조 방어 — 본 방어는 파라미터화 쿼리(MyBatis `#{}`).
+
+## 인증 확장 모듈 — 소셜 로그인 · 게이트웨이 엣지 인증 (2026-06 추가, 선택형)
+
+### framework-oauth-client (소셜 로그인 OAuth2/OIDC → 자체 JWT)
+
+"외부에서 본인확인 → 우리 토큰 발급". 비밀번호를 받지 않고 google/kakao/naver 로 신원만 위임받아, 기존 `framework-security` 의 JWT/Refresh 를 그대로 발급한다. **OAuth 클라이언트(소비)이며 인증서버가 아니다.**
+
+켜는 법(3단계): ① 의존성 추가 ② `framework.oauth-client.enabled=true` ③ `OAuthUserResolver` 빈 등록(외부신원→우리 사용자 매핑/JIT 가입; 자체 로그인의 `Authenticator` 와 대칭).
+
+```yaml
+framework:
+  oauth-client:
+    enabled: true
+    base-redirect-uri: "https://api.example.com"   # 콜백 베이스
+    state:
+      store: { type: redis }            # 다중 파드면 redis(authorize/callback 다른 파드 가능)
+    providers:
+      google: { client-id: "${GOOGLE_CLIENT_ID}", client-secret: "${GOOGLE_CLIENT_SECRET}" }
+      kakao:  { client-id: "${KAKAO_REST_API_KEY}", scope: [account_email, profile_nickname] }
+```
+
+```java
+@Component
+class MyOAuthUserResolver implements OAuthUserResolver {
+    public AuthenticatedUser resolve(OAuthUserInfo info) {
+        // provider+providerId 로 조회 → 없으면 가입(JIT) → AuthenticatedUser 반환(roles 는 우리 권한)
+    }
+}
+```
+
+엔드포인트: `GET /api/v1/auth/oauth/{provider}/authorize`(IdP 로 redirect) · `/callback`(자체 토큰 JSON, 자체 로그인과 동일한 `TokenResponse`). IdP 콘솔에 redirect URI `{base}/api/v1/auth/oauth/{provider}/callback` 등록 필요. **상세·resolver 전체 예제·프론트 흐름·보안메모·체크리스트 → `docs/modules/OAUTH_CLIENT.md`.**
+
+### 게이트웨이 엣지 인증 (services/gateway)
+
+게이트웨이에서 JWT 를 **한 번 검증**하고 신뢰 헤더 `X-User-Id`/`X-User-Roles` 를 다운스트림에 주입한다. 클라이언트가 직접 보낸 동일 헤더는 **항상 먼저 제거**(스푸핑 차단) — `framework-context` 의 `HeaderContextResolver` 가 신뢰 헤더로 그대로 읽는 전제를 게이트웨이가 책임진다. WebFlux 라 `framework-security`(서블릿) 대신 **jjwt 만 직접 의존**하고, secret 은 양쪽에 같은 `JWT_SECRET` 을 준다.
+
+```yaml
+gateway:
+  auth:
+    enabled: ${GATEWAY_AUTH_ENABLED:false}   # 운영 true(기본 off=점진 도입)
+    jwt-secret: ${JWT_SECRET:}                # = framework.security.jwt.secret 와 동일 값
+    token-type: access
+    permit-all-patterns: [ /api/*/auth/**, /actuator/**, /fallback/** ]
+```
+
+덤: 검증한 userId 로 기존 `RequestRateLimiter` 가 **사용자 단위**로 동작한다(인증 전엔 IP 강등이었음). 신뢰 경계는 K8s NetworkPolicy 로 백엔드 인그레스를 게이트웨이 파드로 제한해 보장. **상세 → `docs/modules/GATEWAY_EDGE_AUTH.md`.**
 
 ## 데이터·연계 / 업무 생산성 모듈 (2026-06 추가, 선택형)
 
