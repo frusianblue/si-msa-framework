@@ -22,7 +22,7 @@
 게이트웨이 엣지 검증(jjwt)+**jti 블랙리스트 reactive 조회**, `framework-context`(헤더 신원 전파),
 `framework-oauth-client`(OAuth2 **+ OIDC RP 강화**), `framework-saml-sp`(**SAML 2.0 SP**).
 
-> **➡️ 다음 세션 후보(택1, 착수 설계 = §6)**: **6.1** SAML redis `Saml2AuthenticationRequestRepository`(멀티 파드) · **6.2** SAML SLO(`saml2Logout`) · **6.3** C) Authorization Server(별도 서비스, 명시 요구 시·후순위) · (그 다음) **6.4** 4) Passwordless. 권장 순서 = 6.1 → 6.2 → (필요 시) 6.3.
+> **➡️ 다음 세션 후보(택1, 착수 설계 = §6)**: ~~**6.1** SAML redis `Saml2AuthenticationRequestRepository`(멀티 파드)~~ ✅**완료(2026-06-04)** · **6.2** SAML SLO(`saml2Logout`) ← **다음 권장** · **6.3** C) Authorization Server(별도 서비스, 명시 요구 시·후순위) · (그 다음) **6.4** 4) Passwordless. 권장 순서 = ~~6.1~~ → **6.2** → (필요 시) 6.3.
 
 ---
 
@@ -129,7 +129,7 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 - [x] **OpenSAML 리포지터리/버전** ✓ — 버전=SS 전이 관리(명시 핀 X), 저장소=Shibboleth 그룹 한정 추가(Central 에 없으므로 **필수**).
 - [x] **자체 JWT 발급** ✓ — `SamlTokenIssuer`(기본 `DirectSamlTokenIssuer`, security `JwtProvider`/`TokenStore` 재사용). 중립 발급기로 승격하지 않고 SAML 전용 인터페이스를 두되 형태는 OAuth 와 동일. LoginService 통합 시 `@Bean` 교체(`@ConditionalOnMissingBean`).
 - [x] **세션 무상태** ✓ — ACS 성공 시 서버 세션 없이 즉시 자체 JWT 발급(`SamlAuthenticationSuccessHandler`, 수기 JSON). 세션은 SAML 핸드셰이크 동안만.
-- [x] **AuthnRequest 저장소** — **세션(기본)으로 확정**. 멀티 파드는 현 단계 게이트웨이/인그레스 스티키 세션. redis `Saml2AuthenticationRequestRepository` 는 **5.9 후속**(복합 객체 직렬화 난점 → 검증 후). `request-repository: redis` 설정 시 오토컨피그 fail-fast(조용한 no-op 방지).
+- [x] **AuthnRequest 저장소** — 세션(기본) + **redis 구현 완료(6.1, 2026-06-04)**. `request-repository: redis`(+HTTPS) 면 redis 공유 저장소로 스티키 세션 제거. 상관은 서버 발급 쿠키(`SameSite=None;Secure`), 직렬화는 고정형 코덱. starter 부재 시 fail-fast 유지.
 - [x] **모듈 위치** ✓ — `framework/framework-saml-sp`(선택형). §5.7 등록 절차 수행 완료(settings include + archtest testImplementation + .imports + 가드 테스트).
 
 ### 5.7 신규 모듈 등록 체크리스트 (framework-saml-sp) — ✅ 완료(2026-06-04)
@@ -148,7 +148,7 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 ### 5.9 후속(SAML 모듈 내 — 상세 착수 설계는 §6)
 - ✅ **받는 쪽 BUILD SUCCESSFUL + 컴파일 정상 확인(2026-06-04)**: `:framework-saml-sp:test :framework-archtest:test spotlessApply` 통과, OpenSAML `5.1.6`(Shibboleth)·`spring-security-saml2-service-provider:7.0.5` 정상 해소.
 - ✅ **`Saml2AuthenticatedPrincipal` deprecation 경고 처리(2026-06-04)**: SS7 이 assertion 세부를 principal 에서 분리하며 deprecated(후속=`Saml2AssertionAuthentication.getRelyingPartyRegistrationId()`+`Saml2ResponseAssertionAccessor`). 7.0.x 완전 동작·제거는 빨라야 SS8 → `SamlAuthenticationSuccessHandler.onAuthenticationSuccess` 에 **메서드 한정 `@SuppressWarnings("deprecation")`+마이그레이션 TODO**. 정식 교체는 §6.2(또는 별도)에서 IDE 컴파일로 접근자 메서드 확정 후.
-- ⏭️ **redis 기반 `Saml2AuthenticationRequestRepository`**(멀티 파드) → 설계 **§6.1**.
+- ✅ **redis 기반 `Saml2AuthenticationRequestRepository`(완료 2026-06-04)** — 설계·구현 **§6.1**(고정형 코덱 + 상관 쿠키 `SameSite=None;Secure`).
 - ⏭️ **SLO(Single Logout, `saml2Logout`)** → 설계 **§6.2**.
 - (선택) 메타데이터 없는 IdP(엔드포인트/인증서 수동 입력) 지원.
 
@@ -159,7 +159,16 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 > B-SAML 까지 완료. 다음 세션은 아래 셋 중 택1(또는 순서대로). 각 항목은 **결정 → 인터페이스 → 함정 → 테스트** 순으로 바로 착수 가능하게 정리.
 > 공통 제약(되풀이): 작성 환경은 Maven Central/Shibboleth 차단 → SAML/SS 본체 컴파일 불가. 순수 로직만 JDK 검증하고 본체는 받는 쪽 gradle(sshd/SAML 패턴).
 
-### 6.1 SAML redis `Saml2AuthenticationRequestRepository` (멀티 파드, 스티키 세션 제거)
+### 6.1 SAML redis `Saml2AuthenticationRequestRepository` (멀티 파드, 스티키 세션 제거) — ✅ 구현 완료(2026-06-04)
+
+> **구현 결과 요약**: `framework-saml-sp/store/` 에 `Saml2AuthnRequestCodec`(순수 JDK 고정형 코덱) + `RedisSaml2AuthenticationRequestRepository` 추가. `SamlSpAutoConfiguration` 의 fail-fast 가드를 redis 빈 등록으로 교체(+ starter 부재 시 별도 guard 빈으로 fail-fast 유지). `SamlSpProperties.Redis`(keyPrefix/ttl/cookie*) 신설. 코덱 라운드트립 JDK 단독 20케이스 통과(받는 쪽 JUnit + 풀와이어링 검증 예정).
+>
+> **설계 대비 확정된 차이 2건**:
+> - **상관 키 = RELAY_STATE 가 아니라 서버 발급 UUID 쿠키**. 세션 없는 멀티 파드에서 save↔load 상관을 묶으려면 서버가 발급한 상관관계 쿠키(UUID)로 redis 키를 지정한다(RelayState 는 앱 의미값이라 키로 부적합).
+> - **⚠️ 쿠키는 반드시 `SameSite=None; Secure`**: POST 바인딩 ACS 콜백은 IdP→SP 로의 **크로스사이트 top-level POST** 라 `SameSite=Lax/Strict` 쿠키가 전송되지 않는다. 따라서 상관 쿠키는 `SameSite=None`(+`Secure`=HTTPS 필수). `None`+비-Secure 조합은 시작 시 fail-fast. 로컬 평문 HTTP 개발은 `request-repository: session` 사용.
+>
+> **빌더 확정**: 하위타입 복원은 `Saml2RedirectAuthenticationRequest`/`Saml2PostAuthenticationRequest` 모두 public 팩토리가 `withRelyingPartyRegistration(RelyingPartyRegistration)` 뿐 → 복원에 `RelyingPartyRegistrationRepository.findByRegistrationId` 주입 필수(코덱이 보관한 registrationId 로 조회). `AbstractSaml2AuthenticationRequest` 자동 주입은 빈 등록만으로 SS7 의 `Saml2LoginConfigurer` 가 `getBeanOrNull` 로 감지(체인 DSL 수정 불필요).
+
 - **왜**: SP-initiated 흐름은 AuthnRequest↔Response 상관(InResponseTo/RelayState)을 기본 HTTP 세션에 둔다 → 게이트웨이가 authorize 와 ACS 콜백을 다른 파드로 보내면 깨짐. 현재는 게이트웨이 스티키 세션으로 핸드셰이크(수초)를 묶고 있음. redis 공유로 스티키 의존 제거 = k8s 친화.
 - **SS7 인터페이스(확인됨)**: `Saml2AuthenticationRequestRepository<T extends AbstractSaml2AuthenticationRequest>` — `T loadAuthenticationRequest(HttpServletRequest)` · `void saveAuthenticationRequest(T, HttpServletRequest, HttpServletResponse)` · `T removeAuthenticationRequest(HttpServletRequest, HttpServletResponse)`. 노출: `@Bean` 으로 등록하면 `Saml2WebSsoAuthenticationRequestFilter`(save)·`Saml2WebSsoAuthenticationFilter`/`Saml2AuthenticationTokenConverter`(load/remove)가 사용. 키 = 요청 파라미터 `Saml2ParameterNames.RELAY_STATE`(없으면 거부/로그). 기본 구현 `HttpSessionSaml2AuthenticationRequestRepository` 참고.
 - **핵심 난점 = 직렬화**: `AbstractSaml2AuthenticationRequest` 는 추상(하위타입 `Saml2RedirectAuthenticationRequest`/`Saml2PostAuthenticationRequest`), 필드 = `samlRequest`(인코딩 본문)·`relayState`·`authenticationRequestUri`·`relyingPartyRegistrationId`(+Redirect 는 `sigAlg`/`signature`). **Java 직렬화 금지**(파드 버전·SS 버전 간 취약, OAuth state 와 같은 결로 회피). → **필드를 명시 추출해 수기 고정 셰이프로 (역)직렬화**(`SecureWebResponder`/OAuth state 수기 직렬화 선례) 후 redis `SET ... PX ttl` 1회용 저장, load 시 binding(`relayState`/`REDIRECT|POST`)으로 하위타입 복원. **빌더 = `AbstractSaml2AuthenticationRequest.Builder` 하위(`Saml2RedirectAuthenticationRequest.withRelayState(...)` 류) — IDE 에서 정확한 빌더/게터 확정 필수.**

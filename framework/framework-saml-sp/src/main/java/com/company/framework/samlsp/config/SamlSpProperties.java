@@ -1,5 +1,6 @@
 package com.company.framework.samlsp.config;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -32,12 +33,16 @@ public class SamlSpProperties {
 
     /**
      * AuthnRequest in-flight 저장소: {@code session}(기본, 단일 파드 또는 게이트웨이 스티키 세션) |
-     * {@code redis}(멀티 파드 공유 — <b>예정, 현재 미구현</b>).
+     * {@code redis}(멀티 파드 공유, 세션 불필요).
      *
-     * <p><b>멀티 파드 주의:</b> SP-initiated 흐름은 AuthnRequest↔Response 상관을 HTTP 세션에 보관한다. 게이트웨이가
-     * authorize 와 ACS 콜백을 서로 다른 파드로 보내면 세션이 없어 인증이 깨진다. 현재 권장 해법은 <b>SAML 핸드셰이크
-     * 구간(수초)에 한해 게이트웨이/인그레스 스티키 세션</b>. redis 공유 저장소({@code Saml2AuthenticationRequestRepository}
-     * redis 구현)는 다음 단계이며, 그때까지 {@code redis} 로 설정하면 오토컨피그가 시작 시 명확히 실패시킨다(조용한 no-op 방지).
+     * <p><b>멀티 파드:</b> SP-initiated 흐름은 AuthnRequest↔Response 상관을 보관해야 한다. {@code session} 은 서버
+     * 세션(JSESSIONID)에 묶으므로 게이트웨이가 authorize 와 ACS 콜백을 다른 파드로 보내면 깨진다(스티키 세션 필요).
+     * {@code redis} 는 상관관계 쿠키 + redis 공유 저장소로 세션 없이 파드 간 동작한다(권장, 운영). redis 선택 시
+     * {@link #redis} 의 쿠키 설정을 따른다 — 특히 {@code cookie-same-site=None}(POST 바인딩 ACS 크로스사이트 콜백
+     * 필수) + {@code cookie-secure=true}(HTTPS) 가 기본이며, 잘못된 조합은 시작 시 fail-fast 된다.
+     *
+     * <p>{@code redis} 인데 {@code spring-boot-starter-data-redis}(=StringRedisTemplate) 가 클래스패스에 없으면
+     * 오토컨피그가 시작 시 명확히 실패한다(조용한 session 폴백 금지).
      */
     private RequestRepository requestRepository = RequestRepository.SESSION;
 
@@ -46,6 +51,9 @@ public class SamlSpProperties {
 
     /** IdP 별 RelyingParty 등록. 키 = registrationId. */
     private Map<String, Registration> registrations = new LinkedHashMap<>();
+
+    /** {@code request-repository=redis} 일 때의 redis/쿠키 세부 설정. */
+    private Redis redis = new Redis();
 
     public enum RequestRepository {
         SESSION,
@@ -82,6 +90,91 @@ public class SamlSpProperties {
 
     public void setRegistrations(Map<String, Registration> registrations) {
         this.registrations = registrations;
+    }
+
+    public Redis getRedis() {
+        return redis;
+    }
+
+    public void setRedis(Redis redis) {
+        this.redis = redis;
+    }
+
+    /**
+     * {@code request-repository=redis} 전용 설정. AuthnRequest 직렬값을 보관할 redis 키 접두/TTL 과, save↔load 상관을
+     * 잇는 상관관계 쿠키의 속성을 담는다. 기본값은 운영(HTTPS/k8s)을 가정한다.
+     */
+    public static class Redis {
+
+        /** redis 키 접두사. 최종 키 = {@code keyPrefix + 1회용UUID}. */
+        private String keyPrefix = "saml:authnreq:";
+
+        /** AuthnRequest 보관 TTL(핸드셰이크는 수초이나 IdP MFA 등 여유). redis 네이티브 만료. */
+        private Duration ttl = Duration.ofMinutes(5);
+
+        /** 상관관계 쿠키 이름. */
+        private String cookieName = "SAML_AUTHN_KEY";
+
+        /**
+         * 쿠키 SameSite. {@code None}(기본) | {@code Lax} | {@code Strict}. <b>POST 바인딩 ACS 콜백은 크로스사이트
+         * top-level POST 이므로 {@code None} 이 아니면 쿠키가 콜백에 실리지 않아 인증이 깨진다.</b> REDIRECT 바인딩만
+         * 쓰는 환경이면 {@code Lax} 도 가능. {@code None} 은 {@code cookieSecure=true} 를 요구한다(브라우저 규칙).
+         */
+        private String cookieSameSite = "None";
+
+        /** 쿠키 Secure 플래그. {@code SameSite=None} 이면 필수(HTTPS). 로컬 평문 HTTP 개발은 session 저장소 권장. */
+        private boolean cookieSecure = true;
+
+        /** 쿠키 Path. SAML 엔드포인트가 컨텍스트 루트면 {@code /} 로 충분. */
+        private String cookiePath = "/";
+
+        public String getKeyPrefix() {
+            return keyPrefix;
+        }
+
+        public void setKeyPrefix(String keyPrefix) {
+            this.keyPrefix = keyPrefix;
+        }
+
+        public Duration getTtl() {
+            return ttl;
+        }
+
+        public void setTtl(Duration ttl) {
+            this.ttl = ttl;
+        }
+
+        public String getCookieName() {
+            return cookieName;
+        }
+
+        public void setCookieName(String cookieName) {
+            this.cookieName = cookieName;
+        }
+
+        public String getCookieSameSite() {
+            return cookieSameSite;
+        }
+
+        public void setCookieSameSite(String cookieSameSite) {
+            this.cookieSameSite = cookieSameSite;
+        }
+
+        public boolean isCookieSecure() {
+            return cookieSecure;
+        }
+
+        public void setCookieSecure(boolean cookieSecure) {
+            this.cookieSecure = cookieSecure;
+        }
+
+        public String getCookiePath() {
+            return cookiePath;
+        }
+
+        public void setCookiePath(String cookiePath) {
+            this.cookiePath = cookiePath;
+        }
     }
 
     /** 단일 IdP(RelyingParty) 등록 정보. */

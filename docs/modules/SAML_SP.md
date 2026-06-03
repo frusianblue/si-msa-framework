@@ -23,10 +23,14 @@
   단 **OpenSAML 4+ 는 Maven Central 에 게시되지 않고 Shibboleth 저장소에만** 있어, 루트 `build.gradle` 에 해당 저장소를
   `org.opensaml`/`net.shibboleth` 그룹 한정으로 추가해 두었다(이미 반영, fallback 아님). 해소 확인:
   `./gradlew :framework:framework-saml-sp:dependencies`.
-- **멀티 파드 in-flight 상태**: SP-initiated 흐름은 AuthnRequest↔Response 상관을 HTTP 세션에 보관한다. 게이트웨이가 authorize 와
-  ACS 콜백을 다른 파드로 보내면 세션이 없어 깨진다. **현 단계 권장: SAML 핸드셰이크 구간(수초)에 한해 게이트웨이/인그레스 스티키 세션.**
-  redis 공유 저장소(`Saml2AuthenticationRequestRepository` redis 구현)는 다음 단계이며, 그때까지 `request-repository: redis` 로
-  설정하면 오토컨피그가 시작 시 명확히 실패시킨다(조용한 no-op 방지).
+- **멀티 파드 in-flight 상태**: SP-initiated 흐름은 AuthnRequest↔Response 상관을 보관해야 한다.
+  - `request-repository: session`(기본): 서버 세션(JSESSIONID)에 묶는다. 게이트웨이가 authorize 와 ACS 콜백을 다른 파드로
+    보내면 세션이 없어 깨지므로 **SAML 핸드셰이크 구간(수초)에 한해 게이트웨이/인그레스 스티키 세션**이 필요하다.
+  - `request-repository: redis`(멀티 파드 권장): **세션 없이** 상관관계 쿠키 + redis 공유 저장소로 동작한다(OAuth `RedisOAuthStateStore`
+    와 같은 결, TTL 네이티브 만료). 직렬화는 고정형 코덱(`Saml2AuthnRequestCodec`, Jackson/네이티브직렬화 비의존), 1회용 키는
+    `getAndDelete` 로 원자 소비(재생 차단). **⚠️ 쿠키는 `SameSite=None; Secure` 가 기본**(POST 바인딩 ACS 는 크로스사이트 top-level
+    POST 라 `Lax/Strict` 쿠키가 콜백에 실리지 않는다 → HTTPS 필수). `spring-boot-starter-data-redis`(StringRedisTemplate)가 없으면
+    오토컨피그가 시작 시 실패한다(조용한 session 폴백 금지). `None`+`cookie-secure=false` 조합도 fail-fast.
 
 ## 3. 켜는 법
 
@@ -41,7 +45,7 @@ dependencies {
 framework:
   saml-sp:
     enabled: true
-    # request-repository: session   # 기본. redis 는 다음 단계(현재 설정 시 시작 실패)
+    # request-repository: session   # 기본(단일 파드/스티키 세션). 멀티 파드는 redis 권장(아래).
     default-continue-url: "https://app.example.com/"   # (선택) 성공 후 앱 정책용 — 현재 기본 핸들러는 JSON 반환
     registrations:
       corp:                              # registrationId (= IdP 식별, OAuth provider id 와 대칭)
@@ -51,6 +55,27 @@ framework:
         email-attribute: "email"          # (선택) 미지정 시 email/mail/urn:oid:.. 후보 자동 시도
         name-attribute: "displayName"     # (선택) 미지정 시 displayName/name/cn/urn:oid:.. 후보
 ```
+
+**멀티 파드(권장):** `spring-boot-starter-data-redis` 의존 추가 후 `request-repository: redis`.
+
+```yaml
+framework:
+  saml-sp:
+    enabled: true
+    request-repository: redis          # 세션 없이 상관관계 쿠키 + redis 공유
+    redis:
+      key-prefix: "saml:authnreq:"     # (선택) redis 키 접두
+      ttl: 5m                          # (선택) AuthnRequest 보관 TTL(핸드셰이크 여유)
+      cookie-name: "SAML_AUTHN_KEY"    # (선택) 상관관계 쿠키 이름
+      cookie-same-site: "None"         # (선택, 기본 None) POST 바인딩 ACS 크로스사이트 콜백 필수. None 은 secure 요구
+      cookie-secure: true              # (선택, 기본 true) HTTPS. None+false 면 시작 실패
+      cookie-path: "/"
+    registrations:
+      corp:
+        metadata-uri: "https://idp.example.com/realms/corp/protocol/saml/descriptor"
+```
+
+> 로컬 평문 HTTP 개발은 `Secure` 쿠키가 왕복하지 않으므로 `request-repository: session` 을 쓴다. redis 는 운영(HTTPS/k8s)용.
 
 ```java
 // 앱이 구현하는 단 하나의 계약
@@ -94,9 +119,10 @@ OpenSAML/Spring 타입 무의존(입력은 추출된 nameId + `Map<String,List<O
 ## 7. 다음 단계 (이 모듈의 후속)
 
 - **`Saml2AuthenticatedPrincipal` deprecation 마이그레이션(SS8 전)**: SS7 이 assertion 세부를 principal 에서 분리하며 `Saml2AuthenticatedPrincipal` 을 deprecated 했다(정식 후속 = `Saml2AssertionAuthentication.getRelyingPartyRegistrationId()` + `Saml2ResponseAssertionAccessor`). 현재 `SamlAuthenticationSuccessHandler` 는 검증된 deprecated 경로를 유지하고 경고만 메서드 한정 `@SuppressWarnings("deprecation")` 으로 억제(7.0.x 완전 동작, 제거는 빨라야 SS8). IDE 에서 새 접근자 메서드를 확정한 뒤 교체.
-- **redis 기반 `Saml2AuthenticationRequestRepository`**: 멀티 파드에서 스티키 세션 없이 동작하도록 AuthnRequest 를 redis 공유.
-  난점은 `AbstractSaml2AuthenticationRequest`(복합 객체) 직렬화 — 검증 후 도입.
-- (선택) SLO(Single Logout, `saml2Logout`) · 메타데이터 없는 IdP(엔드포인트/인증서 수동 입력) 지원.
+- ✅ **redis 기반 `Saml2AuthenticationRequestRepository`(구현됨, 6.1)**: 멀티 파드에서 스티키 세션 없이 동작하도록 AuthnRequest 를
+  redis 공유. `request-repository: redis` + 운영 HTTPS 면 `RedisSaml2AuthenticationRequestRepository` 빈이 등록되어 SS7 이 자동 주입한다(§2 참조).
+  직렬화는 `AbstractSaml2AuthenticationRequest` 네이티브 직렬화/Jackson 대신 **고정형 수기 코덱**(`Saml2AuthnRequestCodec`)으로 처리(클래스 진화/serialVersionUID 취약성 회피).
+- **다음**: SLO(Single Logout, `saml2Logout` + 우리 JWT 블랙리스트 연계, 6.2) · (선택) 메타데이터 없는 IdP(엔드포인트/인증서 수동 입력) 지원.
 
 ## 8. 검증 (받는 쪽)
 

@@ -399,6 +399,7 @@ OAuth/OIDC 와 같은 결의 **표준 프로토콜 SSO** — SAML 만 말하는 
 framework:
   saml-sp:
     enabled: true
+    # request-repository: session   # 기본. 멀티 파드(스티키 세션 제거)는 redis — 아래 참고
     registrations:
       corp:
         metadata-uri: "https://idp.example.com/realms/corp/protocol/saml/descriptor"
@@ -406,9 +407,23 @@ framework:
         name-attribute: "displayName"   # 선택
 ```
 
+멀티 파드에서 스티키 세션을 제거하려면 AuthnRequest 저장소를 redis 로 둔다(6.1). **운영 HTTPS 필수**(아래 쿠키 함정 참조):
+
+```yaml
+framework:
+  saml-sp:
+    request-repository: redis          # spring-boot-starter-data-redis 필요(없으면 시작 실패)
+    redis:
+      key-prefix: "saml:authnreq:"     # 기본
+      ttl: 5m                          # AuthnRequest 수명
+      cookie-name: "SAML_AUTHN_KEY"    # 상관관계 쿠키(서버 발급 UUID)
+      cookie-same-site: "None"         # POST 바인딩 ACS=크로스사이트 → None 필수
+      cookie-secure: true              # None 은 Secure 필수(HTTPS). None+!secure 면 시작 실패
+```
+
 엔드포인트(SS 기본): 메타데이터 `GET /saml2/service-provider-metadata/{id}` · 로그인 `GET /saml2/authenticate/{id}` · ACS `POST /login/saml2/sso/{id}`.
 
-⚠️ **이 프레임워크 최초의 "새 외부 의존성 0" 예외** — SAML 은 XML 서명 검증 때문에 OpenSAML 이 불가피하다. `spring-security-saml2-service-provider` 가 OpenSAML 을 전이로 끌어오고(버전=Spring Security 관리, 직접 핀하지 않음) **OpenSAML 4+ 는 Maven Central 밖이라** 루트 `build.gradle` 에 Shibboleth 저장소를 그룹 한정으로 추가해 두었다(반영 완료). 멀티 파드는 현재 게이트웨이/인그레스 **스티키 세션**으로 SAML 핸드셰이크(수초) 구간을 묶는다(redis 공유 AuthnRequest 저장소는 후속). **상세 → `docs/modules/SAML_SP.md`.**
+⚠️ **이 프레임워크 최초의 "새 외부 의존성 0" 예외** — SAML 은 XML 서명 검증 때문에 OpenSAML 이 불가피하다. `spring-security-saml2-service-provider` 가 OpenSAML 을 전이로 끌어오고(버전=Spring Security 관리, 직접 핀하지 않음) **OpenSAML 4+ 는 Maven Central 밖이라** 루트 `build.gradle` 에 Shibboleth 저장소를 그룹 한정으로 추가해 두었다(반영 완료). 멀티 파드는 `request-repository: redis`(운영 HTTPS) 로 AuthnRequest 를 redis 공유해 스티키 세션을 제거하거나, 게이트웨이/인그레스 **스티키 세션**으로 SAML 핸드셰이크(수초) 구간을 묶는다. ⚠️ redis 저장소의 상관관계 쿠키는 POST 바인딩 ACS(크로스사이트 top-level POST) 때문에 `SameSite=None; Secure` 가 필수다. **상세 → `docs/modules/SAML_SP.md`.**
 
 ## 데이터·연계 / 업무 생산성 모듈 (2026-06 추가, 선택형)
 

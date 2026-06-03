@@ -23,10 +23,14 @@ dependencies {
 
     // 서블릿(필터체인/핸들러)은 호스트 앱이 제공 → 컴파일만(드래그인 방지).
     compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    // request-repository=redis 의 RedisSaml2AuthenticationRequestRepository(StringRedisTemplate) 도 호스트 제공 → 컴파일만.
+    //   미사용(session 기본) 앱엔 영향 0(Boot 가 ASM 으로 메타데이터만 읽어 redis 타입을 로드하지 않음).
+    compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     // 오토컨피그 로딩 테스트(ApplicationContextRunner)는 SamlSpAutoConfiguration 을 introspect 하며 @Bean 파라미터/반환
-    //   타입(HttpSecurity/RelyingPartyRegistrationRepository/서블릿)을 로드한다. main 의 compileOnly 를 test 에 재선언.
+    //   타입(HttpSecurity/RelyingPartyRegistrationRepository/서블릿/StringRedisTemplate)을 로드한다. main 의 compileOnly 를 test 에 재선언.
     testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
 }

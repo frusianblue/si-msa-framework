@@ -2,7 +2,7 @@
 
 > 목적: 무엇을, 왜, 어디에, 어떤 버전으로 쓰는지 한곳에서 추적한다.
 > 단일 버전 소스는 `gradle/libs.versions.toml`. **버전을 바꿀 땐 카탈로그를 고치고 이 표를 갱신**한다.
-> 최종 갱신: 2026-06-04 · 갱신자: SAML SP(B-SAML) 세션
+> 최종 갱신: 2026-06-04 · 갱신자: SAML redis AuthnRequest 저장소(6.1) 세션
 
 ---
 
@@ -61,6 +61,7 @@
 | `spring-cloud-starter-circuitbreaker-reactor-resilience4j` | 회로차단 | gateway |
 | `spring-security-saml2-service-provider` | SAML 2.0 SP(외부 SAML IdP 연동) — **Spring Security(=Boot import) 관리, 버전 미명시** | framework-saml-sp(선택) |
 | `org.opensaml:opensaml-*`(core/saml-api/saml-impl) | SAML XML 서명·marshalling(위 SP 가 **전이로** 끌어옴, 버전=SS 관리, 명시 핀 금지) — ⚠️ **OpenSAML 4+ 는 Maven Central 에 없음** → 루트 `build.gradle` 의 **Shibboleth 저장소**(`build.shibboleth.net/maven/releases`, `org.opensaml`/`net.shibboleth` 그룹 한정)에서 해소. **이 프레임워크 최초의 비-Central 저장소.** | framework-saml-sp(선택, 전이) |
+| `spring-boot-starter-data-redis`(saml-sp) | redis AuthnRequest 저장소(6.1, `request-repository: redis`) — `StringRedisTemplate`. **`compileOnly`+test 재선언**(Boot BOM 관리, 부재 시 guard 빈 fail-fast) | framework-saml-sp(선택) |
 
 > **공통기능 토대 4종(2026-05: idempotency·i18n·idgen·client) + 보안 완성(framework-audit·framework-secure-web, framework-security 확장)은 새 버전 의존성을 추가하지 않는다.**
 > 모두 `framework-core`/`framework-security` + (필요 시) `spring-boot-starter-web/jdbc/data-redis` 를 `compileOnly`(호스트 제공)로만 사용하고,
@@ -98,7 +99,7 @@
 - **JUnit Platform launcher 명시 필수(Gradle 9)** — `spring-boot-starter-test` 는 `junit-platform-launcher` 를 전이하지 않고, Gradle 9 + 최신 JUnit Platform 에서는 `useJUnitPlatform()` 도 자동 주입하지 않는다. 누락 시 테스트가 있는 모듈에서 `OutputDirectoryCreator not available ... unaligned versions of junit-platform-engine and junit-platform-launcher` 로 **테스트 발견 단계에서 실패**(어서션 이전). → 루트 `build.gradle` 의 `subprojects { dependencies { testRuntimeOnly 'org.junit.platform:junit-platform-launcher' } }` 로 일괄 적용(버전은 Boot BOM).
 - **Jackson 3** (`tools.jackson.*`) — 커스터마이저는 `JsonMapperBuilderCustomizer`, 매퍼는 `JsonMapper`. ⚠️ `com.fasterxml.jackson.core/databind` import 금지(클래스패스에 없음 → 컴파일 에러; 특히 `com.fasterxml.jackson.databind.ObjectMapper`). 단 **애너테이션**(`@JsonInclude` 등)은 Jackson 3 에서도 `com.fasterxml.jackson.annotation` 패키지 유지 → OK. 필터/인프라 레벨의 단순 JSON 응답은 Jackson 빈 주입 대신 수기 직렬화가 견고(`SecureWebResponder` 사례).
 - **Spring Security 7** — `AuthorizationManager.authorize()` (구 `check()` 제거).
-- **SAML 2.0 SP(framework-saml-sp) — 첫 비-Central 저장소 예외**: SAML 은 XML 서명 검증 때문에 OpenSAML 이 불가피하다(프레임워크의 "새 외부 의존성 0" 원칙 최초 예외). `spring-security-saml2-service-provider` 가 OpenSAML 을 **전이로** 끌어오고 **버전도 Spring Security 가 관리**하므로 opensaml 을 명시 선언/핀하지 않는다(명시 핀은 SS 관리 버전과 어긋날 위험 + 루트 ext 미정의 시 설정 단계 실패). 단 **OpenSAML 4+ 는 Maven Central 에 게시되지 않으므로**(라이선스/면책) 루트 `allprojects.repositories` 에 `https://build.shibboleth.net/maven/releases/` 를 `org.opensaml`/`net.shibboleth` **그룹 한정**으로 추가했다(필수, fallback 아님 — 그 외 의존성은 계속 Central 에서만 해소, saml-sp 미사용 빌드엔 영향 0). SS7 SAML2 DSL 은 `saml2Login`/`saml2Logout`/`saml2Metadata`. `Saml2AuthenticatedPrincipal#getRelyingPartyRegistrationId`+`getAttributes()`(`Map<String,List<Object>>`)로 신원 추출. 멀티 파드 AuthnRequest 상관은 기본 HTTP 세션 → 현 단계는 게이트웨이 스티키 세션, redis `Saml2AuthenticationRequestRepository` 는 다음 단계.
+- **SAML 2.0 SP(framework-saml-sp) — 첫 비-Central 저장소 예외**: SAML 은 XML 서명 검증 때문에 OpenSAML 이 불가피하다(프레임워크의 "새 외부 의존성 0" 원칙 최초 예외). `spring-security-saml2-service-provider` 가 OpenSAML 을 **전이로** 끌어오고 **버전도 Spring Security 가 관리**하므로 opensaml 을 명시 선언/핀하지 않는다(명시 핀은 SS 관리 버전과 어긋날 위험 + 루트 ext 미정의 시 설정 단계 실패). 단 **OpenSAML 4+ 는 Maven Central 에 게시되지 않으므로**(라이선스/면책) 루트 `allprojects.repositories` 에 `https://build.shibboleth.net/maven/releases/` 를 `org.opensaml`/`net.shibboleth` **그룹 한정**으로 추가했다(필수, fallback 아님 — 그 외 의존성은 계속 Central 에서만 해소, saml-sp 미사용 빌드엔 영향 0). SS7 SAML2 DSL 은 `saml2Login`/`saml2Logout`/`saml2Metadata`. `Saml2AuthenticatedPrincipal#getRelyingPartyRegistrationId`+`getAttributes()`(`Map<String,List<Object>>`)로 신원 추출. 멀티 파드 AuthnRequest 상관은 기본 HTTP 세션 → `request-repository: redis`(6.1, 운영 HTTPS) 로 redis 공유해 스티키 세션을 제거하거나 게이트웨이 스티키 세션을 쓴다. redis 저장소는 서버 발급 UUID 쿠키로 상관하며 POST 바인딩 ACS(크로스사이트 top-level POST) 때문에 쿠키가 `SameSite=None; Secure` 여야 한다(`spring-boot-starter-data-redis` 는 `compileOnly`, 부재 시 fail-fast). 직렬화는 `AbstractSaml2AuthenticationRequest` 네이티브/Jackson 대신 고정형 수기 코덱.
 - **콘솔 한글 인코딩(테스트 출력)** — JDK 21 은 `file.encoding`=UTF-8 이나 Windows(한국어)는 `stdout/stderr` 가 MS949 로 잡혀 `@DisplayName` 등이 깨진다. 3계층 UTF-8 고정: 테스트 워커=루트 `build.gradle` Test `jvmArgs(-Dstdout/-Dstderr/-Dfile.encoding=UTF-8)`+`defaultCharacterEncoding`, 데몬=`gradle.properties` `org.gradle.jvmargs=...UTF-8`(변경 시 `--stop`), **콘솔 렌더=`gradlew` 클라이언트 JVM → 셸 `GRADLE_OPTS="...UTF-8"`**(데몬 설정만으론 부족).
 - **오토컨피그 로딩 테스트** — `ApplicationContextRunner` 는 설정 클래스를 리플렉션 introspect 하며 **모든 @Bean 파라미터/반환 타입을 로드**(@ConditionalOnClass 무관). 그 모듈 `compileOnly` 의존을 **전부** `testImplementation` 재선언 필요(누락 시 `Failed to parse configuration class`). 운영은 Boot ASM 메타데이터라 무관.
 - **Gateway** 아티팩트 `spring-cloud-starter-gateway-server-webflux`.
