@@ -189,7 +189,15 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 - **테스트**: `SamlSloService`(매핑/무매핑/blank·null no-op/SessionIndex 방어복사) + `SamlSloLogoutHandler.registrationIdFromUri`(경로 파싱) 순수 단위 — JDK 단독 15/15. 서명검증·LogoutResponse 라운드트립은 받는 쪽 통합/실앱 기동으로 검증.
 - **다음(B, SP-initiated)**: 로그인 시 SAML 로그아웃 주체(`{registrationId,nameId,sessionIndex}`)를 redis 영속(6.1 코덱 패턴) → 별도 브라우저 엔드포인트(`GET /saml2/logout`)에서 무상태 복원 후 IdP 로 LogoutRequest. 명시 요구 시 착수.
 
-### 6.3 C) Authorization Server — 우리가 IdP/OP 가 되기 (별도 `services/auth-server`) ◀ 다음 세션
+### 6.3 C) Authorization Server — 우리가 IdP/OP 가 되기 (별도 `services/auth-server`) — 🚧 골격 착수(2026-06-04)
+
+> **진행(2026-06-04, 1세션)**: 결정 4건 확정 + 최소 골격 + 리소스서버 정합 가이드 생성. 상세 = `docs/modules/AUTH_SERVER.md`.
+> **버전 정합 결론(web_search)**: SAS 는 **SS7 에 흡수**(1.5.x 마지막 독립). 좌표 `org.springframework.security:spring-security-oauth2-authorization-server`, **버전=Boot/Security BOM**(오버라이드 불가) → STACK 핀 불필요(SAML OpenSAML 과 달리 깔끔). **Jackson 3 기본**(`tools.jackson.*`) → `com.fasterxml` 누수 0. 우리 스택(Boot 4.0.6/SF7.0.x/SS7.0.x/SpringCloud 2025.1.1)에 정합 레퍼런스 존재.
+> **결정 확정**: ① OP 필요(범위 한정 — 내부=자체 JWT, 외부/그룹사 위임만 AS) · ② 경계=독립 포트(9000), 키/동의/인가/클라이언트 전부 JDBC · ③ 이중 발급기(리소스서버가 issuer 로 분기, AS 토큰=JWKS 검증, `JwksKeyResolver` 재사용) · ④ JDBC `RegisteredClientRepository`.
+> **생성물**: `services/auth-server`(부트앱) — `AuthorizationServerConfig`(체인2 + Jdbc 저장소3 + `JdbcRotatingJwkSource` + issuer + tokenCustomizer + PasswordEncoder) · `FrameworkAuthenticationProvider`(폼로그인→`Authenticator`) · `RoleClaimTokenCustomizer` · 서명키 MyBatis · Flyway V1(SAS 스키마)/V2(서명키) · 3프로파일 yml · `LocalDemo`(데모 클라이언트2/로그인). settings include 추가.
+> **새 함정**: (a) `JdbcOAuth2AuthorizationService` JsonMapper 는 Jackson 3 `SecurityJacksonModules`만(`SecurityJackson2Modules` 금지) (b) 커스텀 principal 직렬화 시 `PolymorphicTypeValidator.allowIfSubType` 필요 → 골격은 표준 `User` principal 로 회피 (c) SS7 패키지 재배치 **확정·수정완료**(7.0.5): Config→`org.springframework.security.config.annotation.web.configuration`, Configurer→`...web.configurers.oauth2.server.authorization`, `OAuth2TokenType`→`...oauth2.server.authorization`; `applyDefaultSecurity` 제거→`new Configurer()`+`securityMatcher(getEndpointsMatcher()).with(...)` DSL (d) 서명키 개인키 평문저장 금지(운영 암호화) (e) 회전 스케줄러는 `framework-lock` 리더선출로(중복 회전 방지) [확장점].
+> **다음(받는 쪽)**: `./gradlew :services:auth-server:compileJava` 로 SS7 import/시그니처 확정 → bootRun discovery/토큰 라운드트립 → 리소스서버 이중 issuer 정합(프레임워크 무변경, 어댑터/설정).
+
 - **언제**: 대부분 SI 는 **불필요**(우리는 지금까지 RP/SP = 소비자). 우리 서비스가 **다른 시스템에 토큰을 발급하는 OAuth2/OIDC Provider(OP)** 가 되어야 할 때만(예: 그룹사 공통 인증, 외부 파트너 OIDC, 사내 1차 IdP). 일반 SI 면 기존 RP/SP 로 충분.
 - **⚠️ 가장 큰 작업·구조 결정 먼저**: 이건 라이브러리 모듈이 아니라 **별도 배포 서비스**다(`services/auth-server`). 프레임워크(라이브러리)는 RP 자산만 제공하고, OP 는 독립 수명주기(키 회전·동의·클라이언트 등록 DB·가용성)를 가진다. **세션 시작 시 §6.3-결정 4건을 먼저 확정**하고 들어갈 것.
 

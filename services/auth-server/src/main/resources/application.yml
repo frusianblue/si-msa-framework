@@ -1,0 +1,43 @@
+# =====================================================================
+# auth-server / 공통 설정 (모든 프로파일 공유)
+# ---------------------------------------------------------------------
+# 우리가 OP(OAuth2/OIDC Provider) 가 되는 별도 배포 서비스.
+# 환경: local | dev | prod (+ local-postgres 오버레이) — user-service 와 동일 규약.
+#
+# ⚠️ framework-security 와의 관계:
+#   - framework.security.enabled=true 로 두어 Authenticator/LoginService 등 "사용자 소스" 빈을 재사용한다.
+#   - 단, framework-security 의 기본 SecurityFilterChain 은 @ConditionalOnMissingBean(SecurityFilterChain)
+#     이라, 우리가 AS 체인 2개(AuthorizationServerConfig)를 정의하면 자동 백오프한다(충돌 없음).
+#   - RBAC 메뉴 DB 빈은 불필요 → framework.security.menu=false 로 끈다.
+# =====================================================================
+server:
+  port: 9000   # AS 는 독립 포트/도메인(결정 ②: 서비스 경계)
+
+spring:
+  application:
+    name: auth-server
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  threads:
+    virtual:
+      enabled: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# ===== Authorization Server =====
+auth-server:
+  # iss — 외부 접근 가능한 안정 URL(토큰/discovery 에 박힘). 운영은 환경변수로 주입.
+  issuer: ${AUTH_SERVER_ISSUER:http://localhost:9000}
+  # JWKS 캐시 TTL = 다중 파드 키 회전 전파 최대 지연.
+  jwk-cache-ttl: 5m
+
+framework:
+  security:
+    enabled: true        # 사용자 소스(Authenticator/LoginService) 재사용
+    menu: false          # RBAC 메뉴 DB 빈 불필요
+    jwt:
+      # AS 는 자체 발급(Nimbus/JWKS)을 쓰므로 이 secret 은 framework JWT 경로용(직접 사용 안 함).
+      secret: ${FRAMEWORK_JWT_SECRET:change-this-to-a-very-long-secret-key-at-least-32-bytes!!}
+    token-store:
+      type: memory

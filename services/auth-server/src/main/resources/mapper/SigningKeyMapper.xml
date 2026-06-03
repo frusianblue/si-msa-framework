@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.company.authserver.jose.SigningKeyMapper">
+
+    <resultMap id="signingKey" type="com.company.authserver.jose.SigningKey">
+        <constructor>
+            <idArg  column="kid"        javaType="java.lang.String"/>
+            <arg    column="jwk_json"   javaType="java.lang.String"/>
+            <arg    column="status"     javaType="java.lang.String"/>
+            <arg    column="created_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 검증용 전체(ACTIVE+RETIRED). 최신순 → 서명 시 최신 키가 먼저 선택되도록. -->
+    <select id="findAllUsable" resultMap="signingKey">
+        SELECT kid, jwk_json, status, created_at
+        FROM auth_signing_key
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 현재 서명 후보(최신 ACTIVE 1건). -->
+    <select id="findNewestActive" resultMap="signingKey">
+        SELECT kid, jwk_json, status, created_at
+        FROM auth_signing_key
+        WHERE status = 'ACTIVE'
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insert">
+        INSERT INTO auth_signing_key (kid, jwk_json, status, created_at)
+        VALUES (#{kid}, #{jwkJson}, #{status}, #{createdAt})
+        ON CONFLICT (kid) DO NOTHING
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE auth_signing_key SET status = #{status} WHERE kid = #{kid}
+    </update>
+
+</mapper>

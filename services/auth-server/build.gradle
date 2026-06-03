@@ -1,0 +1,66 @@
+// services/auth-server/build.gradle
+//
+// 우리가 OP(OAuth2/OIDC Provider)가 되는 "별도 배포 서비스".
+// 라이브러리 모듈이 아니라 독립 수명주기(키 회전·동의·클라이언트 등록 DB·가용성)를 갖는 부트 앱이다.
+//
+// ⚠️ 버전 정합(2026-06 확인):
+//   Spring Authorization Server 는 더 이상 독립 프로젝트가 아니라 Spring Security 7.0 에 흡수됐다.
+//   Boot 4 에서 SAS 의 명시적 의존성 관리가 제거되어 버전 오버라이드가 불가능하다(= Boot/Security BOM 이 관리).
+//   따라서 좌표만 선언하고 버전은 적지 않는다(libs.versions.toml 에도 추가하지 않는다).
+//   → SAML 의 OpenSAML 처럼 "STACK 핀 예외"가 아니라, BOM 관리로 깔끔히 해결된 케이스.
+
+buildscript {
+    repositories { mavenCentral() }
+    dependencies {
+        // Flyway 플러그인이 PostgreSQL 과 통신하려면 플러그인 클래스패스에 DB 모듈 + 드라이버 필요(user-service 패턴).
+        classpath 'org.flywaydb:flyway-database-postgresql:11.15.0'
+        classpath 'org.postgresql:postgresql:42.7.4'
+    }
+}
+
+plugins {
+    id 'org.springframework.boot'      // 버전은 루트(카탈로그)에서 상속
+    alias(libs.plugins.flyway)         // CI 마이그레이션 게이트
+}
+
+dependencies {
+    // ===== 공통 프레임워크(재사용) =====
+    implementation project(':framework:framework-core')        // BusinessException/ErrorCode/ApiResponse
+    implementation project(':framework:framework-security')    // ★ 사용자 소스: Authenticator/AuthenticatedUser + RBAC
+    implementation project(':framework:framework-mybatis')     // 서명키 저장(SigningKeyMapper)
+
+    // ===== Spring Authorization Server (SS7 흡수, 버전=BOM) =====
+    // 전이로 spring-security-oauth2-jose(Nimbus JOSE), spring-security-web 를 끌어온다.
+    implementation 'org.springframework.security:spring-security-oauth2-authorization-server'
+    implementation 'org.springframework.boot:spring-boot-starter-web'   // SAS = 서블릿 기반
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'  // SAS Jdbc* 저장소가 JdbcTemplate 요구
+
+    // ===== DB / 마이그레이션 (user-service 와 동일 패턴) =====
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'   // 버전=Boot BOM
+    runtimeOnly 'org.postgresql:postgresql'
+    runtimeOnly 'com.h2database:h2'                         // 로컬/테스트
+
+    // ===== 개발 편의 =====
+    implementation libs.datasource.proxy.starter
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // ===== 테스트 =====
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+}
+
+// ===== Flyway Gradle 플러그인 (CI 배포 게이트, user-service 와 동일) =====
+flyway {
+    url      = project.findProperty('flyway.url')      ?: 'jdbc:postgresql://localhost:5432/authdb'
+    user     = project.findProperty('flyway.user')     ?: 'authuser'
+    password = project.findProperty('flyway.password') ?: 'authpass'
+    locations = ['filesystem:src/main/resources/db/migration']
+    baselineOnMigrate = true
+}

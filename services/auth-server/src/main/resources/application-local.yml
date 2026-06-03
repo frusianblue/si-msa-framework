@@ -1,0 +1,22 @@
+# =====================================================================
+# local : 로컬 개발 기본 = H2 인메모리 (외부 설치 0)
+#   실행: ./gradlew :services:auth-server:bootRun
+#   - demo 클라이언트 2종 자동 등록(LocalDemo): demo-web(PKCE) · demo-service(client_credentials)
+#   - demo 로그인: demo / demo
+#   - discovery 확인: http://localhost:9000/.well-known/openid-configuration
+#   실제 PostgreSQL 로 바꾸려면 local,local-postgres 로 실행.
+# =====================================================================
+spring:
+  datasource:
+    url: jdbc:h2:mem:authdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: true
+
+logging:
+  level:
+    com.company.authserver: debug
+    org.springframework.security.oauth2.server.authorization: debug
