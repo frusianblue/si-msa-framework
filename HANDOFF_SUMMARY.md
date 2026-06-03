@@ -6,63 +6,67 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**분산 락 / 스케줄러 리더 선출 모듈 `framework-lock` 신설** — 직전 논의의 "기본기능 갭" 최우선 후보 처리. `DistributedLock` SPI(소유자 토큰 리스 기반) + 백엔드 3종(memory/redis/jdbc) + `@SchedulerLock` AOP 애스펙트로 k8s 다중 파드 `@Scheduled` 중복 실행 방지. 3단 토글·기본 off, **새 외부 의존성 0**(redis/jdbc=compileOnly, H2=test). 옵트인·하위호환, 런타임/배포 영향 0.
+**PDF 산출물 생성 모듈 `framework-pdf` 신설** — "기본기능 갭"의 PDF 후보 처리. 표 기반 `PdfReport`/`PdfColumn` 스펙을 `PdfExporter` 가 OutputStream 으로 스트리밍(거래내역서/통지서). 한글은 **TTF IDENTITY_H 임베딩**(`PdfFontProvider`). 엔진 **OpenPDF 2.0.2**(iText4 LGPL/MPL fork=AGPL 회피, SI/공공 안전). 3단 토글·기본 off, BOM 밖 의존성 1종(implementation 비노출). 옵트인·하위호환, 미사용 시 런타임 0.
 
 ## 최종 갱신
 - 일자: 2026-06-03 · 갱신자: <!-- 채우기 -->
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-1. **`DistributedLock` SPI**(`com.company.framework.lock`): 리스(TTL)+소유자 토큰 기반 `tryLock(key,token,ttl)`/`unlock(key,token)`/`keepUntil(key,token,ttl)` + 디폴트 편의 `runIfLocked(key,ttl,Runnable)`(UUID 토큰 자동). 보유 인스턴스 사망 시 TTL 자동 해제(교착 방지), unlock/keepUntil 은 소유자 일치 시만(만료 후 타 인스턴스 재획득분 오삭제 차단).
-2. **백엔드 3종**(`support/`): **InMemory**(`ConcurrentHashMap`, `merge` 로 원자 선점, 단일 JVM·기본). **Redis**(`StringRedisTemplate.setIfAbsent`=SET NX PX, unlock/keepUntil 은 **Lua CAS**=`get==token then del/pexpire`, 키 prefix `lock:`). **Jdbc**(`framework_lock` 테이블, 만료 동일키 DELETE 후 INSERT, PK 충돌(`DataIntegrityViolationException`)=보유중→false, unlock/keepUntil 은 `WHERE lock_key=? AND lock_owner=?` — framework-idempotency JDBC 패턴 복제). DDL `db/lock-postgres.sql`.
-3. **`@SchedulerLock` + 애스펙트**: `@Around("@annotation(schedulerLock)")` 가 트리거마다 락 시도 → 잡으면 실행·못 잡으면 스킵(대상 void). `atMostFor`=리스 상한, `atLeastFor`=최소 보유(조기 종료 시 `keepUntil(atLeastFor-경과)` 로 파드 간 클럭스큐 직후 재실행 차단). 기간은 `DurationStyle.detectAndParse`(`"10m"`·`PT10M` 양형). name 비우면 `선언타입.메서드명`.
-4. **오토컨피그/프로퍼티**: `LockAutoConfiguration`(`@ConditionalOnClass(DistributedLock)`+`@ConditionalOnProperty(framework.lock.enabled=true)`) 백엔드 `@Bean` 3종(memory `matchIfMissing` / redis `@ConditionalOnClass(StringRedisTemplate)` / jdbc `@ConditionalOnClass(JdbcTemplate)`, 전부 `@ConditionalOnMissingBean(DistributedLock)`). 애스펙트 `@Bean`(`@ConditionalOnClass(org.aspectj.lang.annotation.Aspect)`+`framework.lock.scheduler.enabled` matchIfMissing=true). `LockProperties`(enabled=false·type=memory·default-at-most-for=5m·default-at-least-for=0·scheduler.enabled=true).
-5. **등록/배선**: `settings.gradle` include · `META-INF/spring/...AutoConfiguration.imports` · `framework-archtest/build.gradle` 에 project 의존 · **레지스트레이션 가드 테스트**(클래스패스 `.imports` union 읽어 FQCN 단언).
-6. **테스트 4종**: `InMemoryDistributedLockTest`(획득/경합/만료재선점/소유자한정/keepUntil/runIfLocked, 순수 JDK) · `JdbcDistributedLockTest`(H2 PostgreSQL모드) · `LockAutoConfigurationTest`(토글 off 기본·on→InMemory+애스펙트·type=redis/jdbc mock·scheduler off·가드) · `SchedulerLockAspectTest`(실 Spring AOP `@EnableAspectJAutoProxy`+가짜 락+Task: 획득시 실행+unlock / 미획득시 스킵 / atLeastFor 조기종료시 keepUntil).
-7. **문서 5종 동기화**: `framework/framework-lock/README.md` 신설 · 루트 `README.md`(의존성 블록·요약줄·카탈로그) · `HANDOFF.md`(1·7절) · `docs/FRAMEWORK_MODULES.md`(0·2.7·3·4절) · `STACK.md`(새 의존성 0 노트).
+1. **모델 스펙**(`com.company.framework.pdf.model`): `PdfColumn<T>`(header + `Function<T,String>` extract + 상대너비 + `PdfTextAlign`; 엑셀 `ExcelColumn` 동형이나 추출이 **String** 반환) · `PdfReport<T>`(빌더: title 필수·metaLines·columns 필수≥1·rows·footerNote, ctor 검증) · `PdfTextAlign`(LEFT/CENTER/RIGHT, OpenPDF `Element.ALIGN_*` 매핑은 익스포터 내부) · `PdfLayout`(record: pageSize/landscape/margin/폰트크기/pageNumber + `defaults()`).
+2. **폰트**(`font/PdfFontProvider`): `BaseFont.createFont(name, IDENTITY_H, EMBEDDED, true, ttfBytes, null)` 로 한글 TTF 임베딩·캐시. 바이트 null/깨짐 → `DocumentException|IOException` catch → **라틴(Helvetica) 폴백**(절대 throw 안 함, 생성은 성공). `hasEmbeddedFont()`/`body(size)`/`bold(size)` 제공(반환 `com.lowagie.text.Font` = 내부 타입, 소비자 비노출).
+3. **익스포터**(`exporter/PdfExporter`): `write(OutputStream, PdfReport<T>)`. try-with-resources `Document`(AutoCloseable, close 가 trailer/xref flush) → `PdfWriter.getInstance` → (옵션)페이지번호 이벤트 → 제목(중앙)·메타줄·`PdfPTable`(width 100%·상대너비·`setHeaderRows(1)` 페이지 반복·헤더 배경 `java.awt.Color(235)`)·하단 고지문. `PageNumberEvent extends PdfPageEventHelper.onEndPage` 가 하단중앙 "- N -"(`ColumnText.showTextAligned`). 페이지크기 A4/A5/LETTER/LEGAL `new Rectangle(PageSize.*)`+`rotate()`(landscape). `DocumentException`→`BusinessException(INTERNAL_ERROR)`, null 인자→`IllegalArgumentException`.
+4. **오토컨피그/프로퍼티**: `PdfAutoConfiguration`(`@ConditionalOnClass(Document)`+`@ConditionalOnProperty(framework.pdf.enabled=true)`+`@EnableConfigurationProperties`). 빈 `pdfFontProvider`(ResourceLoader 로 `font.location` 읽어 bytes→Provider, 미설정/부재/IOException→경고+라틴 폴백) · `pdfExporter`(PdfProperties→PdfLayout 조립). 둘 다 `@ConditionalOnMissingBean`. `PdfProperties`(enabled=false·pageSize=A4·landscape·margin=36·title16/header10/body9·pageNumber=true·nested `font.location`).
+5. **등록/배선**: `settings.gradle` include · `META-INF/spring/...AutoConfiguration.imports` · `framework-archtest/build.gradle` project 의존 · **레지스트레이션 가드 테스트**(클래스패스 `.imports` union 읽어 FQCN 단언). build.gradle = `api framework-core` + `implementation openpdf` + config-processor + test(no lombok).
+6. **버전 단일화**: `libs.versions.toml`(`openpdf=2.0.2` + 라이브러리 alias) · 루트 `build.gradle` ext(`openpdfVersion`) · `STACK.md` 의존성 표 행.
+7. **테스트 3종**: `PdfExporterTest`(%PDF- 헤더 + %%EOF·A5가로+페이지번호off·null인자 IAE·빌더 title/columns 누락 거부, 라틴 폴백으로 폰트파일 불요) · `PdfFontProviderTest`(null/깨진바이트 graceful 폴백) · `PdfAutoConfigurationTest`(토글 off 기본·on→2빈·존재안하는 font location graceful·가드).
+8. **문서 5종 동기화**: `framework/framework-pdf/README.md` 신설 · 루트 `README.md`(의존성·요약줄·카탈로그) · `HANDOFF.md`(1·6·7절) · `docs/FRAMEWORK_MODULES.md`(0·2.4·3·4절) · `STACK.md`(OpenPDF 행).
 
 ## 현재 상태 (적용/검증)
-- ⚠️ **작성 환경 컴파일 미검증**(이 환경은 Maven Central/Gradle 차단·JRE-only). 로직은 sibling 모듈 패턴을 그대로 복제하고 시그니처를 레포 내 동일 사용처로 교차확인했으나 **받는 쪽에서 빌드 필요**.
-- 검증 명령: `./gradlew :framework:framework-lock:test :framework:framework-archtest:test spotlessApply`
-- 신규 의존성 **0**: redis/jdbc 백엔드는 `compileOnly`(호스트 스타터 있을 때만 활성), 애스펙트는 core 의 `api spring-boot-starter-aspectj`(Boot4 개명) 전이로 충족. 테스트는 data-redis/jdbc(testImplementation, compileOnly 비전이) + H2(testRuntimeOnly). 카탈로그 무변경.
+- ⚠️ **작성 환경 컴파일 미검증**(Maven Central/Gradle 차단·JRE-only). OpenPDF API 는 `com.lowagie` **2.x javadoc 경로로 교차확인**(2.0.2 javadoc `.../com.github.librepdf.openpdf/com/lowagie/text/pdf/...` → 모듈명은 librepdf, **실제 패키지는 com.lowagie.text**). 받는 쪽 빌드 필요.
+- 검증 명령: `./gradlew :framework:framework-pdf:test :framework:framework-archtest:test spotlessApply`
+- 신규 의존성 **1종(OpenPDF 2.0.2)**: `implementation`(소비자 비노출), Boot BOM 밖→카탈로그+ext 고정. 그 외 0(config-processor=annotationProcessor, starter-test=test). `@ConditionalOnClass(Document)` 는 implementation 이 런타임 클래스패스에 있어 동작(excel 의 `@ConditionalOnClass(Workbook)`+POI 와 동일 패턴).
 
 ## 켜는 법
 ```yaml
 framework:
-  lock:
+  pdf:
     enabled: true
-    type: redis            # memory(단일JVM) | redis(권장) | jdbc(폐쇄망)
-    default-at-most-for: 5m
-    scheduler: { enabled: true }
+    page-size: A4              # A4 | A5 | LETTER | LEGAL
+    page-number: true
+    font:
+      location: classpath:fonts/NanumGothic.ttf   # 한글 임베딩(비우면 라틴 폴백→한글 깨짐)
 ```
 ```java
-@Scheduled(cron = "0 0 2 * * *")
-@SchedulerLock(name = "nightlySettlement", atMostFor = "10m", atLeastFor = "30s")
-public void settle() { ... }   // 한 파드만 실행, 나머지 스킵
+PdfReport<Tx> report = PdfReport.<Tx>builder()
+    .title("거래내역서").metaLine("기간: 2026-01-01 ~ 2026-01-31")
+    .column(PdfColumn.of("거래일시", t -> DateUtils.format(t.getDate())))
+    .column(PdfColumn.of("금액", t -> MoneyUtils.format(t.getAmount()), 1f, PdfTextAlign.RIGHT))
+    .rows(txList).build();
+pdfExporter.write(response.getOutputStream(), report);   // 스트리밍 다운로드
 ```
-- 운영(replicas≥2)은 `type=redis|jdbc` 필수(memory 는 파드 간 미배타). jdbc 는 `db/lock-postgres.sql` DDL 적용 + 호스트에 jdbc 스타터.
-- SPI 직접: `lock.runIfLocked("warmup", Duration.ofMinutes(2), () -> ...)` 또는 `tryLock/unlock` 토큰 직접 관리.
+- 한글 산출물은 `font.location` 에 TTF(NanumGothic=OFL 권장) 필수. 대용량(수십만 행)은 표 전체 메모리 구성이라 부적합(분할/Excel).
 
 ## 바로 다음 할 일 (Next)
 1. (devops) **CI 게이트**: `:framework-archtest:test` + 전 모듈 `:test` PR 차단 + **멀티모듈 jacoco 집계 리포트**(루트 aggregate).
 2. **그릇 정비**: 게이트웨이 런타임 점검(CORS preflight·rate-limit 429) · k8s 멀티서비스/CI-CD(redis/secret/observability ServiceMonitor 실배포).
-3. **기본기능 갭 잔여**: 개인정보 로그 마스킹 · PDF 생성 · 분산 캐시(분산 락/스케줄러 리더선출은 framework-lock 으로 완료).
+3. **기본기능 갭 잔여**: 개인정보 로그 마스킹 · 분산 캐시(분산 락=framework-lock, PDF 산출물=framework-pdf 로 완료).
 4. 파일 후속(선택): 이미지 처리(썸네일/EXIF) · 대용량 스트리밍(HTTP Range/S3 presigned) · 안티바이러스 훅.
-5. (선택) 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · 멱등 재생 페이로드 지문 · 암호화 파일 키 회전.
+5. (선택) 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · 멱등 재생 페이로드 지문.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **Boot4 AOP 스타터 개명**: `spring-boot-starter-aop`→**`spring-boot-starter-aspectj`**. framework-core 가 이미 `api` 로 노출 → 의존 모듈은 AspectJ(`org.aspectj.lang.annotation.Aspect`) 전이 사용 가능(lock 애스펙트가 이에 의존). 애스펙트 빈은 `@ConditionalOnClass(Aspect)` 로 가드.
-- **락은 리스+소유자 토큰이 필수 쌍**: TTL 없으면 보유 파드 사망 시 영구 교착. 소유자 토큰 없으면 "내 락 TTL 만료→타 인스턴스 재획득→뒤늦게 끝난 내가 그 락을 오삭제". 그래서 unlock/keepUntil 은 **반드시 소유자 일치 원자 연산**(Redis=Lua CAS, JDBC=`WHERE lock_owner=?`, InMemory=`computeIfPresent` 토큰 비교). 단순 `del key` 금지.
-- **`@SchedulerLock` atLeastFor=keepUntil 으로 구현**: 작업이 atLeastFor 보다 빨리 끝나면 unlock 대신 `keepUntil(atLeastFor-경과)` 로 락을 남겨, 파드 간 트리거 클럭스큐로 인한 직후 중복 실행을 막는다(ShedLock 동등). 끝나자마자 unlock 하면 스큐 구간에 두 번 돌 수 있음.
-- **JDBC 락 컬럼명 `lock_owner`**(not `owner`): `owner` 는 일부 DB 예약어 → 회피. idempotency 와 동일하게 만료 행은 동일 키 재선점 때만 정리되므로 전체 청소는 운영 잡 별도.
-- **애스펙트 테스트는 실 AOP 프록시로**: `ApplicationContextRunner`+`UserConfigurations.of(@EnableAspectJAutoProxy 설정)`+제어 가능한 가짜 락 빈으로 around 동작(실행/스킵/keepUntil)을 검증(`org.springframework.boot.context.annotation.UserConfigurations`). 단순 단위 호출론 프록시 안 걸려 의미 없음.
-- (지난·유효) 레지스트레이션 가드(`.imports` union 직접 단언) / introspection=compileOnly 타입 test 재선언 / 토글 3단 기본 off(commoncode·file·openapi 만 matchIfMissing) / Jackson3(`tools.jackson.*`, `.annotation` 만 예외) / 필터예외는 GlobalExceptionHandler 밖 / Boot4 패키지 이동 추측 금지(actuator·EPP 등 공식 확인) / JUnit launcher·starter-test 모듈마다 / 콘솔 UTF-8 3계층.
+- **OpenPDF 패키지는 버전에 묶임**: **3.0.0 부터 `com.lowagie.text` → `org.openpdf` 로 리네임**. 그래서 import 가 확정된 **2.0.2 로 의도적 고정**(올리려면 전 import 경로 교체). 2.x javadoc URL 의 `com.github.librepdf.openpdf` 는 **Java 모듈명**이고 실제 패키지는 `com.lowagie.text`(헷갈리지 말 것).
+- **OpenPDF 색상은 `java.awt.Color`**(iText 5+ 의 `BaseColor` 아님). `Font(Font.HELVETICA, size, style)` / `Font(BaseFont, size, style)`, `PdfPCell.setBackgroundColor(java.awt.Color)`.
+- **한글 = TTF IDENTITY_H 임베딩**: `BaseFont.createFont(name, BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, ttfBytes, null)`(파일 없이 메모리 바이트로). 폰트 미설정/파싱실패는 **던지지 말고 라틴 폴백**(생성 자체는 성공해야 — 운영 경고만). name 은 `.ttf/.otf` 힌트.
+- **OpenPDF Document 는 AutoCloseable**: try-with-resources 의 `close()` 가 PDF 마무리(trailer/xref)+flush. `PdfWriter.getInstance`/`PdfPTable.setWidths`/`document.add` 모두 checked `DocumentException` → 한 try 로 묶어 `BusinessException` 변환. 표 헤더 반복은 `setHeaderRows(1)`.
+- **CGLIB 프록시 필드는 null(직전 lock 세션 교훈)**: 인터페이스 없는 빈을 `getBean` 하면 CGLIB 프록시(Objenesis 생성)라 **필드 초기화자 미실행** → 프록시의 필드 직접 접근은 null. 테스트는 메서드(예: `ranCount()`)로 위임 접근.
+- (지난·유효) BOM 밖 의존(POI/OpenPDF)= `implementation` 비노출 + 카탈로그/ext/STACK 고정 / 레지스트레이션 가드(`.imports` union 직접 단언) / introspection=compileOnly 타입 test 재선언 / 토글 3단 기본 off(commoncode·file·openapi 만 matchIfMissing) / Jackson3(`tools.jackson.*`, `.annotation` 만 예외) / 필터예외는 GlobalExceptionHandler 밖 / Boot4 패키지·스타터 개명 추측 금지(aop→aspectj 등 공식 확인) / JUnit launcher·starter-test 모듈마다 / 콘솔 UTF-8(클라이언트 JVM 포함; 미해결 보류).
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
 1. 신규 모듈/기존 확장. 순수 로직은 Spring 무의존 코어로 분리해 JDK 단독 검증.
-2. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`. **테스트가 그 compileOnly 클래스(또는 그게 붙은 컨트롤러/빈)를 참조하면 재선언.** 선택 의존(Tika 류)은 `compileOnly`+가드된 인스턴스화.
+2. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`, BOM 밖 내부 라이브러리=`implementation`(비노출). **테스트가 그 compileOnly 클래스(또는 그게 붙은 컨트롤러/빈)를 참조하면 재선언.** 선택 의존(Tika 류)은 `compileOnly`+가드된 인스턴스화.
 3. `settings.gradle`/`imports` 등록. 신규 모듈이면 `framework-archtest/build.gradle` 에 project 의존 추가. **새 오토컨피그는 `.imports` 등록 + 등록 가드 테스트 확인**(미등록=죽은 코드). BOM 밖 의존은 `libs.versions.toml`+root ext+`STACK.md`.
-4. Boot4/Spring7/Jackson3 + 통합 대상 실제 시그니처를 레포 내 동일 사용처/공식 소스로 교차확인(Boot4 패키지 이동 추측 금지).
+4. Boot4/Spring7/Jackson3 + 통합 대상 실제 시그니처를 레포 내 동일 사용처/공식 소스로 교차확인(Boot4 패키지 이동·외부 라이브러리 패키지 리네임 추측 금지 — 예: OpenPDF 3.0 org.openpdf).
 5. 오토컨피그 3단 토글 + 빈 `@ConditionalOnMissingBean`. 런타임 개수 가변 빈은 `ImportBeanDefinitionRegistrar`, 기존 빈 래핑은 `BeanPostProcessor`.
 6. **테스트**: 핵심 알고리즘 단위 + 오토컨피그 로딩(enabled/disabled). MapperScan+MyBatis 결합은 임베디드 H2 슬라이스로 enabled 까지. AOP 는 실 프록시(`@EnableAspectJAutoProxy`). 외부연동 WireMock(standalone). 검증 `./gradlew :…:test (+:framework-archtest:test) (+spotlessApply)`.
 7. 드롭인: 변경 파일 전부 → 한 zip, 루트에서 `unzip -o`. 문서 5종 동기화.

@@ -38,6 +38,7 @@
 | `com.github.gavlyukovskiy:datasource-proxy-spring-boot-starter` | 2.0.0 | SQL 디버깅(바인딩 값/슬로우쿼리) — **Boot 4 는 2.0.0+** | 서비스(개발) |
 | `org.apache.poi:poi-ooxml` | 5.5.1 | Excel 업/다운로드(XSSF/SXSSF/HSSF) — **Boot BOM 미관리**(여기서 고정), 모듈 내부 implementation | framework-excel(선택) |
 | `org.apache.tika:tika-core` | 3.1.0 | 업로드 콘텐츠 타입 매직넘버 검출 — **Boot BOM 미관리**(여기서 고정). file 에 `compileOnly`(선택 의존·가드된 인스턴스화) + test. 검출만이라 tika-core 단독(파서 모듈 불필요) | framework-file(선택, `validation.content-type-detection=true` 시) |
+| `com.github.librepdf:openpdf` | 2.0.2 | PDF 산출물 생성(거래내역서/통지서) — **Boot BOM 미관리**(여기서 고정), 모듈 내부 `implementation`. 라이선스 LGPL-2.1/MPL-2.0(iText 5+ AGPL 회피). **패키지 `com.lowagie.text`(2.x); 3.0+ 는 `org.openpdf` 로 리네임 → 의도적으로 2.x 고정.** 한글은 TTF IDENTITY_H 임베딩 | framework-pdf(선택) |
 
 ### 3.2 BOM 관리(버전 미명시)
 | 라이브러리 | 용도 | 적용 위치 |

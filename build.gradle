@@ -27,6 +27,7 @@ allprojects {
         lombokMapstructBinding = libs.versions.lombokMapstructBinding.get()
         poiVersion             = libs.versions.poi.get()
         tikaVersion            = libs.versions.tika.get()
+        openpdfVersion         = libs.versions.openpdf.get()
     }
 }
 

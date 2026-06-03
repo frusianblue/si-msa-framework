@@ -1,0 +1,19 @@
+// 선택형 모듈: PDF 산출물 생성 — OpenPDF(iText 4 의 LGPL/MPL fork) 기반.
+//   - 표 기반 산출물(거래내역서·통지서 등)을 PdfReport 스펙으로 받아 OutputStream 으로 스트리밍 생성.
+//   - 한글: TrueType 폰트(NanumGothic 등)를 IDENTITY_H 로 "임베딩" → 어느 뷰어/OS 에서도 동일 렌더(폰트 미설정 시 라틴 폴백).
+//   - 페이지 번호(하단 중앙) 자동, 페이지 크기/여백/폰트크기 토글.
+// 새 외부 의존성 1: OpenPDF 는 Boot BOM 이 관리하지 않음 → libs.versions.toml(openpdf) + 루트 ext(openpdfVersion) 로 버전 고정.
+//   라이선스 LGPL-2.1 / MPL-2.0(iText 5+ 의 AGPL 회피 — SI/공공 납품 안전). 패키지는 com.lowagie.text(2.x; 3.0+ 는 org.openpdf 로 리네임).
+//   OpenPDF 타입(Document/PdfWriter/BaseFont 등)은 이 모듈 내부 구현 디테일 → implementation(전이 금지). 소비 서비스는 프레임워크 타입(PdfExporter/PdfReport/PdfColumn)만 의존.
+// 루트 build.gradle 이 java-library/dependency-management/spotless/jacoco 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // 표준 응답/에러 포맷(BusinessException/ErrorCode). 생성 실패를 표준 예외로 던진다.
+    api project(':framework:framework-core')
+
+    // OpenPDF: 단일 좌표로 com.lowagie.text(+ .pdf) 전체 전이. 내부 구현 → implementation(소비자에게 노출 안 함).
+    implementation "com.github.librepdf:openpdf:${openpdfVersion}"
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

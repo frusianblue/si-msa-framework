@@ -24,7 +24,7 @@ deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification`(업무 생산성) · `framework-observability/lock`(운영/관측).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock`(운영/관측).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -174,6 +174,7 @@ dependencies {
     implementation project(':framework:framework-batch')       // Spring Batch 실행/리스너 + Quartz cron
     implementation project(':framework:framework-notification') // 메일/SMS/알림톡 채널 추상화
     implementation project(':framework:framework-lock')        // 분산 락 · 다중 파드 @Scheduled 중복방지
+    implementation project(':framework:framework-pdf')         // PDF 산출물 생성(거래내역서/통지서, 한글 임베딩)
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
@@ -380,6 +381,27 @@ framework:
       alimtalk: { enabled: true, sender-key: ${ALIMTALK_SENDER_KEY:} }
 ```
 - `NotificationService.send(NotificationRequest.mail(to,subject,content).html(true).build())` — `ChannelType` 라우팅. SMS/알림톡은 벤더 SPI(`SmsClient`/`AlimtalkClient`) + 기본 로깅 구현(서비스가 벤더 빈으로 교체).
+
+### framework-pdf (PDF 산출물 생성 — 거래내역서/통지서, 한글 임베딩)
+```yaml
+framework:
+  pdf:
+    enabled: true
+    page-size: A4               # A4 | A5 | LETTER | LEGAL
+    page-number: true
+    font:
+      location: classpath:fonts/NanumGothic.ttf   # 한글 임베딩(비우면 라틴 폴백→한글 깨짐)
+```
+```java
+PdfReport<Tx> report = PdfReport.<Tx>builder()
+    .title("거래내역서").metaLine("기간: 2026-01-01 ~ 2026-01-31")
+    .column(PdfColumn.of("거래일시", t -> DateUtils.format(t.getDate())))
+    .column(PdfColumn.of("금액", t -> MoneyUtils.format(t.getAmount()), 1f, PdfTextAlign.RIGHT))
+    .rows(txList).build();
+pdfExporter.write(response.getOutputStream(), report);   // 스트리밍
+```
+- 엔진 **OpenPDF**(iText4 LGPL/MPL fork — AGPL 회피, SI/공공 안전). 표 기반 `PdfReport`/`PdfColumn` 스펙, 헤더행 페이지 반복 + 하단 페이지번호. 한글은 **TTF IDENTITY_H 임베딩**(폰트 미설정 시 라틴 폴백·생성은 성공).
+- OpenPDF 는 Boot BOM 밖 → `libs.versions.toml`(openpdf 2.0.2) 고정, 모듈 `implementation`(소비자 비노출). **3.0+ 는 `org.openpdf` 패키지로 리네임**돼 의도적으로 2.x 고정. 대용량은 표 전체 메모리 구성이라 부적합(분할/Excel 권장). 상세 `framework/framework-pdf/README.md`.
 
 ## 운영/관측 모듈 (2026-06 추가, 선택형)
 

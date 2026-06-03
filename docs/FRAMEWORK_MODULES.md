@@ -12,7 +12,7 @@
 - ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc|kafka)
 - ✅ **framework-secure-web**: 보안헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋(필터 계층, XSS 본문은 core)
 - ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅 + 독립 다중 DB) · framework-messaging(Transactional Outbox + Kafka 릴레이 **+ 소비자측 멱등 소비**, `x-event-id`↔framework-idempotency) · audit↔messaging 연동(`store.type=kafka`)
-- ✅ **업무 생산성**: framework-excel(POI 스트리밍/양식검증) · framework-batch(Batch6+Quartz) · framework-notification(메일/SMS/알림톡)
+- ✅ **업무 생산성**: framework-excel(POI 스트리밍/양식검증) · framework-batch(Batch6+Quartz) · framework-notification(메일/SMS/알림톡) · framework-pdf(PDF 산출물·한글 TTF 임베딩, OpenPDF)
 - ✅ **규제특화 시작**: framework-mfa(2단계 인증 — TOTP/OTP + ISMS-P 복구코드, **외부 의존성 0개**, security 로그인 흐름에 `MfaGate` SPI 로 연결)
 - ✅ **운영/관측**: framework-observability(공통 메트릭 태그 `MeterRegistryCustomizer` · Boot4 네이티브 구조화 JSON 로그 · 메트릭/트레이스 OTLP 익스포터 표준, 전부 토글·기본 off). **외부 의존성 0개**(레지스트리/익스포터는 호스트 runtimeOnly opt-in, Boot BOM 관리). k8s 샘플 `deploy/k8s/observability.yaml`
 - ✅ **SI 공통 유틸 보강(2026-06-02)**: `framework-core/util` 에 검증(`KoreanRegNoUtils`·`ValidationUtils`)·날짜/영업일(`DateUtils`·`HolidayUtils`)·금액(`MoneyUtils`)·한글(`HangulUtils`)·해시(`HashUtils`)·JSON(`JsonUtils`) 신규 + `MaskingUtils` 확장. 빈/오토컨피그 없는 순수 정적, **새 외부 의존성 0**(JSON 만 Jackson 3). 회귀 테스트 `CoreUtilsTest`. + **빌드 인프라 픽스**: 루트 `subprojects` 에 `testRuntimeOnly junit-platform-launcher` 추가(Gradle 9 에서 테스트 발견 단계 실패 방지, 전 모듈 공통).
@@ -23,6 +23,7 @@
 - ⏭️ **다음 후보**: **redis 레지스트레이션 갭 해소**(`RedisLoginAttemptAutoConfiguration` → `.imports` 등록, 현재 미활성) · commoncode/file enabled 경로 DB 슬라이스 테스트 · (devops) CI 게이트 + 멀티모듈 jacoco 집계 · **그릇 정비**(게이트웨이 런타임 점검·k8s 멀티서비스/CI-CD) · (선택) 규제특화 잔여(pki/hsm/recon/egov) · (선택) 멱등 재생 페이로드 지문(payload hash) · (선택) saga 단계별 타임아웃/보상 재시도·실DB(H2/PostgreSQL) 통합테스트
 - ✅ **독립 다중 DB 완료(2026-06-03)**: framework-datasource 에 `multi.*` 추가 — 서로 다른 물리 DB 마다 `<k>DataSource`/`<k>SqlSessionFactory`/`<k>SqlSessionTemplate`/`<k>TransactionManager` 세트를 `ImportBeanDefinitionRegistrar` 로 동적 등록. `@MapperScan(sqlSessionFactoryRef)`/`@Transactional("<k>TransactionManager")` 는 앱이 배선. 라우팅과 **상호 배타**(fail-fast). 새 외부 의존성 0. 분산 원자성은 여전히 XA 대신 Outbox/Saga로.
 - ✅ **분산 락 / 스케줄러 리더 선출(2026-06-03)**: **framework-lock 신설** — `DistributedLock` SPI(소유자 토큰 리스 기반 `tryLock/unlock/keepUntil` + 편의 `runIfLocked`), 백엔드 memory(단일JVM·기본)|redis(`SET NX PX` + Lua CAS)|jdbc(PK INSERT 충돌 선점·만료 재획득, idempotency JDBC 패턴 복제, DDL `db/lock-postgres.sql`). **`@SchedulerLock` 애스펙트**로 k8s 다중 파드 `@Scheduled` 중복 실행 방지(ShedLock 동등 `atMostFor`/`atLeastFor`, atLeastFor 는 조기종료 시 `keepUntil` 로 구현, 네이티브). batch(Quartz job-store 클러스터링)와 구분=평범한 `@Scheduled` 갭. **외부 의존성 0개**(redis/jdbc=compileOnly, H2=test-scope). ⚠️ 작성환경 컴파일 미검증 → 받는 쪽 `:framework:framework-lock:test`+`spotlessApply` 확인.
+- ✅ **PDF 산출물 생성(2026-06-03)**: **framework-pdf 신설** — 표 기반 `PdfReport`/`PdfColumn` 스펙 → `PdfExporter` 가 OutputStream 스트리밍(거래내역서/통지서). 한글 **TTF IDENTITY_H 임베딩**(`PdfFontProvider`, 폰트 미설정/깨진바이트는 라틴 폴백·생성 성공), 표 헤더 페이지 반복 + 하단 페이지번호, A4/A5/LETTER/LEGAL·가로·여백·폰트크기 토글. 엔진 **OpenPDF 2.0.2**(iText4 LGPL/MPL fork·AGPL 회피, `com.lowagie.text` 패키지; **3.0+ 는 `org.openpdf` 리네임이라 2.x 고정**; BOM 밖 → 카탈로그+ext 고정·`implementation` 비노출). 3단 토글+레지스트레이션 가드. ⚠️ 작성환경 컴파일 미검증(OpenPDF API 는 com.lowagie 2.x javadoc 교차확인) → 받는 쪽 `:framework:framework-pdf:test`+`spotlessApply`.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
 ---
@@ -96,6 +97,7 @@ public class XxxAutoConfiguration {
 | ✅ framework-excel | POI 업/다운로드: **다운로드 SXSSF 스트리밍**(대용량 일정메모리)·**업로드 양식검증**(헤더/타입/필수/길이·패턴, 행별 오류수집). POI 타입 비노출(implementation) | `framework.excel.enabled` (+`export.window-size`/`import.max-rows`) | [선택] | 공통 |
 | ✅ framework-batch | **Spring Batch 6 실행**(JobLaunchSupport: JobOperator 래핑+run.id 재실행보장)·**표준 로깅 리스너**·**Quartz cron 스케줄**(yaml 선언만으로 Job 기동) | `framework.batch.enabled`,`framework.scheduler.enabled` | [선택] | 공통 |
 | ✅ framework-notification | **메일/SMS/알림톡 채널 추상화** — NotificationService 가 ChannelType 라우팅. 메일=JavaMailSender, SMS·알림톡=벤더 SPI(SmsClient/AlimtalkClient)+기본 로깅구현(@ConditionalOnMissingBean 교체) | `framework.notification.enabled` + `channels.{mail,sms,alimtalk}.enabled` | [선택] | 공통 |
+| ✅ framework-pdf | **PDF 산출물 생성**(거래내역서/통지서) — 표 기반 `PdfReport`/`PdfColumn` → `PdfExporter` OutputStream 스트리밍. **한글 TTF IDENTITY_H 임베딩**(미설정 시 라틴 폴백), 헤더 페이지반복+하단 페이지번호. 엔진 OpenPDF 2.0.2(iText4 LGPL/MPL, `com.lowagie` 패키지·implementation 비노출; 3.0+ `org.openpdf` 리네임이라 2.x 고정) | `framework.pdf.enabled` (+`page-size`/`landscape`/`margin`/`*-font-size`/`page-number`/`font.location`) | [선택] | 공통 |
 
 ### 2.5 신규 — 데이터/연계 (금융 핵심 ★)
 
@@ -153,7 +155,8 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
        ├── idgen           (도메인 채번)
        ├── client ──── messaging/saga(연계)
        ├── observability   (전 모듈 횡단)
-       └── lock            (분산 락; impl: redis/jdbc, 횡단)
+       ├── lock            (분산 락; impl: redis/jdbc, 횡단)
+       └── pdf             (PDF 산출물; OpenPDF impl 비노출, 한글 TTF 임베딩)
 ```
 원칙: 상위(토대)는 하위를 모른다. 순환 금지. impl 모듈(redis 등)이 추상(security/idempotency)을 의존. **saga 는 messaging(Outbox) 위에 오케스트레이션만 얹는다**(전송/멱등 소비 재사용, compileOnly 비전이라 의존 서비스가 messaging 도 명시).
 
@@ -164,7 +167,7 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
 1. **토대** — framework-i18n, framework-idgen, framework-client
 2. **보안 완성(심의)** — 비번 만료/이력, 동시로그인, framework-audit, framework-secure-web
 3. **금융 핵심** — **framework-idempotency**, framework-messaging(+Outbox), framework-datasource
-4. **업무 생산성** — framework-excel, framework-batch, framework-notification
+4. **업무 생산성** — framework-excel, framework-batch, framework-notification, framework-pdf
 5. **규제 특화** — framework-pki, framework-mfa, framework-crypto-hsm, framework-recon, (공공 시) framework-egov-compat
 6. **운영/관측** — framework-observability ✅ · framework-lock ✅(분산 락·`@Scheduled` 중복방지)
 7. **그릇 정비** — 게이트웨이(폴백·CORS·rate-limit)·k8s(redis/secret/멀티서비스)·CI/CD 멀티서비스화

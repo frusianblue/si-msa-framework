@@ -16,6 +16,7 @@ lombokMapstructBinding  = "0.2.0"
 datasourceProxy         = "2.0.0"        # Boot 4 지원은 2.0.0 부터 (1.x 비호환)
 poi                     = "5.5.1"        # Apache POI(Excel). Boot BOM 미관리 → 여기서 고정. 5.x = Java 21 호환
 tika                    = "3.1.0"        # Apache Tika(콘텐츠 타입 매직넘버 검출). Boot BOM 미관리 → 고정. 3.x = Java 11+
+openpdf                 = "2.0.2"        # OpenPDF(PDF 생성, iText4 LGPL/MPL fork). Boot BOM 미관리 → 고정. 2.x = 패키지 com.lowagie.text(3.0+ 는 org.openpdf 로 리네임 → 의도적으로 2.x 고정), Java 17+
 testcontainers          = "1.20.6"       # Boot BOM 이 안 잡아줘서 명시 (testcontainers-bom 으로 중앙 관리)
 archunit                = "1.4.2"         # 레이어/네이밍/순환 규칙 강제(테스트 전용). 1.4.x = Java 21 OK
 wiremock                = "3.13.2"        # 서비스간 연동 테스트. standalone(shaded) 으로 Boot4 Jetty12.1 충돌 회피
@@ -39,6 +40,7 @@ springdoc-openapi-webmvc-ui  = { module = "org.springdoc:springdoc-openapi-start
 awssdk-bom                   = { module = "software.amazon.awssdk:bom",                            version.ref = "awsSdk" }
 datasource-proxy-starter     = { module = "com.github.gavlyukovskiy:datasource-proxy-spring-boot-starter", version.ref = "datasourceProxy" }
 poi-ooxml                    = { module = "org.apache.poi:poi-ooxml",                              version.ref = "poi" }
+openpdf                      = { module = "com.github.librepdf:openpdf",                          version.ref = "openpdf" }
 testcontainers-bom           = { module = "org.testcontainers:testcontainers-bom",                version.ref = "testcontainers" }
 archunit-junit5              = { module = "com.tngtech.archunit:archunit-junit5",                 version.ref = "archunit" }
 wiremock-standalone          = { module = "org.wiremock:wiremock-standalone",                     version.ref = "wiremock" }
