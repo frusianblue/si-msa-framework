@@ -121,6 +121,9 @@
 | `com.tngtech.archunit:archunit-junit5:1.4.2` | 라이브러리 | 모듈/레이어 의존 규칙 강제 | ✅ **도입**(테스트전용 `framework-archtest`: 순환·Jackson3·레이어·네이밍·필드주입 7규칙) |
 | Error Prone + NullAway | 플러그인 | 컴파일타임 버그/NPE 탐지 | 신규 모듈부터 점진(초기 노이즈 많음) |
 | 설정값(YAML) 암호화 | 기능 | yaml 시크릿 `ENC(...)` 자동 복호화 | ✅ **완료(2026-06-03)** — **Jasypt 미도입**. 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor`(+`DecryptingPropertySource`, `spring.factories` 등록) + 기존 `AesCryptoService`(AES-GCM, 마스터키 `AES_SECRET`) 재사용, 토글 `framework.crypto.config-decryption.enabled`(기본 on), 토큰 CLI `CryptoCli`, prod 마스터키 가드 `AesMasterKeySafetyGuard`. **신규 의존성 0·Jackson 무관**. 설계 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md` |
+| 아카이빙/압축 | 모듈 | ZIP/GZIP 묶기·풀기 | ✅ **완료(2026-06-03, `framework-archive`)** — 순수 JDK `java.util.zip`, 스트리밍·zip-slip·압축폭탄 가드. `Archiver` SPI+`ZipArchiver`. **신규 의존성 0.** tar/tar.gz 만 commons-compress 옵트인 후속 |
+| 공통 유틸 6종 | 코어 | IO/CSV/고정폭/문자셋/텍스트/컬렉션 | ✅ **완료(2026-06-03, `framework-core/util`)** — Io(가드 스트리밍)·Csv(RFC4180)·FixedWidth(CP949 전문)·Charset(MS949/EUC-KR)·Text(바이트절단)·Collection(chunk). 순수 정적 JDK·**신규 의존성 0** |
+| 파일 일괄처리 | 모듈 | 다파일 동일작업 일괄 | ⏭️ **다음 작업**(`framework-file-batch`) — 이름변경/변환/압축 일괄, 부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임. **신규 의존성 0 예정.** 설계 `docs/NEXT_FILE_BATCH_PROCESSING.md` |
 
 ## 7. 버전 확인 / 업데이트 방법
 - 의존성 최신 여부: `./gradlew dependencyUpdates` (ben-manes 플러그인 도입 후)

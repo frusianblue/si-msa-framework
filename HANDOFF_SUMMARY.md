@@ -6,7 +6,7 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**(1) YAML 설정값 암호화 + (2) 아카이빙/압축** 두 건 완료. (1) `framework-core` 에 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor`+`DecryptingPropertySource` 로 `ENC(...)` 를 기존 `AesCryptoService`(AES-GCM) 지연 복호화(`spring.factories` 등록, 마스터키 `AES_SECRET` 평문 주입, 토글 기본 on, `CryptoCli`/`AesMasterKeySafetyGuard` 동봉). (2) **신규 모듈 `framework-archive`** — `Archiver` SPI + `ZipArchiver`(순수 JDK `java.util.zip`): ZIP 다중엔트리 + GZIP 단일스트림, **스트리밍(transferTo)**·**zip-slip 차단**·**압축폭탄 가드**(엔트리수/엔트리크기/총바이트). 둘 다 **신규 외부 의존성 0**. **tar/tar.gz 는 JDK 미지원 → commons-compress 옵트인 후속**(코어는 의존성 0 유지). 기본기능 카탈로그 11/11(#4 리포트만 🟡 보류). 추가로 **공통 유틸 6종**(Io/Csv/FixedWidth/Charset/Text/Collection) 도 `framework-core/util` 에 신설(RetryUtils 제외). **다음 최우선 = (devops) CI 게이트 + jacoco 집계**, 또는 §6 대기열 잔여 "파일 일괄처리".
+**(1) YAML 설정값 암호화 + (2) 아카이빙/압축** 두 건 완료. (1) `framework-core` 에 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor`+`DecryptingPropertySource` 로 `ENC(...)` 를 기존 `AesCryptoService`(AES-GCM) 지연 복호화(`spring.factories` 등록, 마스터키 `AES_SECRET` 평문 주입, 토글 기본 on, `CryptoCli`/`AesMasterKeySafetyGuard` 동봉). (2) **신규 모듈 `framework-archive`** — `Archiver` SPI + `ZipArchiver`(순수 JDK `java.util.zip`): ZIP 다중엔트리 + GZIP 단일스트림, **스트리밍(transferTo)**·**zip-slip 차단**·**압축폭탄 가드**(엔트리수/엔트리크기/총바이트). 둘 다 **신규 외부 의존성 0**. **tar/tar.gz 는 JDK 미지원 → commons-compress 옵트인 후속**(코어는 의존성 0 유지). 기본기능 카탈로그 11/11(#4 리포트만 🟡 보류). 추가로 **공통 유틸 6종**(Io/Csv/FixedWidth/Charset/Text/Collection) 도 `framework-core/util` 에 신설(RetryUtils 제외). **다음 세션 최우선 = 파일 일괄처리(`framework-file-batch`, 설계서 `docs/NEXT_FILE_BATCH_PROCESSING.md`).**
 
 ## 최종 갱신
 - 일자: 2026-06-03 · 갱신자: YAML 암호화 + 아카이빙 세션
@@ -47,10 +47,10 @@
 ```
 
 ## 바로 다음 할 일 (Next)
-1. **★ (devops) CI 게이트** — `:framework-archtest:test` + 전 모듈 `:test` PR 차단 + 멀티모듈 jacoco 집계.
-2. (기본기능) §6 대기열 잔여 **"파일 일괄처리"**(여러 파일 일괄 이름변경/포맷변환) — archive/image/file 와 결합.
-3. (선택) 아카이빙 후속: **tar/tar.gz**(commons-compress 옵트인) · zip 패스워드/암호화 아카이브.
-4. (선택) 아카이빙 후속: **tar/tar.gz**(commons-compress 옵트인) · zip 패스워드/암호화 아카이브. 공통 유틸 잔여=RetryUtils(보류).
+1. **★ 파일 일괄처리(Batch File Processing)** — **다음 세션 최우선(사용자 지정)**. 얇은 모듈 `framework-file-batch`: 여러 파일에 동일 작업(이름변경/이미지변환/압축) 일괄 + 부분실패 격리·결과수집·Java21 가상스레드 병렬·드라이런. image/archive 위임(compileOnly), 신규 의존성 0. **설계서 `docs/NEXT_FILE_BATCH_PROCESSING.md` 그대로 진행.**
+2. (devops) **CI 게이트** — `:framework-archtest:test` + 전 모듈 `:test` PR 차단 + 멀티모듈 jacoco 집계.
+3. (선택) 아카이빙 후속: **tar/tar.gz**(commons-compress 옵트인)·zip 패스워드. 공통 유틸 잔여=RetryUtils(보류).
+4. (devops) 그릇 정비 — 게이트웨이 런타임 점검·k8s 멀티서비스·CI-CD 멀티서비스화.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
 - **AssertJ + 미정 제네릭 모호성**(이번에 컴파일 실패): `assertThat(CollectionUtils.firstOrNull(List.of()))` 처럼 빈 `List.of()` 를 제네릭 메서드에 넘기면 반환 `T` 가 미정이라 `assertThat(Predicate)`/`assertThat(IntPredicate)` 후보가 겹쳐 "reference to assertThat is ambiguous". 해결=명시적 타입 인자(`CollectionUtils.<String>firstOrNull(...)`/`<String>emptyIfNull(null)`).

@@ -24,7 +24,7 @@ deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거) · `framework-archive`(아카이빙/압축: ZIP+GZIP·zip-slip/폭탄 가드).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -135,7 +135,13 @@ kubectl apply -f deploy/k8s/
 - **한글** — `HangulUtils`(초성 추출·초성 검색·자모 분해/조합·조사 선택·한↔영 자판 변환).
 - **해시/인코딩** — `HashUtils`(SHA-256/512 hex·Base64 표준/URL-safe·Hex).
 - **JSON** — `JsonUtils`(Jackson 3 기반 null-safe `toJson`/`fromJson`/`TypeReference`, `JacksonConfig` 규칙 동일).
-> 범용 `StringUtils`/`CollectionUtils` 류는 재발명하지 않고 Spring 표준을 사용. 회귀 테스트: `CoreUtilsTest`. ⚠️ 외국인등록번호는 2020-10 이후 체크섬 폐지 → 형식만 검증. ⚠️ 음력/대체공휴일은 양력 변환표가 필요해 자동계산하지 않고 주입(특일정보 API/사내 휴일표 권장).
+- **IO/스트림(2026-06 추가)** — `IoUtils`: 가드된 스트리밍 전송 — `copyLimited`(크기 상한 DoS 가드)·`copyAndSha256`(전송하며 무결성 해시, tee)·`toByteArrayLimited`·`drain`·`closeQuietly`.
+- **CSV(2026-06 추가)** — `CsvUtils`: RFC 4180 인용/이스케이프 `writeRow`/`writeRows`/`parse`(인용 필드 내 구분자·줄바꿈 처리). 대외기관 연계·내보내기.
+- **고정폭 전문(2026-06 추가)** — `FixedWidthUtils`: 바이트 고정폭 레코드 `numberField`/`textField`/`fit`/`field`(CP949 기준, 한글 경계 안전). 금융/공공 전문.
+- **문자셋(2026-06 추가)** — `CharsetUtils`: `MS949`/`EUC_KR`↔UTF-8 재인코딩·`decodeLenient`(깨진 바이트 방어)·`byteLength`. 레거시 연계 글자깨짐 방지.
+- **텍스트(2026-06 추가)** — `TextUtils`: `truncateByBytes`(한글·이모지 안 깨지는 바이트 절단)·null안전(`defaultIfBlank`/`trimToNull`)·패딩·snake/camel.
+- **컬렉션(2026-06 추가)** — `CollectionUtils`: `chunk`(대량 분할 전송/배치)·null안전 헬퍼.
+> 범용 `StringUtils`/`CollectionUtils` 류는 재발명하지 않고 Spring 표준을 사용(위 추가분은 SI 특화: 바이트 절단·CP949·고정폭·CSV·가드 스트리밍). 회귀 테스트: `CoreUtilsTest`·`CoreUtilsExtraTest`. ⚠️ 외국인등록번호는 2020-10 이후 체크섬 폐지 → 형식만 검증. ⚠️ 음력/대체공휴일은 양력 변환표가 필요해 자동계산하지 않고 주입(특일정보 API/사내 휴일표 권장).
 
 ### 소스 취약점 점검 (루트 build.gradle)
 - **OWASP Dependency-Check**: `./gradlew dependencyCheckAggregate` (CVSS 7.0+ 발견 시 빌드 실패).
@@ -187,6 +193,7 @@ dependencies {
     implementation project(':framework:framework-pdf')         // PDF 산출물 생성(거래내역서/통지서, 한글 임베딩)
     implementation project(':framework:framework-context')     // 요청 컨텍스트/멀티테넌시(tenantId/userId/locale + @Async·아웃바운드 전파)
     implementation project(':framework:framework-image')       // 이미지 처리(리사이즈/썸네일·EXIF orientation 보정·민감 EXIF(GPS) 제거, ImageIO·의존성 0)
+    implementation project(':framework:framework-archive')     // 아카이빙/압축(ZIP+GZIP, zip-slip·압축폭탄 가드, java.util.zip·의존성 0)
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
@@ -563,6 +570,37 @@ ImageInfo info = imageProcessor.probe(originalBytes); // width/height/formatName
 - **메타 제거 = 리인코딩 부수효과**: `process()`/`thumbnail()` 출력은 항상 메타데이터가 없다(GPS 포함 자동 제거). 원본 메타 보존이 필요하면 이 모듈을 거치지 말 것.
 - **EXIF orientation 보정은 best-effort**: APP1 부재·비JPEG·깨진 바이트면 원본 방향 유지(예외 없음). PNG 등은 orientation 개념 없음.
 - **JPEG 알파 평탄화**: JPEG 출력 시 투명은 흰 배경으로 평탄화 — 투명 보존이 필요하면 `default-format: PNG`. 상세 `framework/framework-image/README.md`.
+
+### framework-archive (아카이빙/압축 — ZIP+GZIP, zip-slip·압축폭탄 가드)
+여러 파일을 ZIP 으로 묶거나 풀고, 단일 스트림을 GZIP 으로 압축/해제한다. 엔진은 JDK 내장 `java.util.zip` 뿐 — **신규 외부 의존성 0**. **스트리밍**(대용량 메모리 비적재)·**zip-slip 차단**·**압축폭탄 가드**가 기본 내장. 웹 비의존(배치/스케줄)·기본 off.
+```yaml
+framework:
+  archive:
+    enabled: true
+    max-entries: 10000          # 해제 허용 최대 엔트리 수(폭탄 방지)
+    max-entry-size: 104857600   # 단일 엔트리 해제 상한(기본 100MB)
+    max-total-bytes: 1073741824 # 총 해제 상한(기본 1GB)
+```
+```java
+@Autowired Archiver archiver;
+
+// 묶기(스트리밍)
+archiver.zip(List.of(
+    ArchiveEntry.of("a.txt", bytes),
+    ArchiveEntry.of("dir/b.pdf", path)), outputStream);
+
+// 풀기 — 엔트리 단위 콜백(전체 버퍼링 없음, zip-slip/폭탄 가드 적용)
+archiver.unzip(zipIn, (name, content) -> storage.save(name, content));
+
+// 디렉토리로 안전하게 풀기(baseDir 밖 경로 거부)
+archiver.unzipToDirectory(zipIn, targetDir);
+
+// 단일 스트림 GZIP
+archiver.gzip(in, out);
+archiver.gunzip(in, out);
+```
+- **tar/tar.gz 는 미지원**(JDK 미포함) — 필요 시 commons-compress 옵트인 후속. zip 패스워드 암호화도 미지원(at-rest 암호화는 `framework-file` `storage.encrypt`).
+- 모든 메서드는 호출자 입/출력 스트림을 **닫지 않는다**(소유권 보존). 키가 틀린/조작된 데이터는 해제 도중 예외로 기동을 막는다.
 
 ### framework-file (파일 하드닝 — Range 스트리밍·presigned·확장자 정합·안티바이러스)
 기존 파일 저장(로컬/NAS/S3)에 더해 **대용량/스트리밍·메타 정합성·안티바이러스**를 옵트인으로 얹는다. 기존 `FileStorage` 인터페이스는 불변이며, 선택 기능은 capability 인터페이스로 추가돼 미지원 저장소는 자동 폴백한다. **신규 외부 의존성 0**(Range=JDK NIO, ClamAV=순수 소켓, S3Presigner=awssdk:s3 포함).
