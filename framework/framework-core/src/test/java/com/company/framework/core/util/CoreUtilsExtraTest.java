@@ -118,8 +118,8 @@ class CoreUtilsExtraTest {
         @DisplayName("null/빈 안전 헬퍼")
         void nullSafe() {
             assertThat(CollectionUtils.isEmpty((List<?>) null)).isTrue();
-            assertThat(CollectionUtils.emptyIfNull(null)).isEmpty();
-            assertThat(CollectionUtils.firstOrNull(List.of())).isNull();
+            assertThat(CollectionUtils.<String>emptyIfNull(null)).isEmpty();
+            assertThat(CollectionUtils.<String>firstOrNull(List.of())).isNull();
             assertThat(CollectionUtils.firstOrNull(List.of("a", "b"))).isEqualTo("a");
         }
 

@@ -53,6 +53,7 @@
 4. (선택) 아카이빙 후속: **tar/tar.gz**(commons-compress 옵트인) · zip 패스워드/암호화 아카이브. 공통 유틸 잔여=RetryUtils(보류).
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
+- **AssertJ + 미정 제네릭 모호성**(이번에 컴파일 실패): `assertThat(CollectionUtils.firstOrNull(List.of()))` 처럼 빈 `List.of()` 를 제네릭 메서드에 넘기면 반환 `T` 가 미정이라 `assertThat(Predicate)`/`assertThat(IntPredicate)` 후보가 겹쳐 "reference to assertThat is ambiguous". 해결=명시적 타입 인자(`CollectionUtils.<String>firstOrNull(...)`/`<String>emptyIfNull(null)`).
 - **tar 는 JDK 에 없다** — `java.util.zip` 은 zip/gzip/deflate 만. tar/tar.gz 는 commons-compress 가 필요 → "의존성 0" 원칙상 코어는 ZIP+GZIP 만, tar 는 옵트인 후속으로 분리.
 - **아카이브는 항상 안전 가드와 함께**: 해제는 zip-slip(`ArchiveSafety.sanitizeEntryName`/`resolveSafely`) + 압축폭탄(엔트리수·엔트리크기·총바이트) 둘 다 필수. `unzip` 콜백에 넘기는 스트림은 `BombGuardInputStream` 으로 감싸 **읽는 도중** 초과 시 예외(헤더 신뢰 금지).
 - **스트림 소유권**: archiver 메서드는 호출자 입/출력 스트림을 닫지 않는다(NonClosing 래퍼). 내부 Inflater/Deflater 만 try-with-resources 로 정리.
