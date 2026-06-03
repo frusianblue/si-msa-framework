@@ -93,7 +93,7 @@
 - 2026-06-03: 카탈로그 신설 + 10항목 실측 체크. #5 `framework-context` 착수.
 - 2026-06-03: #5 `framework-context` 완료(사용자 환경 빌드 통과).
 - 2026-06-03: **#7 `framework-image` 완료** — ImageIO 기반 리사이즈/썸네일·EXIF orientation 보정·메타(GPS) 제거·디컴프레션 폭탄 방지, 신규 외부 의존성 0. 엔진 javac 단독 + 기능 하니스 26/26 통과, config/배선은 context·pdf 패턴 미러(사용자 Gradle 검증 예정).
-- 2026-06-03: **#8+#9+#10 파일 하드닝 묶음 완료**(`framework-file*` 확장) — Range 206 스트리밍 다운로드 + S3 presigned PUT/GET(대용량 직행) · 확장자↔MIME 계열 정합(Tika 확장) · ClamAV INSTREAM AV 게이트(순수 소켓, 외부 의존성 0). 기존 `FileStorage` 불변(ISP capability 추가). 순수 JDK 코어 javac+하니스 35/35 통과(ByteRange 파서·확장자 정책·ClamAV mock 소켓 왕복·FileSystem Range), Spring/Tika/AWS 배선·S3 presigner 는 사용자 Gradle 검증 예정. image deprecation(PAYLOAD_TOO_LARGE→CONTENT_TOO_LARGE) 동봉.
+- 2026-06-03: **#8+#9+#10 파일 하드닝 묶음 완료**(`framework-file*` 확장) — Range 206 스트리밍 다운로드 + S3 presigned PUT/GET(대용량 직행) · 확장자↔MIME 계열 정합(Tika 확장) · ClamAV INSTREAM AV 게이트(순수 소켓, 외부 의존성 0). 기존 `FileStorage` 불변(ISP capability 추가). 순수 JDK 코어 javac+하니스 35/35 통과(ByteRange 파서·확장자 정책·ClamAV mock 소켓 왕복·FileSystem Range), 정식 JUnit 6종 추가. **사용자 환경 빌드/테스트 통과 확인** — `:framework:framework-file:test :framework:framework-file-s3:test :framework:framework-archtest:test spotlessApply` 그린(S3 오토컨피그 테스트는 신규 `S3Presigner` 빈에 맞춰 mock 추가로 수정). image deprecation(PAYLOAD_TOO_LARGE→CONTENT_TOO_LARGE) 동봉.
 
 ## 6. 추가 요청 대기열 (여기에 먼저 적어주세요 — 착수 시 위 표로 승격)
 > 형식: `- [ ] <기능명> — <왜 필요한지/기대 인수기준 한 줄>`

@@ -9,7 +9,7 @@
 **기본기능 카탈로그 #8+#9+#10 "파일 하드닝 묶음" 완료** (`framework-file*` 확장, 새 모듈 아님). 기존 `FileStorage`(store/load/delete/type)는 **불변**으로 두고 선택 기능을 **capability 인터페이스(ISP)** 로 추가 — **#8** HTTP Range 206 스트리밍 다운로드 + S3 presigned PUT/GET(대용량 클라 직행), **#9** 확장자↔검출 MIME **계열 정합**(Tika 확장), **#10** ClamAV INSTREAM 안티바이러스 게이트(**순수 JDK 소켓**). **신규 외부 의존성 0**. 직전 작업 image deprecation(`PAYLOAD_TOO_LARGE`→`CONTENT_TOO_LARGE`) 수정 동봉. 순수 JDK 코어 javac+하니스 35/35 통과.
 
 ## 최종 갱신
-- 일자: 2026-06-03 · 갱신자: <!-- 채우기 -->
+- 일자: 2026-06-03 · 갱신자: 파일 하드닝(#8+#9+#10) 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
@@ -27,7 +27,7 @@
 
 ## 현재 상태 (적용/검증)
 - ✅ **순수 JDK 코어 javac+하니스 35/35 통과**(실제 core `ErrorCode`/`BusinessException` + slf4j/HttpStatus stub): ByteRange 파서 전 케이스·ExtensionContentTypePolicy 정합/위장거부/계열통과·ClamAV INSTREAM **mock 소켓 왕복**(명령+청크 프레이밍 정확성·OK/FOUND/ERROR·fail-closed/open)·FileSystem loadRange 오프셋/길이/꼬리.
-- ⚠️ **Spring/Tika/AWS 배선은 작성 환경 Gradle 미검증**(Maven Central 차단) — 기존 file/s3·context·pdf 패턴 미러. 받는 쪽에서 `:framework:framework-file:test :framework:framework-file-s3:test` 로 확인.
+- ✅ **사용자 환경 빌드/테스트 통과 확인(2026-06-03)** — `:framework:framework-file:test :framework:framework-file-s3:test :framework:framework-archtest:test spotlessApply` 그린. ⚙️ **S3 테스트 1건 수정**: 새 `S3Presigner` 빈이 deep-stub mock 의 `getRegion()`=null 로 `Region.of(null)` 터져 컨텍스트 실패 → `S3FileStorageAutoConfigurationTest` 에 `S3Presigner` mock 빈 추가(s3Client 와 동일하게 `@ConditionalOnMissingBean` 양보). 운영 코드는 region 기본값 `ap-northeast-2` 라 정상, 테스트 결함이었음.
 - 설계상 arch 통과 예상: 새 AutoConfig 없음(기존에 빈만 추가) → `.imports` 무변경 · top-level `*Properties` 기존 · 필드주입 0 · Jackson 미사용 · 슬라이스 file→core/mybatis·s3→file 단방향.
 - **신규 외부 의존성 0**: Range=JDK NIO, ClamAV=순수 소켓, S3Presigner=awssdk:s3 포함 → build.gradle 무변경.
 
@@ -54,10 +54,10 @@ framework:
 - S3: `GET /{id}/presigned`(다운로드 URL) · `POST /presigned-upload?filename=&contentType=`(업로드 URL) · `POST /presigned-complete`(메타 등록). 대용량은 클라가 S3 직행(서버 비경유).
 
 ## 바로 다음 할 일 (Next)
-1. **사용자 환경 빌드 검증**: `./gradlew :framework:framework-file:test :framework:framework-file-s3:test :framework:framework-archtest:test spotlessApply`(+ image deprecation 사라졌는지).
-2. (devops) **CI 게이트**: `:framework-archtest:test` + 전 모듈 `:test` PR 차단 + 멀티모듈 jacoco 집계.
-3. **카탈로그 §6 대기열 승격**: 아카이빙/압축 · 일괄 처리(framework-batch 경계 정리). 또는 **서버측 S3 멀티파트 병렬 업로드**(TransferManager, 이번 백로그).
-4. (선택) presigned 업로드 비동기 후처리 스캔(신뢰경계 밖 본문 검증), 암호화 파일 키 회전.
+1. (devops) **CI 게이트**: `:framework-archtest:test` + 전 모듈 `:test` PR 차단 + 멀티모듈 jacoco 집계(루트 aggregate).
+2. **카탈로그 §6 대기열 승격**: 아카이빙/압축 · 일괄 처리(framework-batch 경계 정리). 또는 **서버측 S3 멀티파트 병렬 업로드**(TransferManager, 이번 백로그).
+3. (선택) 그릇 정비 — 게이트웨이 런타임 점검(CORS preflight·rate-limit 429)·k8s 멀티서비스(redis/secret/configmap, observability ServiceMonitor 실배포)·CI-CD 멀티서비스화.
+4. (선택) presigned 업로드 비동기 후처리 스캔(신뢰경계 밖 본문 검증), 암호화 파일 키 회전, 규제특화 잔여(pki/hsm/recon/egov).
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
 - **capability 인터페이스(ISP) 패턴**: 기존 `FileStorage` 불변, 선택기능은 `RangeReadableStorage`/`PresignedUrlStorage` 별도 인터페이스 + `instanceof` 분기·자동 폴백. 새 백엔드는 필요한 capability 만 선택 구현.
