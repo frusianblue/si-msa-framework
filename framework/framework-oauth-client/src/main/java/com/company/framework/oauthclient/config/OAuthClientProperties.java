@@ -111,6 +111,18 @@ public class OAuthClientProperties {
         /** redirect_uri 직접 지정(미지정 시 baseRedirectUri 로 조립). IdP 콘솔 등록값과 정확히 일치해야 한다. */
         private String redirectUri;
 
+        /** OIDC 강화 설정(id_token 검증/discovery/nonce). 기본 비활성 — 켜면 표준 OIDC RP 로 동작. */
+        @NestedConfigurationProperty
+        private Oidc oidc = new Oidc();
+
+        public Oidc getOidc() {
+            return oidc;
+        }
+
+        public void setOidc(Oidc oidc) {
+            this.oidc = oidc;
+        }
+
         public String getClientId() {
             return clientId;
         }
@@ -192,6 +204,75 @@ public class OAuthClientProperties {
         }
     }
 
+    /** OIDC(OpenID Connect) RP 강화 설정. provider 별로 켠다(기본 off — kakao/naver 등 비OIDC 흐름 보존). */
+    public static class Oidc {
+        /** OIDC 검증 on/off. 켜면 id_token 을 받아 검증하고 그 클레임으로 신원을 구성한다. */
+        private boolean enabled = false;
+
+        /** 기대 issuer(iss 클레임). discovery 출처로도 사용. */
+        private String issuer;
+
+        /** JWKS 엔드포인트. 미지정 시 discovery 로 보충. */
+        private String jwksUri;
+
+        /** discovery 문서 URL. 미지정 시 issuer 로부터 {@code /.well-known/openid-configuration} 조립. */
+        private String discoveryUri;
+
+        /** exp/nbf 허용 시계 오차. */
+        private Duration clockSkew = Duration.ofSeconds(60);
+
+        /** nonce 사용(authorize↔callback 바인딩, id_token 재생/위조 차단). 기본 on. */
+        private boolean nonce = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getIssuer() {
+            return issuer;
+        }
+
+        public void setIssuer(String issuer) {
+            this.issuer = issuer;
+        }
+
+        public String getJwksUri() {
+            return jwksUri;
+        }
+
+        public void setJwksUri(String jwksUri) {
+            this.jwksUri = jwksUri;
+        }
+
+        public String getDiscoveryUri() {
+            return discoveryUri;
+        }
+
+        public void setDiscoveryUri(String discoveryUri) {
+            this.discoveryUri = discoveryUri;
+        }
+
+        public Duration getClockSkew() {
+            return clockSkew;
+        }
+
+        public void setClockSkew(Duration clockSkew) {
+            this.clockSkew = clockSkew;
+        }
+
+        public boolean isNonce() {
+            return nonce;
+        }
+
+        public void setNonce(boolean nonce) {
+            this.nonce = nonce;
+        }
+    }
+
     /**
      * 알려진 공급자(google/kakao/naver)의 미지정 필드를 표준값으로 채운다. 명시값이 있으면 보존(override)한다.
      * 오토컨피그가 1회 호출한다.
@@ -209,6 +290,7 @@ public class OAuthClientProperties {
                             p::getUserInfoUri, p::setUserInfoUri, "https://openidconnect.googleapis.com/v1/userinfo");
                     defaultScope(p, List.of("openid", "email", "profile"));
                     defaultAttr(p, "sub", "email", "name");
+                    defaultUri(p.getOidc()::getIssuer, p.getOidc()::setIssuer, "https://accounts.google.com");
                 }
                 case "kakao" -> {
                     defaultUri(
@@ -228,6 +310,7 @@ public class OAuthClientProperties {
                     // 프리셋 없는 임의 공급자 — 사용자가 uri/attribute 를 직접 지정해야 한다(검증은 ProviderRegistry).
                 }
             }
+            applyOidcDefaults(p);
         });
     }
 
@@ -244,6 +327,12 @@ public class OAuthClientProperties {
         if (p.getUserNameAttribute() == null || p.getUserNameAttribute().isBlank()) p.setUserNameAttribute(userName);
         if (p.getEmailAttribute() == null || p.getEmailAttribute().isBlank()) p.setEmailAttribute(email);
         if (p.getNameAttribute() == null || p.getNameAttribute().isBlank()) p.setNameAttribute(name);
+    }
+
+    /** OIDC 활성 공급자의 신원 attribute 기본값(표준 클레임 sub/email/name). 명시값은 보존. */
+    private static void applyOidcDefaults(Provider p) {
+        if (p.getOidc() == null || !p.getOidc().isEnabled()) return;
+        defaultAttr(p, "sub", "email", "name");
     }
 
     public boolean isEnabled() {

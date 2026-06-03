@@ -167,3 +167,11 @@ OAuthTokenIssuer loginServiceTokenIssuer(LoginService loginService) {
 - [ ] IdP 콘솔에 redirect URI 등록(`{base}/api/v1/auth/oauth/{provider}/callback`)
 - [ ] client-id/secret 환경변수 주입
 - [ ] 다중 파드면 `state.store.type=redis` + redis 의존성
+
+---
+
+## 8. OIDC 강화(id_token 검증)
+
+표준 OIDC IdP(Keycloak/Azure AD/사내 SSO 등)에 대해 **id_token 을 직접 검증**(JWKS 서명·iss·aud·exp·nonce)
+하고 discovery 로 엔드포인트를 자동 채우려면 공급자별 `oidc.enabled=true` 를 켠다. 기본 off 라 kakao/naver 등
+비OIDC 흐름은 그대로다. 상세: [OIDC_HARDENING.md](./OIDC_HARDENING.md).

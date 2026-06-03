@@ -24,11 +24,29 @@ public class ProviderRegistry {
         if (p == null) {
             throw new BusinessException(ErrorCode.Common.UNAUTHORIZED, "지원하지 않는 소셜 로그인 공급자입니다: " + providerId);
         }
-        if (isBlank(p.getClientId())
-                || isBlank(p.getAuthorizationUri())
-                || isBlank(p.getTokenUri())
-                || isBlank(p.getUserInfoUri())
-                || isBlank(p.getUserNameAttribute())) {
+        if (isBlank(p.getClientId()) || isBlank(p.getUserNameAttribute())) {
+            throw new BusinessException(
+                    ErrorCode.Common.INTERNAL_ERROR,
+                    "소셜 로그인 공급자 설정이 불완전합니다(client-id/user-name-attribute): " + providerId);
+        }
+        boolean oidc = p.getOidc() != null && p.getOidc().isEnabled();
+        if (oidc) {
+            // OIDC: userinfo 는 선택(id_token 으로 신원 구성). 엔드포인트는 discovery 로 보충될 수 있으므로
+            // discovery 출처(issuer/discovery-uri) 또는 명시 엔드포인트(authorization+token+jwks) 중 하나는 있어야 한다.
+            boolean hasDiscovery = !isBlank(p.getOidc().getDiscoveryUri())
+                    || !isBlank(p.getOidc().getIssuer());
+            boolean hasExplicit = !isBlank(p.getAuthorizationUri())
+                    && !isBlank(p.getTokenUri())
+                    && !isBlank(p.getOidc().getJwksUri());
+            if (!hasDiscovery && !hasExplicit) {
+                throw new BusinessException(
+                        ErrorCode.Common.INTERNAL_ERROR,
+                        "OIDC 공급자 설정이 불완전합니다(oidc.issuer 또는 oidc.discovery-uri, 혹은 authorization/token/jwks 직접 지정 필요): "
+                                + providerId);
+            }
+            return p;
+        }
+        if (isBlank(p.getAuthorizationUri()) || isBlank(p.getTokenUri()) || isBlank(p.getUserInfoUri())) {
             throw new BusinessException(
                     ErrorCode.Common.INTERNAL_ERROR,
                     "소셜 로그인 공급자 설정이 불완전합니다(uri/client-id/user-name-attribute): " + providerId);
@@ -38,7 +56,16 @@ public class ProviderRegistry {
 
     /** IdP 인가 엔드포인트로 보낼 전체 URL(Authorization Code Flow). */
     public String authorizationUrl(String providerId, OAuthClientProperties.Provider p, String state) {
-        String scope = p.getScope() == null ? "" : String.join(" ", p.getScope());
+        return authorizationUrl(providerId, p, state, null);
+    }
+
+    /**
+     * 인가 URL(OIDC 옵션). nonce 가 있으면 {@code &nonce=} 를 붙이고, OIDC 활성 공급자는 scope 에 {@code openid}
+     * 가 없으면 자동 포함한다(id_token 발급 보장).
+     */
+    public String authorizationUrl(String providerId, OAuthClientProperties.Provider p, String state, String nonce) {
+        boolean oidc = p.getOidc() != null && p.getOidc().isEnabled();
+        String scope = scopeString(p, oidc);
         StringBuilder sb = new StringBuilder(p.getAuthorizationUri());
         sb.append(p.getAuthorizationUri().contains("?") ? "&" : "?");
         sb.append("response_type=code");
@@ -46,7 +73,18 @@ public class ProviderRegistry {
         sb.append("&redirect_uri=").append(enc(redirectUri(providerId, p)));
         sb.append("&state=").append(enc(state));
         if (!scope.isBlank()) sb.append("&scope=").append(enc(scope));
+        if (nonce != null && !nonce.isBlank()) sb.append("&nonce=").append(enc(nonce));
         return sb.toString();
+    }
+
+    /** scope 문자열. OIDC 면 openid 를 보장한다. */
+    private static String scopeString(OAuthClientProperties.Provider p, boolean oidc) {
+        java.util.List<String> scope =
+                p.getScope() == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(p.getScope());
+        if (oidc && scope.stream().noneMatch("openid"::equalsIgnoreCase)) {
+            scope.add(0, "openid");
+        }
+        return String.join(" ", scope);
     }
 
     /** 토큰 교환·인가 양쪽에 동일하게 쓰는 redirect_uri(IdP 콘솔 등록값과 일치해야 함). */

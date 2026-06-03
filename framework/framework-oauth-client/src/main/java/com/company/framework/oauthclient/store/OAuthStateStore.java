@@ -19,4 +19,17 @@ public interface OAuthStateStore {
 
     /** state 를 검증하며 1회 소비(존재 시 즉시 삭제). 유효하면 공급자 id 를 반환. */
     Optional<String> consume(String state);
+
+    /** OIDC: state 에 nonce 를 함께 바인딩해 저장(authorize↔callback id_token nonce 검증용). */
+    default void save(String state, String providerId, String nonce, Duration ttl) {
+        save(state, providerId, ttl); // nonce 미지원 구현은 provider 만 저장(기본 동작)
+    }
+
+    /** OIDC: state 를 1회 소비하며 공급자 id + nonce 를 반환. */
+    default Optional<StateData> consumeState(String state) {
+        return consume(state).map(providerId -> new StateData(providerId, null));
+    }
+
+    /** 소비된 state 에 묶인 데이터(공급자 id + nonce). nonce 는 비OIDC 면 null. */
+    record StateData(String providerId, String nonce) {}
 }

@@ -3,6 +3,10 @@ package com.company.framework.oauthclient.config;
 import com.company.framework.oauthclient.core.OAuthClient;
 import com.company.framework.oauthclient.core.OAuthUserResolver;
 import com.company.framework.oauthclient.core.ProviderRegistry;
+import com.company.framework.oauthclient.oidc.IdTokenVerifier;
+import com.company.framework.oauthclient.oidc.JwksKeyResolver;
+import com.company.framework.oauthclient.oidc.OidcDiscoveryClient;
+import com.company.framework.oauthclient.oidc.OidcMetadataResolver;
 import com.company.framework.oauthclient.store.InMemoryOAuthStateStore;
 import com.company.framework.oauthclient.store.OAuthStateStore;
 import com.company.framework.oauthclient.store.RedisOAuthStateStore;
@@ -58,6 +62,32 @@ public class OAuthClientAutoConfiguration {
         return new OAuthClient(RestClient.create());
     }
 
+    // ===================== OIDC 강화: discovery / JWKS / id_token 검증 =====================
+
+    @Bean
+    @ConditionalOnMissingBean
+    public OidcDiscoveryClient oidcDiscoveryClient() {
+        return new OidcDiscoveryClient(RestClient.create());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public OidcMetadataResolver oidcMetadataResolver(OidcDiscoveryClient discoveryClient) {
+        return new OidcMetadataResolver(discoveryClient);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public JwksKeyResolver jwksKeyResolver() {
+        return new JwksKeyResolver(RestClient.create(), null); // 캐시 TTL 기본 1시간(회전 시 미발견 kid 재조회)
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public IdTokenVerifier idTokenVerifier(JwksKeyResolver jwksKeyResolver) {
+        return new IdTokenVerifier(jwksKeyResolver);
+    }
+
     // ===================== state 저장소: memory | redis =====================
 
     @Bean
@@ -98,8 +128,11 @@ public class OAuthClientAutoConfiguration {
             OAuthStateStore stateStore,
             OAuthUserResolver userResolver,
             OAuthTokenIssuer tokenIssuer,
+            OidcMetadataResolver metadataResolver,
+            IdTokenVerifier idTokenVerifier,
             OAuthClientProperties properties) {
-        return new OAuthLoginService(registry, client, stateStore, userResolver, tokenIssuer, properties);
+        return new OAuthLoginService(
+                registry, client, stateStore, userResolver, tokenIssuer, metadataResolver, idTokenVerifier, properties);
     }
 
     @Bean

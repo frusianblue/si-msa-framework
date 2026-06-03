@@ -20,4 +20,8 @@ dependencies {
     //   (운영에선 Boot 가 ASM 으로 메타데이터를 읽어 미사용 타입을 로드하지 않으므로 redis 없는 앱도 정상.)
     testImplementation 'org.springframework.boot:spring-boot-starter-web'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    // OIDC id_token 검증 테스트: jjwt-api 는 framework-security(api)로 컴파일에 이미 노출됨.
+    //   테스트에서 토큰 서명/검증을 실제로 수행하려면 impl/jackson 이 test 런타임에 필요(운영 런타임엔 security 가 전이 제공).
+    testRuntimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    testRuntimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 }

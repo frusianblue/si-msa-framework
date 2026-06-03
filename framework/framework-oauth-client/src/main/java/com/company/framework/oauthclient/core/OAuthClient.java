@@ -60,6 +60,39 @@ public class OAuthClient {
         return String.valueOf(accessToken);
     }
 
+    /**
+     * 인가코드를 토큰으로 교환하고 <b>전체 토큰 응답</b>(access_token/id_token/token_type/...)을 파싱해 반환한다.
+     * OIDC 검증을 위해 id_token 이 필요하므로 access_token 만 추출하는 {@link #exchangeCodeForAccessToken} 과 별도로 둔다.
+     */
+    public Map<String, Object> exchangeCodeForTokens(
+            OAuthClientProperties.Provider p, String code, String redirectUri) {
+        String form = form(Map.of(
+                "grant_type",
+                "authorization_code",
+                "code",
+                code,
+                "redirect_uri",
+                redirectUri,
+                "client_id",
+                p.getClientId(),
+                "client_secret",
+                p.getClientSecret() == null ? "" : p.getClientSecret()));
+        String body;
+        try {
+            body = restClient
+                    .post()
+                    .uri(p.getTokenUri())
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(form)
+                    .retrieve()
+                    .body(String.class);
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.Common.UNAUTHORIZED, "토큰 교환에 실패했습니다: " + e.getMessage());
+        }
+        return parse(body);
+    }
+
     /** 액세스토큰으로 userinfo 를 조회해 원본 Map 으로 반환한다. */
     public Map<String, Object> fetchUserInfo(OAuthClientProperties.Provider p, String accessToken) {
         String body;
