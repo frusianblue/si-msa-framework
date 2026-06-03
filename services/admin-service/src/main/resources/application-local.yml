@@ -1,3 +1,7 @@
+# =====================================================================
+# local : 로컬 개발 기본 = H2 인메모리 (외부 설치 0)
+#   실행: ./gradlew :services:admin-service:bootRun  (= profiles.active=local)
+# =====================================================================
 spring:
   datasource:
     url: jdbc:h2:mem:admindb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
@@ -6,8 +10,19 @@ spring:
     driver-class-name: org.h2.Driver
   flyway:
     locations: classpath:db/migration,classpath:db/seed-local
+  h2:
+    console:
+      enabled: true   # http://localhost:8081/h2-console  (JDBC: jdbc:h2:mem:admindb, user sa)
 
 framework:
   security:
     jwt:
       secret: change-this-to-a-very-long-secret-key-at-least-32-bytes!!
+    token-store:
+      type: memory
+  audit:
+    store:
+      type: jdbc      # 감사 로그를 H2 에 적재 → /h2-console 에서 검증
+  cache:
+    redis:
+      enabled: false

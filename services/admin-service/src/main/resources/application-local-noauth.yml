@@ -1,0 +1,12 @@
+# =====================================================================
+# local-noauth : 로그인/권한 우회(과거 dev 역할). local 과 함께 사용.
+#   ./gradlew :services:admin-service:bootRun \
+#     --args='--spring.profiles.active=local,local-noauth'
+# =====================================================================
+framework:
+  security:
+    dev-auth:
+      enabled: true
+      user-id: devadmin
+      roles: [ROLE_ADMIN, ROLE_USER]
+      allow-header-override: true

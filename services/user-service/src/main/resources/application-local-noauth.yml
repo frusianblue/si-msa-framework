@@ -1,0 +1,16 @@
+# =====================================================================
+# local-noauth : 로그인/권한 없이 바로 개발 (과거 'dev' 프로파일이 하던 역할)
+#   ⚠️ 변경 안내: 예전엔 `--spring.profiles.active=local,dev` 였다.
+#                이제 dev 는 "개발 서버" 환경을 뜻하도록 의미가 바뀌었으므로,
+#                로컬 로그인 우회는 이 local-noauth 로 옮겼다.
+#   실행: ./gradlew :services:user-service:bootRun \
+#           --args='--spring.profiles.active=local,local-noauth'
+#   (DB·Redis 조합과 자유롭게 겹쳐 쓸 수 있다: local,local-postgres,local-noauth ...)
+# =====================================================================
+framework:
+  security:
+    dev-auth:
+      enabled: true
+      user-id: devadmin
+      roles: [ROLE_ADMIN, ROLE_USER]
+      allow-header-override: true   # 호출마다 X-Dev-Roles 헤더로 권한 변경 가능

@@ -1,3 +1,10 @@
+# =====================================================================
+# local : 로컬 개발 기본 = H2 인메모리 (외부 설치 0)
+#   실행: ./gradlew :services:user-service:bootRun
+#        (= --spring.profiles.active=local)
+#   DB 를 실제 PostgreSQL 로 바꾸려면 local,local-postgres 로 실행.
+#   Redis 기능을 쓰려면 local,local-redis 추가.
+# =====================================================================
 spring:
   datasource:
     url: jdbc:h2:mem:sidb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
@@ -7,6 +14,12 @@ spring:
   flyway:
     # 운영 마이그레이션 + 로컬 전용 시드 데이터
     locations: classpath:db/migration,classpath:db/seed-local
+  # H2 웹 콘솔: 감사 로그가 DB 에 실제로 쌓이는지 눈으로 확인하는 용도.
+  #   브라우저 http://localhost:8080/h2-console
+  #   JDBC URL: jdbc:h2:mem:sidb   /  User: sa  /  Password: (빈칸)
+  h2:
+    console:
+      enabled: true
 
 framework:
   security:
@@ -14,3 +27,15 @@ framework:
       secret: change-this-to-a-very-long-secret-key-at-least-32-bytes!!
     token-store:
       type: memory
+  # 로컬에서 감사 로그를 H2 에 적재 → /h2-console 에서 SELECT 로 검증 가능.
+  audit:
+    store:
+      type: jdbc
+  # Redis 는 기본 off (local-redis 오버레이에서 on)
+  cache:
+    redis:
+      enabled: false
+
+logging:
+  level:
+    com.company.user.mapper: debug   # SQL 로깅

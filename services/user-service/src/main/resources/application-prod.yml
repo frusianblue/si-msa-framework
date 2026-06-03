@@ -1,0 +1,54 @@
+# =====================================================================
+# prod : 운영 (모든 비밀/엔드포인트는 환경변수·시크릿으로 주입)
+#   기본값을 두지 않아 미주입 시 기동 실패하게 만든다(설정 누락 조기 발견).
+#   K8s: SPRING_PROFILES_ACTIVE=prod + Secret/ConfigMap 으로 DB_*/REDIS_*/JWT_SECRET 주입.
+# =====================================================================
+spring:
+  datasource:
+    url: ${DB_URL}                 # 예) jdbc:postgresql://postgres:5432/sidb (기본값 없음 = 필수)
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:30}
+      minimum-idle: ${DB_POOL_MIN:10}
+      connection-timeout: 3000
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  flyway:
+    baseline-on-migrate: false     # 운영은 baseline 후엔 끔
+    clean-disabled: true           # 운영 DB 에서 flyway clean 금지(사고 방지)
+
+framework:
+  security:
+    jwt:
+      secret: ${JWT_SECRET}        # 필수 주입(기본값 없음)
+    token-store:
+      type: redis
+  crypto:
+    aes-secret: ${AES_SECRET}      # 필수 주입
+  audit:
+    store:
+      type: jdbc
+  cache:
+    redis:
+      enabled: true
+  file:
+    storage:
+      type: ${FILE_STORAGE_TYPE:s3}
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING:0.1}   # 운영은 샘플링 축소
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: info
+    com.company.user.mapper: info          # 운영은 SQL 디버그 끔

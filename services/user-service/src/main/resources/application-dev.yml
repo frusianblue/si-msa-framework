@@ -1,9 +1,40 @@
-# 개발 초기: 로그인/권한 없이 바로 개발. (local 과 함께 사용)
-#   ./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,dev'
+# =====================================================================
+# dev : 개발 서버 환경 (원격 인프라, 환경변수 주입)
+#   ⚠️ 의미 변경: 예전 dev 는 "로컬 로그인 우회" 오버레이였다.
+#                이제 dev = 공용 개발 서버(실 PostgreSQL/Redis) 를 뜻한다.
+#                로컬 로그인 우회가 필요하면 local-noauth 를 쓴다.
+#   K8s/배포에서: SPRING_PROFILES_ACTIVE=dev + DB_*/REDIS_* 환경변수 주입.
+# =====================================================================
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/sidb}
+    username: ${DB_USER:siuser}
+    password: ${DB_PASSWORD:sipass}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
 framework:
   security:
-    dev-auth:
+    token-store:
+      type: ${TOKEN_STORE_TYPE:redis}   # 개발 서버는 다중 인스턴스 가정 → redis
+  audit:
+    store:
+      type: jdbc                        # 개발 서버도 DB 영속(조회 API 검증)
+  cache:
+    redis:
       enabled: true
-      user-id: devadmin
-      roles: [ROLE_ADMIN, ROLE_USER]
-      allow-header-override: true   # 호출마다 X-Dev-Roles 헤더로 권한 변경 가능
+  file:
+    storage:
+      type: ${FILE_STORAGE_TYPE:local}  # 개발은 보통 local/nas, 필요 시 s3 (+ framework-file-s3)
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING:1.0}   # 개발은 100% 추적, 운영에서 낮춤

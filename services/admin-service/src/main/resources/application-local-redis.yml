@@ -1,0 +1,19 @@
+# =====================================================================
+# local-redis : Redis 기능 on (local 과 함께 사용)
+#   ⚠️ build.gradle 에 framework-redis / framework-cache-redis +
+#      spring-boot-starter-data-redis 의존 추가 필요. docs/LOCAL_SETUP.md 참고.
+# =====================================================================
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+framework:
+  security:
+    token-store:
+      type: redis
+  cache:
+    redis:
+      enabled: true
+      time-to-live: 10m

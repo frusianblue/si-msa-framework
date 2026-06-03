@@ -1,0 +1,31 @@
+# =====================================================================
+# local-redis : Redis 기능(분산 캐시 / 토큰스토어 / 로그인시도 카운터) on
+#   local 과 함께 사용. 실행:
+#     ./gradlew :services:user-service:bootRun \
+#       --args='--spring.profiles.active=local,local-redis'
+#   PG 까지 함께면: local,local-postgres,local-redis
+#
+#   ⚠️ 사전 조건:
+#     1) 로컬에 Redis 설치·기동 (docs/LOCAL_SETUP.md)
+#     2) build.gradle 에 의존 추가 (둘 다 또는 필요한 것만):
+#          implementation project(':framework:framework-redis')        // 토큰스토어/로그인시도
+#          implementation project(':framework:framework-cache-redis')  // 분산 캐시
+#          implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+# =====================================================================
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # password: ${REDIS_PASSWORD:}   # 로컬 무인증이면 비워둠
+
+framework:
+  security:
+    token-store:
+      type: redis        # 리프레시 토큰/블랙리스트를 Redis 에 저장(다중 인스턴스 공유)
+  cache:
+    redis:
+      enabled: true      # core 의 로컬 Caffeine 대신 Redis 분산 캐시 사용
+      time-to-live: 10m
+      ttls:
+        commonCode: 1h

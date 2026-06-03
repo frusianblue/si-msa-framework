@@ -1,0 +1,30 @@
+# =====================================================================
+# dev : 개발 서버 환경 (원격 인프라, 환경변수 주입)
+# =====================================================================
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/sidb}
+    username: ${DB_USER:siuser}
+    password: ${DB_PASSWORD:sipass}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+framework:
+  security:
+    token-store:
+      type: ${TOKEN_STORE_TYPE:redis}
+  audit:
+    store:
+      type: jdbc
+  cache:
+    redis:
+      enabled: true
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING:1.0}

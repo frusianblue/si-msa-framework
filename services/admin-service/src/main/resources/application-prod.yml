@@ -1,0 +1,47 @@
+# =====================================================================
+# prod : 운영 (시크릿 주입, 미주입 시 기동 실패)
+# =====================================================================
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:30}
+      minimum-idle: ${DB_POOL_MIN:10}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  flyway:
+    baseline-on-migrate: false
+    clean-disabled: true
+
+framework:
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+    token-store:
+      type: redis
+  crypto:
+    aes-secret: ${AES_SECRET}
+  audit:
+    store:
+      type: jdbc
+  cache:
+    redis:
+      enabled: true
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING:0.1}
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: info

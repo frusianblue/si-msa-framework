@@ -1,0 +1,14 @@
+# =====================================================================
+# local-postgres : DB 를 H2 → 로컬 PostgreSQL 로 교체 (local 과 함께 사용)
+#   ./gradlew :services:admin-service:bootRun \
+#     --args='--spring.profiles.active=local,local-postgres'
+# =====================================================================
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/sidb}
+    username: ${DB_USER:siuser}
+    password: ${DB_PASSWORD:sipass}
+    driver-class-name: org.postgresql.Driver
+  h2:
+    console:
+      enabled: false

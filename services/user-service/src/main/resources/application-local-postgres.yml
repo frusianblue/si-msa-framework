@@ -1,0 +1,23 @@
+# =====================================================================
+# local-postgres : DB 만 H2 → 로컬 설치 PostgreSQL 로 교체하는 오버레이
+#   반드시 local 과 함께 사용한다(나머지 로컬 설정은 local 에서 상속).
+#   실행: ./gradlew :services:user-service:bootRun \
+#           --args='--spring.profiles.active=local,local-postgres'
+#
+#   사전 준비(로컬 PostgreSQL): docs/LOCAL_SETUP.md 참고
+#     CREATE DATABASE sidb;  CREATE USER siuser PASSWORD 'sipass';  GRANT ...
+# =====================================================================
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/sidb}
+    username: ${DB_USER:siuser}
+    password: ${DB_PASSWORD:sipass}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 3000
+  # H2 콘솔은 PG 에선 불필요
+  h2:
+    console:
+      enabled: false

@@ -1,18 +1,19 @@
+# =====================================================================
+# admin-service / 공통 설정 (모든 프로파일 공유)
+#   환경 구분: local | dev | prod  (+ local-postgres / local-redis / local-noauth 오버레이)
+#   상세는 user-service 의 application.yml 주석 및 docs/LOCAL_SETUP.md 참고.
+# =====================================================================
 server:
   port: 8081
 
 spring:
   application:
     name: admin-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
   threads:
     virtual:
       enabled: true
-  datasource:
-    url: jdbc:postgresql://localhost:5432/sidb
-    username: ${DB_USER:siuser}
-    password: ${DB_PASSWORD:sipass}
-    driver-class-name: org.postgresql.Driver
-
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -28,18 +29,26 @@ framework:
       # user-service 와 동일한 시크릿이어야 발급된 토큰을 검증할 수 있음(MSA 공유)
       secret: ${JWT_SECRET:change-this-to-a-very-long-secret-key-at-least-32-bytes!!}
       access-token-validity-seconds: 1800
+    token-store:
+      type: ${TOKEN_STORE_TYPE:memory}
   crypto:
     aes-secret: ${AES_SECRET:admin-project-aes-secret-change-me}
   openapi:
     title: "관리자 서비스 API"
     version: "v1"
     description: "권한/메뉴 관리 및 보안 캐시 갱신 API"
+  audit:
+    enabled: true
+    method-audit: true
+    login-audit: true
+    store:
+      type: ${AUDIT_STORE_TYPE:logging}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,metrics
   endpoint:
     health:
       probes:
