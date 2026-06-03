@@ -4,6 +4,7 @@ import com.company.framework.core.response.ApiResponse;
 import com.company.framework.security.loginattempt.LoginAttemptProperties;
 import com.company.framework.security.support.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,7 +25,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<Object> login(@RequestBody LoginCommand command, HttpServletRequest request) {
+    public ApiResponse<Object> login(@Valid @RequestBody LoginCommand command, HttpServletRequest request) {
         String clientIp = ClientIpResolver.resolve(request, loginAttemptProperties.getClientIpHeader());
         LoginOutcome outcome = loginService.beginLogin(command, clientIp);
         if (outcome instanceof LoginOutcome.Authenticated authenticated) {

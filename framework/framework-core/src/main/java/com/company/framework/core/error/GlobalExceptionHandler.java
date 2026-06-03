@@ -15,6 +15,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -47,6 +48,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleConstraint(ConstraintViolationException e) {
         return common(ErrorCode.Common.INVALID_INPUT, e.getMessage());
+    }
+
+    // Spring Framework 6.1+/7: 컨트롤러 메서드 파라미터(@RequestParam/@PathVariable 등) 검증 실패.
+    // 이 예외를 잡지 않으면 ApiResponse 포맷이 아닌 기본 ProblemDetail 로 응답돼 형식이 깨진다.
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHandlerMethodValidation(HandlerMethodValidationException e) {
+        return common(ErrorCode.Common.INVALID_INPUT, "요청 파라미터 검증에 실패했습니다.");
     }
 
     // ===== 잘못된 요청 형식 =====

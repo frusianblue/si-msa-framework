@@ -14,6 +14,7 @@ import com.company.framework.security.handler.RestAuthenticationEntryPoint;
 import com.company.framework.security.jwt.JwtAuthenticationFilter;
 import com.company.framework.security.jwt.JwtProperties;
 import com.company.framework.security.jwt.JwtProvider;
+import com.company.framework.security.jwt.JwtSecretSafetyGuard;
 import com.company.framework.security.loginattempt.InMemoryLoginAttemptService;
 import com.company.framework.security.loginattempt.LoginAttemptProperties;
 import com.company.framework.security.loginattempt.LoginAttemptService;
@@ -77,6 +78,12 @@ public class SecurityAutoConfiguration {
     @Bean
     public JwtProvider jwtProvider(JwtProperties props) {
         return new JwtProvider(props);
+    }
+
+    /** prod 에서 기본/약한 JWT 시크릿이면 부팅 실패시키는 안전장치(dev-auth 가드와 동일 패턴). */
+    @Bean
+    public JwtSecretSafetyGuard jwtSecretSafetyGuard(JwtProperties props, Environment env) {
+        return new JwtSecretSafetyGuard(props, env);
     }
 
     @Bean
