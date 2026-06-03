@@ -1,0 +1,23 @@
+// 선택형 모듈: 소셜 로그인(OAuth 2.0 / OIDC) → 외부 IdP 에서 신원확인 후 "자체 JWT" 발급.
+// 의존성 추가 + framework.oauth-client.enabled=true + OAuthUserResolver 빈 등록(앱) 으로만 활성.
+// 새 외부 의존성 0개: 외부 호출은 Spring RestClient(web), JSON 파싱은 Jackson 3(tools.jackson) — 둘 다 core 가 전이 노출.
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // 토큰 발급 블록(JwtProvider/TokenStore/AuthenticatedUser/TokenResponse) 재사용 → security 단방향 의존.
+    api project(':framework:framework-security')
+    // ApiResponse/BusinessException/ErrorCode 직접 사용(정직한 직접 의존). security 가 core 를 전이하나 명시.
+    api project(':framework:framework-core')
+
+    // RestClient/서블릿(컨트롤러)·redis(state.store=redis) 는 호스트 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지).
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // 오토컨피그 로딩 테스트(ApplicationContextRunner)는 OAuthClientAutoConfiguration 을 리플렉션 introspect 하며
+    //   @Bean 파라미터/반환 타입(RestClient/StringRedisTemplate/컨트롤러)을 전부 로드한다.
+    //   @ConditionalOnClass 와 무관하므로 main 의 compileOnly 2종을 test 에 그대로 다시 선언해야 컨텍스트가 뜬다.
+    //   (운영에선 Boot 가 ASM 으로 메타데이터를 읽어 미사용 타입을 로드하지 않으므로 redis 없는 앱도 정상.)
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
+}

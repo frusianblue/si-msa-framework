@@ -33,6 +33,7 @@ include 'framework:framework-image'        // 선택형: 이미지 처리(리사
 include 'framework:framework-archive'      // 선택형: 아카이빙/압축(ZIP 다중엔트리 + GZIP 단일스트림, zip-slip·압축폭탄 가드, java.util.zip 기반·새 의존성 0)
 include 'framework:framework-file-batch'  // 선택형: 파일 일괄처리(여러 파일 동일작업 일괄 + 부분실패 격리 + 가상스레드 병렬, image/archive 위임·새 의존성 0)
 include 'framework:framework-archtest'        // 테스트 전용: ArchUnit 아키텍처/레이어/네이밍/순환 규칙 강제(배포 산출물 아님)
+include 'framework:framework-oauth-client'
 
 // ----- 업무 / 인프라 서비스 -----
 include 'services:gateway'
