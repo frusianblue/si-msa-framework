@@ -1,0 +1,32 @@
+// 선택형 모듈: SAML 2.0 SP(Service Provider) → SAML 만 말하는 외부/사내 IdP 에서 신원확인 후 "자체 JWT" 발급.
+//   - 활성 조건: 의존성 추가 + framework.saml-sp.enabled=true + SamlUserResolver 빈 등록(앱) + registrations 설정.
+//   - ⚠️ 이 프레임워크 최초의 "새 외부 의존성 0" 예외: SAML 은 XML 서명 검증 때문에 OpenSAML 이 불가피하다(직접 파싱 금지).
+//
+// OpenSAML 의존/버전/저장소 — 확정 사항(2026-06-04 조사):
+//   · spring-security-saml2-service-provider 가 OpenSAML(opensaml-core/-saml-api/-saml-impl)을 "전이로" 끌어오고
+//     버전도 Spring Security 가 관리한다("Security depends on OpenSAML by default" — SS 공식 문서). 따라서 여기서
+//     opensaml-* 를 명시 선언하거나 버전을 핀하지 않는다(SS 가 관리하는 정합 버전을 그대로 받는다). 이전 초안의
+//     `${openSamlVersion}` 명시 핀은 (a) 루트 ext 미정의로 설정 단계 실패를 유발하고 (b) SS 관리 버전과 어긋날 위험이
+//     있어 제거했다.
+//   · 저장소: OpenSAML 4+ 는 Maven Central 에 게시되지 않고 Shibboleth 저장소에만 있다 → 루트 build.gradle 의
+//     allprojects.repositories 에 build.shibboleth.net/maven/releases 를 org.opensaml/net.shibboleth 그룹 한정으로
+//     추가해 두었다(필수, fallback 아님). (받는 쪽에서 `./gradlew :framework:framework-saml-sp:dependencies` 로
+//     실제 해소 버전/출처 확인 권장.)
+dependencies {
+    // 자체 JWT 발급(JwtProvider/TokenStore/AuthenticatedUser/TokenResponse) 재사용 → security 단방향 의존.
+    api project(':framework:framework-security')
+    // ApiResponse/BusinessException/ErrorCode 직접 사용(정직한 직접 의존). security 가 core 를 전이하나 명시.
+    api project(':framework:framework-core')
+
+    // Spring Security SAML2 SP 본체 + (전이) OpenSAML. 버전은 Spring Security(=Boot import) 가 관리 → 미명시.
+    implementation 'org.springframework.security:spring-security-saml2-service-provider'
+
+    // 서블릿(필터체인/핸들러)은 호스트 앱이 제공 → 컴파일만(드래그인 방지).
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // 오토컨피그 로딩 테스트(ApplicationContextRunner)는 SamlSpAutoConfiguration 을 introspect 하며 @Bean 파라미터/반환
+    //   타입(HttpSecurity/RelyingPartyRegistrationRepository/서블릿)을 로드한다. main 의 compileOnly 를 test 에 재선언.
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+}

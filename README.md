@@ -18,6 +18,7 @@ framework/
   framework-mybatis   MyBatis 공통 설정(카멜케이스 등) + BaseEntity(감사컬럼)
   framework-security  JWT 인증 + DB기반 RBAC(동적 인가) + 메뉴관리 + 시큐어 헤더 (auto-config)
   framework-oauth-client  소셜 로그인(OAuth2/OIDC → 자체 JWT 발급, google/kakao/naver) — 선택
+  framework-saml-sp   SAML 2.0 SP(외부 SAML IdP 신원확인 → 자체 JWT, 공공/대기업 SSO) — 선택
 services/
   gateway             Spring Cloud Gateway (라우팅 + CircuitBreaker + 엣지 JWT 인증)
   user-service        샘플 업무 서비스 (프레임워크 사용 예시)
@@ -387,6 +388,27 @@ gateway:
 #### 중앙 로그아웃 / 모든 기기 로그아웃 (SSO A)
 
 `gateway.auth.blacklist-check.enabled=true`(redis 전용) 면 게이트웨이가 검증 시 토큰 `jti` 를 블랙리스트(`bl:{jti}`)에서 reactive 조회해 **로그아웃된 토큰을 엣지에서 401 차단**한다 — 한 곳에서 로그아웃하면 전 서비스 즉시 무효. `POST /api/v1/auth/logout-all` 은 그 사용자의 **모든 세션**을 무효화한다(완전 커버는 `framework.security.concurrent-session.enabled=true` + `token-store.type=redis`). **상세 → `docs/modules/SSO_CENTRAL_LOGOUT.md`.**
+
+### framework-saml-sp (SAML 2.0 SP → 자체 JWT)
+
+OAuth/OIDC 와 같은 결의 **표준 프로토콜 SSO** — SAML 만 말하는 외부/사내 IdP(공공 통합인증, 일부 그룹 SSO, Keycloak/Azure AD 의 SAML 모드)에 **SP(Service Provider)로 연동**한다. Spring Security SAML2 SP 가 IdP 메타데이터로 등록·AuthnRequest 발행·서명 assertion 검증까지 처리하고, ACS 성공 시 **서버 세션 없이** 신원을 `SamlUserResolver`(앱 구현)로 우리 사용자에 매핑해 기존 JWT/Refresh 를 그대로 발급한다. SAML 은 신원확인 프로토콜일 뿐, 이후 운영은 기존 토큰/게이트웨이/context 그대로다.
+
+켜는 법(3단계): ① 의존성 추가 ② `framework.saml-sp.enabled=true` + `registrations.<id>.metadata-uri` ③ `SamlUserResolver` 빈 등록(외부신원→우리 사용자; `OAuthUserResolver`/자체 `Authenticator` 와 대칭).
+
+```yaml
+framework:
+  saml-sp:
+    enabled: true
+    registrations:
+      corp:
+        metadata-uri: "https://idp.example.com/realms/corp/protocol/saml/descriptor"
+        email-attribute: "email"        # 선택(미지정 시 email/mail/urn:oid 후보 자동)
+        name-attribute: "displayName"   # 선택
+```
+
+엔드포인트(SS 기본): 메타데이터 `GET /saml2/service-provider-metadata/{id}` · 로그인 `GET /saml2/authenticate/{id}` · ACS `POST /login/saml2/sso/{id}`.
+
+⚠️ **이 프레임워크 최초의 "새 외부 의존성 0" 예외** — SAML 은 XML 서명 검증 때문에 OpenSAML 이 불가피하다. `spring-security-saml2-service-provider` 가 OpenSAML 을 전이로 끌어오고(버전=Spring Security 관리, 직접 핀하지 않음) **OpenSAML 4+ 는 Maven Central 밖이라** 루트 `build.gradle` 에 Shibboleth 저장소를 그룹 한정으로 추가해 두었다(반영 완료). 멀티 파드는 현재 게이트웨이/인그레스 **스티키 세션**으로 SAML 핸드셰이크(수초) 구간을 묶는다(redis 공유 AuthnRequest 저장소는 후속). **상세 → `docs/modules/SAML_SP.md`.**
 
 ## 데이터·연계 / 업무 생산성 모듈 (2026-06 추가, 선택형)
 

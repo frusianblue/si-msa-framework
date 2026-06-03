@@ -6,77 +6,75 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**인증 로드맵 3) SSO — A) 중앙 로그아웃/logout-all + B-OIDC) OIDC RP 강화 완료.** 다음 = **B-SAML) SAML 2.0 SP**.
+**인증 로드맵 3) SSO — B-SAML) SAML 2.0 SP 완료 (`framework-saml-sp` 신설·등록·검증가능 상태).** 다음 = SSO 후속(redis AuthnRequest 저장소·SLO) 또는 C) Authorization Server / 4) Passwordless.
 
-**(A) 사내 SSO 중앙 로그아웃**(이전 드롭, 본 세션서 컴파일 에러 2건 수정 반영): 게이트웨이가 jti 추출 후 `RedisGatewayTokenBlacklist`(`bl:{jti}` reactive 조회)로 **로그아웃 토큰을 엣지 401 차단**(`gateway.auth.blacklist-check.enabled`, redis 전용). `LoginService.logoutAll(access, ip)` = 현재 토큰 항상 블랙리스트(안전망) + `ConcurrentSessionService` 순회로 전 세션 무효화, `POST /api/v1/auth/logout-all`. 완전 커버는 `concurrent-session.enabled=true`+`token.store=redis`. 문서 `docs/modules/SSO_CENTRAL_LOGOUT.md`.
+외부 SAML IdP(공공 통합인증·Keycloak/Azure AD SAML 모드)에 **SP 로 연동** → IdP 메타데이터 기반 RelyingParty 등록(`RelyingPartyRegistrations.fromMetadataLocation`) → 전용 `SecurityFilterChain`(`/saml2/**`,`/login/saml2/**`) → ACS 성공 시 **서버 세션 없이** NameID/속성 → `SamlAttributeMapper` 정규화 → `SamlUserResolver`(앱 구현) 매핑 → `SamlTokenIssuer`(security `JwtProvider`/`TokenStore` 재사용)로 **자체 JWT 즉시 발급**(수기 JSON, Jackson 비의존). framework-security 무수정(`@AutoConfiguration(after=SecurityAutoConfiguration)`+securityMatcher+높은 우선순위). OAuth/OIDC 와 같은 결(외부 신원확인→자체 JWT, stateless 유지).
 
-**(B-OIDC) framework-oauth-client OIDC 강화**(본 세션 메인): 지금까지 access_token+userinfo 만 쓰고 **id_token 을 받지도 검증하지도 않던** OAuth2 흐름에, **per-provider `oidc` 블록(기본 off)** 으로 켜는 표준 OIDC RP 검증을 추가. 켜면 callback 에서 **id_token 검증**(JWKS 의 RSA/EC 서명 또는 HS=client-secret HMAC · iss · aud⊇client-id · exp/nbf±clock-skew · nonce · sub) + **discovery 자동적용**(issuer/discovery-uri → authorization/token/userinfo/jwks 보충, 지연·1회·캐시) + **nonce 바인딩**(authorize 발급→state 와 함께 저장→callback id_token 과 대조, 재생/주입 차단). 신원은 검증된 id_token 클레임으로 구성(userInfoUri 있으면 빈 필드만 userinfo 로 보충, id_token 우선). kakao/naver 등 비OIDC 는 100% 그대로. 문서 `docs/modules/OIDC_HARDENING.md`(+`OAUTH_CLIENT.md` §8).
+**⚠️ 시작 시 발견: 이전 컨테이너 세션이 남긴 미추적 `framework-saml-sp` 스캐폴딩**(git 미추적·settings 미등록·`${openSamlVersion}` 핀이 루트 ext 미정의라 설정 단계 실패할 상태). 코어 코드(properties/mapper/resolver/token/success handler/autoconfig)는 양질이라 **검토 후 채택**하되, **빌드 토대는 본 세션에서 새로 정비**: ① 루트 Shibboleth 저장소(그룹 한정) ② 모듈 등록(settings/archtest) ③ 깨진 opensaml 핀 제거(전이 의존).
 
-**사용자 환경 컴파일 통과 + 26 테스트 그린 확인.** 다음 세션 설계는 `docs/NEXT_SSO.md` §5(SAML SP) 에 정리해 둠(읽고 시작).
+**조사로 확정한 사실 3건**: ⓐ **OpenSAML 4+ 는 Maven Central 에 없음**(라이선스/면책) → Shibboleth 저장소는 fallback 아니라 **필수**. ⓑ **Spring Security 가 OpenSAML 버전을 전이 관리** → opensaml **명시 핀 금지**(SS 관리 버전 수용). ⓒ `saml2Metadata` 는 SS7 정식 DSL(`saml2Login`/`saml2Logout`/`saml2Metadata`) — 초안 VERIFY 표시 해소.
 
 ## 최종 갱신
-- 일자: 2026-06-03 · 갱신자: SSO(A 중앙로그아웃 + B-OIDC 강화) 세션
+- 일자: 2026-06-04 · 갱신자: SSO(B-SAML SAML 2.0 SP) 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-### B-OIDC: framework-oauth-client OIDC RP 강화 (신규 oidc/ 패키지 + 기존 8파일 수정)
-- **신규 `oidc/`**:
-  - `OidcDiscoveryClient` — `/.well-known/openid-configuration` 조회(RestClient + Jackson3 직접 파싱) → `Metadata(issuer/authz/token/userinfo/jwks)`.
-  - `JwksKeyResolver` — JWKS 캐시(`{kid→Key}` 스냅샷, TTL 기본 1h) + kid 해석 + **키 회전 재조회**(미발견 시 강제 fetch) + **쿨다운 60s throttle**(가짜 kid 폭주 방지) + 단일키 null-kid fallback. 파싱은 jjwt `Jwks.setParser()`. 조회는 `protected fetchJwksJson`(테스트 오버라이드 지점).
-  - `IdTokenVerifier` — `Jwts.parser().keyLocator(...).clockSkewSeconds(...)`; alg HS*→`Keys.hmacShaKeyFor(clientSecret)`, 그 외→JWKS. 수동 검증 iss/aud(Set contains)/nonce/sub, 클레임 `LinkedHashMap` 반환.
-  - `OidcMetadataResolver` — discovery 를 Provider 에 1회 반영(blank 필드만, 지연·캐시, 실패 시 재시도).
-- **수정**: `OAuthClientProperties`(Provider.`oidc` nested: enabled/issuer/jwksUri/discoveryUri/clockSkew=60s/nonce=true + google issuer 프리셋 + OIDC sub/email/name 기본) · `OAuthClient`(`exchangeCodeForTokens`=id_token 포함 전체 응답) · `ProviderRegistry`(OIDC `require()` 완화: userinfo 선택, discovery 또는 명시 endpoints+jwks; `authorizationUrl(...,nonce)`=openid 강제+nonce) · `OAuthStateStore`/Memory/Redis(`save(...,nonce,...)`+`consumeState`→`StateData(providerId,nonce)`) · `OAuthLoginService`(OIDC 분기: discovery→nonce→id_token 검증→userinfo 보충) · `OAuthClientAutoConfiguration`(빈 4종 + `oauthLoginService` 8-arg) · `build.gradle`(`testRuntimeOnly jjwt-impl/jjwt-jackson`).
-- jjwt-api 는 framework-security 가 `api` 로 노출 → oauth-client 컴파일 클래스패스에 이미 존재(운영 런타임 impl/jackson 도 security 가 전이).
-
-### A: 중앙 로그아웃 컴파일 에러 수정(이전 드롭 보정)
-- `LoginService.java` `issue(...)` 시그니처 줄 누락 복구, `AuthController.java` 클래스 닫는 `}` 복구(str_replace 가 old_str 경계줄을 떨어뜨린 것).
+### 빌드 토대 (필수 — 없으면 saml-sp include 시 설정/해소 실패)
+- **루트 `build.gradle`**: `allprojects.repositories` 에 Shibboleth(`https://build.shibboleth.net/maven/releases/`)를 **`org.opensaml`/`net.shibboleth` 그룹 한정 + releasesOnly** 로 추가(그 외 의존성은 계속 Central, saml-sp 미사용 빌드 영향 0). OpenSAML 4+ 가 Central 밖이므로 필수.
+- **`settings.gradle`**: `include 'framework:framework-saml-sp'`.
+- **`framework-archtest/build.gradle`**: `testImplementation project(':framework:framework-saml-sp')`(ArchUnit 검사 대상).
+### framework-saml-sp (코어=이전 스캐폴딩 채택, 정비/추가는 본 세션)
+- **`build.gradle`(정비)**: `api framework-security`+`api framework-core`+`implementation spring-security-saml2-service-provider`(OpenSAML=전이, **핀 제거**)+web `compileOnly`(+test 재선언). 깨진 `${openSamlVersion}` opensaml 명시 핀·미사용 redis 의존 제거.
+- **`SamlSpAutoConfiguration`(정비)**: `request-repository=redis` 면 **시작 시 fail-fast**(미구현 — 조용한 no-op 방지). `saml2Metadata` VERIFY 주석 → 확인됨으로 갱신.
+- **`SamlSpProperties`(정비)**: `request-repository` redis 옵션 javadoc 을 "예정/미구현(현재 session+스티키 세션)"으로 명확화.
+- **`SamlSpAutoConfigurationTest`(신규)**: 토글/백오프 가드(disabled by default·enabled+resolver 없으면 off·enabled 미설정이면 off) — 웹 체인(HttpSecurity/메타데이터 fetch)을 인스턴스화하지 않는 케이스만(양성 풀와이어링은 받는 쪽 검증).
+- (채택·무변경) core `SamlUserInfo`/`SamlUserResolver`/`SamlAttributeMapper`·token `SamlTokenIssuer`·web `SamlRelyingPartyRegistrations`/`SamlAuthenticationSuccessHandler`·`SamlAttributeMapperTest`·`.imports`.
+### 문서
+- `docs/modules/SAML_SP.md`(신규 사용 가이드) · `docs/NEXT_SSO.md`(§5 완료/§5.3 Central 오해 수정/§5.6 결정 기록/§5.7 체크리스트 완료/§5.9 후속) · `docs/FRAMEWORK_MODULES.md`(변경이력+카탈로그 행) · `STACK.md`(§3.2 SS SAML2+OpenSAML 행·§5 SAML/Shibboleth 주의·갱신일) · `HANDOFF.md`(§1 트리·§3 보안골격·§6 함정 4건·§7) · `README.md`(모듈목록+사용법 서브섹션).
 
 ## 현재 상태 (적용/검증)
-- ✅ **사용자 환경 컴파일 통과 + `:framework:framework-oauth-client:test` 26개 그린 확인(2026-06-03).**
-- ⚙️ **세션 중 수정 3건**(전부 받는 쪽 로그로 발견·수정):
-  1. A 중앙로그아웃 컴파일 에러 2건(issue 시그니처/클래스 `}` 누락) → 복구.
-  2. `JwksKeyResolverTest` 회전 테스트 실패 — `refresh()` 재진입 가드가 **강제 재조회까지 차단**(fetch 1회) → lazy/forced 분리 + 쿨다운으로 강제 fetch 보장(2회).
-  3. `IdTokenVerifier` javadoc 의 `RS*/ES*/PS*` 속 **`*/` 가 블록 주석 조기 종료** → 컴파일 에러("class/interface expected") → `RS/ES/PS 계열` 로 교체.
-- 신규 파일: oidc/ 4 + test 3(`ProviderRegistryOidcTest`·`IdTokenVerifierTest`·`JwksKeyResolverTest`). 수정 8 + 문서 2(`OIDC_HARDENING.md` 신규·`OAUTH_CLIENT.md`).
+- ✅ **순수 매핑 로직 `SamlAttributeMapper` JDK 단독 14케이스 실행 통과**(외부 의존 0 — friendly/OID 후보·설정키 우선·다중값 첫원소·null/blank 스킵·trim). 기존 `SamlAttributeMapperTest`(4) + 가드 테스트(3) 동봉.
+- ✅ **받는 쪽 환경 BUILD SUCCESSFUL(2026-06-04)** — SAML 본체 컴파일·체인 와이어링·OpenSAML(Shibboleth 5.1.6) 해소·archtest·spotless 통과. deprecation 경고 1건은 메서드 한정 억제(아래 Next 0).
+- ⚙️ **스코프 결정**: redis `Saml2AuthenticationRequestRepository` 는 **이번 드롭 미포함**(SS7 인터페이스는 확인했으나 `AbstractSaml2AuthenticationRequest` 직렬화가 검증 불가·오류 취약 → 후속). 멀티 파드는 현재 게이트웨이 스티키 세션.
 
 ## 켜는 법
 ```yaml
 framework:
-  oauth-client:
+  saml-sp:
     enabled: true
-    state: { store: { type: redis } }   # 멀티 파드면 redis(nonce 도 함께 바인딩)
-    providers:
-      corp:                              # Keycloak/Azure AD/사내 OIDC IdP
-        client-id: "${OIDC_CLIENT_ID}"
-        client-secret: "${OIDC_CLIENT_SECRET}"
-        oidc:
-          enabled: true
-          issuer: "https://sso.example.com/realms/corp"   # discovery 출처 + iss 기대값(엔드포인트 자동보충)
+    # request-repository: session   # 기본. redis 는 후속(현재 설정 시 시작 실패)
+    registrations:
+      corp:                                  # registrationId (= IdP 식별)
+        metadata-uri: "https://idp.example.com/realms/corp/protocol/saml/descriptor"
+        email-attribute: "email"             # 선택(미지정 시 email/mail/urn:oid 후보 자동)
+        name-attribute: "displayName"        # 선택
 ```
++ 앱: `SamlUserResolver` 빈 1개(외부 `SamlUserInfo` → `AuthenticatedUser`). 엔드포인트(SS 기본): 메타데이터 `/saml2/service-provider-metadata/{id}`·로그인 `/saml2/authenticate/{id}`·ACS `/login/saml2/sso/{id}`.
 ```bash
 # 검증(받는 쪽)
-./gradlew :framework:framework-oauth-client:test :framework:framework-archtest:test spotlessApply
+./gradlew :framework:framework-saml-sp:test :framework:framework-archtest:test spotlessApply
+./gradlew :framework:framework-saml-sp:dependencies --configuration runtimeClasspath   # OpenSAML 해소 출처/버전 확인
 ```
 
 ## 바로 다음 할 일 (Next)
-1. **B-SAML) SAML 2.0 SP — `framework/framework-saml-sp` 신설** (설계 `docs/NEXT_SSO.md` §5). Spring Security SAML2 SP 로 외부 SAML IdP 연동 → `SamlUserResolver` 매핑 → 자체 JWT(OAuth 발급기 재사용). **착수 전 §5.3 함정 필독**: OpenSAML 전이 의존(첫 "새 외부 의존성 0" 예외)·리포지터리(Central/Shibboleth)·멀티 파드 `Saml2AuthenticationRequestRepository`(redis). §5.6 결정 먼저.
-2. (이후) **C) Authorization Server**(별도 `services/auth-server`, 명시 요구 시) · 4) Passwordless(WebAuthn).
-3. (devops, 병행 가능) CI 게이트(`:framework-archtest:test`+전 모듈 `:test` PR 차단)+멀티모듈 jacoco 집계 · 게이트웨이 런타임 점검(CORS preflight·rate-limit 429)·k8s 멀티서비스.
+0. ✅ **받는 쪽 빌드 검증 완료(2026-06-04)**: `:framework-saml-sp:test :framework-archtest:test spotlessApply` → **BUILD SUCCESSFUL**(15 executed). `:dependencies` 로 OpenSAML 해소 확인 — `spring-security-saml2-service-provider:7.0.5` → `opensaml-saml-api/core/messaging:5.1.6` + `net.shibboleth:shib-support:9.1.6`(Shibboleth 저장소에서 정상 해소, SS 가 버전 관리=핀 안 한 결정 검증). **남은 deprecation 경고 1건 처리**: `Saml2AuthenticatedPrincipal`(SS7 deprecated, 후속=`Saml2AssertionAuthentication`+`Saml2ResponseAssertionAccessor`) → `SamlAuthenticationSuccessHandler.onAuthenticationSuccess` 에 메서드 한정 `@SuppressWarnings("deprecation")`+마이그레이션 TODO(7.0.x 완전 동작·제거는 빨라야 SS8, 새 접근자 메서드는 IDE 컴파일 확인 후 교체).
+1. **SSO 후속 택1**: (a) **redis `Saml2AuthenticationRequestRepository`**(멀티 파드, 스티키 세션 불요 — SS7 인터페이스 `load/save/removeAuthenticationRequest`, key=`Saml2ParameterNames.RELAY_STATE`, 난점=`AbstractSaml2AuthenticationRequest` 빌더 기반 수동 직렬화) · (b) **SLO**(`saml2Logout`) · (c) **`Saml2AuthenticatedPrincipal` deprecation 정식 마이그레이션**(IDE 에서) · (d) **C) Authorization Server**(별도 `services/auth-server`, 명시 요구 시) · (e) **4) Passwordless(WebAuthn)**.
+2. (devops, 병행) CI 게이트(`:framework-archtest:test`+전 모듈 `:test` PR 차단)+멀티모듈 jacoco 집계 · 게이트웨이 런타임 점검(CORS preflight·rate-limit 429)·k8s 멀티서비스.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **블록 주석 안에 `*/` 금지**: javadoc/주석 텍스트에 `RS*/ES*/PS*` 처럼 `*/` 가 들어가면 **주석이 거기서 닫혀** 뒤가 코드로 파싱돼 컴파일 에러(+spotless 가 엉뚱한 lint 로 오인). 알고리즘 나열은 `RS/ES/PS 계열` 처럼 `*/` 를 피한다. **brace/paren 점검에 더해 "주석 내 `*/`" 도 점검 항목**.
-- **JWKS 회전 재조회 ≠ 신선도 가드**: `refresh()` 의 "캐시 신선하면 그대로 반환" 재진입 가드는 동시 갱신 dedupe 용 → **unknown kid 강제 재조회**는 이 가드를 우회해야 한다(lazy/forced 분리). 단, 가짜 kid 남용 폭주 방지로 **강제 재조회는 쿨다운(60s) throttle**(per-jwks_uri lastForced, 최초는 EPOCH 라 즉시 허용 → 테스트 fetch=2).
-- **OIDC id_token 검증은 jjwt 재사용**: jjwt-api 가 security `api` 로 oauth-client 에 전이됨(별도 추가 불필요). JWKS 파싱 `Jwks.setParser()`, alg HS*는 client-secret HMAC·그 외 JWKS. 테스트용 jjwt-impl/jackson 은 `testRuntimeOnly`.
-- **OIDC nonce 는 state 와 함께 저장**: `OAuthStateStore.save(state,providerId,nonce,ttl)`/`consumeState→StateData`. Redis 값은 `providerId\nnonce`(개행은 providerId 에 없음), 비OIDC 는 기존 `consume(state):Optional<String>` 그대로(하위호환 default 메서드).
-- **str_replace 경계줄 보존**: 메서드 삽입 시 old_str 끝의 다음 멤버 시그니처/클래스 `}` 를 new_str 에 반드시 다시 넣는다(A 중앙로그아웃 2차 컴파일 에러 원인 — 재발 방지).
-- (지난·유효) Jackson3(`tools.jackson.*`, annotation만 예외) / compileOnly·implementation 타입 test 재선언(introspection) / 새 오토컨피그 `.imports`+등록가드 / EPP 는 spring.factories(Boot4 패키지) / spotless Palantir·`lineEndings=UNIX`·설정캐시 / 필터·EPP 는 GlobalExceptionHandler 밖 / prod 가드(JWT·DevAuth·Password·AES마스터키) / Boot4 패키지 리네임 추측 금지 / 새 모듈=settings+archtest+imports 동시 등록.
+- **OpenSAML = 첫 비-Central 저장소**: OpenSAML 4+ 는 Maven Central 에 **없다**(Shibboleth 전용). `spring-security-saml2-service-provider` 가 전이로 끌어오고 **버전은 SS 가 관리** → opensaml **명시 선언/핀 금지**(SS 관리 버전과 어긋남 + 루트 ext 미정의 시 설정 단계 실패. 초안 `${openSamlVersion}` 가 바로 이 함정). 루트 `allprojects.repositories` 에 Shibboleth 를 **org.opensaml/net.shibboleth 그룹 한정**으로 추가(그 외는 Central 유지). poi/openpdf/sshd 의 "BOM 밖→버전 핀" 패턴과 다름(SAML 은 저장소만 추가).
+- **SAML 체인은 메인 체인 "뒤"**: 메인 `securityFilterChain` 이 `@ConditionalOnMissingBean(SecurityFilterChain)` → SAML 체인을 먼저 등록하면 메인이 사라진다. `@AutoConfiguration(after=SecurityAutoConfiguration)` + `securityMatcher("/saml2/**","/login/saml2/**")` + 높은 우선순위(`@Order(HIGHEST_PRECEDENCE+50)`)로 메인 뒤에 추가·매처 경로만 가로챔. 신원=`Saml2AuthenticatedPrincipal#getRelyingPartyRegistrationId()/getName()(NameID)/getAttributes()(Map<String,List<Object>>)`.
+- **SS7 SAML2 DSL = `saml2Login`/`saml2Logout`/`saml2Metadata`**(셋 다 유효, HttpSecurity DSL).
+- **redis AuthnRequest 저장소는 미구현 fail-fast**: `AbstractSaml2AuthenticationRequest` 직렬화 난점(검증 불가)으로 후속. `request-repository: redis` 설정 시 오토컨피그가 시작 시 실패(조용한 no-op 금지). 멀티 파드는 그때까지 게이트웨이/인그레스 스티키 세션(핸드셰이크 수초).
+- **미추적 스캐폴딩 주의(일반화)**: 컨테이너에 이전 세션의 미추적 산출물이 남아 있을 수 있다(`git status --short`/`git ls-files` 로 추적 여부 먼저 확인). 원격 master 가 사용자 환경의 기준 — 미추적 파일은 그대로 동작 가정 금지(등록/빌드토대 점검 필수).
+- (지난·유효) 블록 주석 내 `*/` 금지 / Jackson3(tools.jackson, annotation만 예외) / compileOnly 타입 test 재선언(introspection) / 새 오토컨피그 `.imports`+등록가드 / EPP 는 spring.factories(Boot4 패키지) / spotless Palantir·`lineEndings=UNIX`·설정캐시 / 필터·EPP·SAML 핸들러는 GlobalExceptionHandler 밖(수기 JSON) / prod 가드(JWT·DevAuth·Password·AES마스터키) / Boot4 패키지 리네임 추측 금지 / 새 모듈=settings+archtest+imports 동시 등록 / OIDC nonce state 동반 1회용.
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
-1. 신규 모듈/기존 확장. 순수 로직은 Spring/라이브러리 무의존 코어로 분리해 JDK 단독 검증.
-2. 기존 인터페이스는 capability/오버로드로 확장(이번 OIDC: state store nonce default 메서드, `authorizationUrl` 오버로드, `require()` 분기). 생성자 변경 시 빈 배선(autoconfig)도 같이.
-3. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+test 재선언), BOM 밖=`implementation`(+카탈로그/ext 핀). 테스트 전용 런타임은 `testRuntimeOnly`(이번 jjwt-impl).
+1. 신규 모듈/기존 확장. 순수 로직은 Spring/라이브러리 무의존 코어로 분리해 JDK 단독 검증(이번 `SamlAttributeMapper` 14케이스).
+2. 기존 인터페이스는 capability/오버로드로 확장. 생성자 변경 시 빈 배선(autoconfig)도 같이.
+3. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+test 재선언), BOM 밖=`implementation`(+카탈로그/ext 핀). **단 SAML 처럼 SS/Boot 가 버전 관리하는 전이 의존은 핀하지 말 것**(저장소만 필요하면 루트 repositories 에 그룹 한정 추가).
 4. 새 오토컨피그면 `.imports`+등록가드. 신규 모듈은 settings include + archtest testImplementation.
-5. 오토컨피그 토글/`@ConditionalOnProperty` + `@ConditionalOnMissingBean` + 라이브러리 `@ConditionalOnClass` 백오프.
-6. 테스트: 순수 알고리즘(JDK) + (라이브러리 필요시) 오버라이드 지점으로 네트워크 없이 검증(이번 `fetchJwksJson` 스텁 + 손수 만든 JWKS) + 오토컨피그 토글/`FilteredClassLoader`.
+5. 오토컨피그 토글/`@ConditionalOnProperty` + `@ConditionalOnBean`(앱 리졸버) + `@ConditionalOnMissingBean` + 라이브러리 `@ConditionalOnClass` 백오프. 보안 체인 기여 모듈은 `@AutoConfiguration(after=SecurityAutoConfiguration)` + securityMatcher 로 메인 체인 무수정.
+6. 테스트: 순수 알고리즘(JDK) + 오토컨피그 토글/백오프(웹 체인은 HttpSecurity/네트워크 필요 → 양성 풀와이어링은 받는 쪽). 미컴파일 본체는 받는 쪽 gradle.
 7. 드롭인: 신규+변경 파일 한 zip, 루트 `unzip -o`. 문서 동기화(README/STACK/FRAMEWORK_MODULES/HANDOFF/HANDOFF_SUMMARY/NEXT_SSO). 받는 쪽 `./gradlew :...:test :framework-archtest:test spotlessApply`.
 <!-- 갱신 끝 -->

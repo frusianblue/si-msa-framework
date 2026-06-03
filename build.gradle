@@ -11,7 +11,23 @@ plugins {
 allprojects {
     group = 'com.company'
     version = '1.0.0'
-    repositories { mavenCentral() }
+    repositories {
+        mavenCentral()
+        // OpenSAML 4+ 는 Maven Central 에 게시되지 않고 Shibboleth 전용 저장소에만 있다(라이선스/면책 사유).
+        //   spring-security-saml2-service-provider(framework-saml-sp 선택형) 가 OpenSAML 을 전이로 끌어오므로
+        //   이 저장소가 없으면 saml-sp 를 include 한 빌드의 의존성 해소가 실패한다.
+        //   ⚠️ 이 프레임워크 최초의 비-Central 저장소. 오염 방지를 위해 org.opensaml/net.shibboleth 그룹으로만
+        //   범위를 한정한다(그 외 의존성은 계속 Central 에서만 해소). saml-sp 미사용 빌드엔 영향 0.
+        maven {
+            name = 'shibboleth-releases'
+            url = 'https://build.shibboleth.net/maven/releases/'
+            content {
+                includeGroupByRegex 'org\\.opensaml.*'
+                includeGroupByRegex 'net\\.shibboleth.*'
+            }
+            mavenContent { releasesOnly() }
+        }
+    }
 
     // libs.versions.toml 을 단일 소스로 두고, 기존 모듈 build.gradle 의 ${...Version}
     // 참조가 그대로 동작하도록 브리지한다. (모듈은 점진적으로 libs.* 로 이관 가능)
