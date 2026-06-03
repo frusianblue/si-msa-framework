@@ -29,7 +29,7 @@ class SchedulerLockAspectTest {
         runnerWith(fake).run(context -> {
             Task task = context.getBean(Task.class);
             task.normal();
-            assertThat(task.ran.get()).isEqualTo(1);
+            assertThat(task.ranCount()).isEqualTo(1);
             assertThat(fake.unlockCalls.get()).isEqualTo(1);
             assertThat(fake.keepUntilCalls.get()).isZero();
         });
@@ -43,7 +43,7 @@ class SchedulerLockAspectTest {
         runnerWith(fake).run(context -> {
             Task task = context.getBean(Task.class);
             task.normal();
-            assertThat(task.ran.get()).isZero();
+            assertThat(task.ranCount()).isZero();
             assertThat(fake.unlockCalls.get()).isZero();
         });
     }
@@ -56,7 +56,7 @@ class SchedulerLockAspectTest {
         runnerWith(fake).run(context -> {
             Task task = context.getBean(Task.class);
             task.quick(); // atLeastFor=10s, 즉시 종료 → keepUntil
-            assertThat(task.ran.get()).isEqualTo(1);
+            assertThat(task.ranCount()).isEqualTo(1);
             assertThat(fake.keepUntilCalls.get()).isEqualTo(1);
             assertThat(fake.unlockCalls.get()).isZero();
         });
@@ -83,7 +83,11 @@ class SchedulerLockAspectTest {
         }
     }
 
-    /** @SchedulerLock 대상 빈(CGLIB 프록시). */
+    /**
+     * {@code @SchedulerLock} 대상 빈(CGLIB 프록시). 주의: 실행횟수는 반드시 {@link #ranCount()}
+     * (메서드)로 읽는다. CGLIB 프록시는 필드 초기화가 실행되지 않아 {@code proxy.ran} 직접 접근은
+     * {@code null}(메서드 호출만 타깃으로 위임됨).
+     */
     static class Task {
         final AtomicInteger ran = new AtomicInteger();
 
@@ -95,6 +99,10 @@ class SchedulerLockAspectTest {
         @SchedulerLock(name = "quick", atMostFor = "5m", atLeastFor = "10s")
         public void quick() {
             ran.incrementAndGet();
+        }
+
+        public int ranCount() {
+            return ran.get();
         }
     }
 
