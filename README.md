@@ -24,7 +24,7 @@ deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -178,6 +178,7 @@ dependencies {
     implementation project(':framework:framework-log-masking')  // 개인정보 로그 마스킹(자유 텍스트 PII 탐지)
     implementation project(':framework:framework-pdf')         // PDF 산출물 생성(거래내역서/통지서, 한글 임베딩)
     implementation project(':framework:framework-context')     // 요청 컨텍스트/멀티테넌시(tenantId/userId/locale + @Async·아웃바운드 전파)
+    implementation project(':framework:framework-image')       // 이미지 처리(리사이즈/썸네일·EXIF orientation 보정·민감 EXIF(GPS) 제거, ImageIO·의존성 0)
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
@@ -524,6 +525,35 @@ RestClient.builder().requestInterceptor(contextPropagationInterceptor).build();
 ```
 - **상속형 ThreadLocal 미사용**: 가상 스레드/풀 누수 방지 — 전파는 데코레이터·인터셉터로 명시. 필터는 요청 종료(예외 포함) 시 컨텍스트+자기 MDC 키를 정리.
 - **헤더 신뢰 경계**: `HeaderContextResolver` 는 신뢰 헤더를 읽기만 함(외부 위조 방지는 게이트웨이/인증 책임). 테넌트 필수 검증은 서비스에서 `ContextHolder.get().hasTenant()` 로. 상세 `framework/framework-context/README.md`.
+
+### framework-image (이미지 처리 — 리사이즈/썸네일·EXIF 보정·메타 제거)
+업로드 이미지를 **비율유지 리사이즈/썸네일**로 가공하고, **EXIF orientation 을 픽셀에 보정**하며, **민감 EXIF(GPS 등) 를 제거**한다(리인코딩 부수효과). 엔진은 JDK 내장 `ImageIO`+AWT 뿐 — **신규 외부 의존성 0**. 웹 비의존(배치/MQ 컨슈머에서도 사용)·기본 off.
+```yaml
+framework:
+  image:
+    enabled: true
+    default-format: JPEG        # 출력 화이트리스트: JPEG | PNG
+    thumbnail-max-edge: 320     # thumbnail() 기본 한 변 상한(px)
+    jpeg-quality: 0.85          # 0.0~1.0
+    max-source-pixels: 40000000 # 디컴프레션 폭탄 방지(디코드 전 헤더 검사)
+```
+```java
+@Autowired ImageProcessor imageProcessor;
+
+// 리사이즈: 1920 박스 안으로 비율유지 축소(업스케일 금지) + orientation 보정 + 메타 제거
+ResizeSpec spec = ResizeSpec.builder().maxEdge(1920).format(ImageFormat.JPEG).build();
+byte[] out = imageProcessor.process(originalBytes, spec);
+
+// 썸네일(한 변 상한)
+byte[] thumb = imageProcessor.thumbnail(originalBytes, 200);
+
+// 디코드 없이 크기/포맷만
+ImageInfo info = imageProcessor.probe(originalBytes); // width/height/formatName
+```
+- **메타 제거 = 리인코딩 부수효과**: `process()`/`thumbnail()` 출력은 항상 메타데이터가 없다(GPS 포함 자동 제거). 원본 메타 보존이 필요하면 이 모듈을 거치지 말 것.
+- **EXIF orientation 보정은 best-effort**: APP1 부재·비JPEG·깨진 바이트면 원본 방향 유지(예외 없음). PNG 등은 orientation 개념 없음.
+- **JPEG 알파 평탄화**: JPEG 출력 시 투명은 흰 배경으로 평탄화 — 투명 보존이 필요하면 `default-format: PNG`. 상세 `framework/framework-image/README.md`.
+
 
 
 ## 추가된 공통 (이번 보강)

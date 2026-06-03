@@ -28,6 +28,7 @@ include 'framework:framework-pdf'            // 선택형: PDF 산출물 생성(
 include 'framework:framework-cache-redis'    // 선택형: 분산 캐시(Redis 백엔드 — core Caffeine 로컬 캐시를 파드 간 공유 캐시로 대체)
 include 'framework:framework-log-masking'    // 선택형: 개인정보 로그 마스킹(자유 텍스트 PII 정규식 탐지 → core MaskingUtils 형식 위임)
 include 'framework:framework-context'      // 선택형: 요청 컨텍스트/멀티테넌시(tenantId/userId/locale 바인딩 + @Async·아웃바운드 전파)
+include 'framework:framework-image'        // 선택형: 이미지 처리(리사이즈/썸네일 + EXIF orientation 보정 + 민감 EXIF/GPS 제거, ImageIO 기반·새 의존성 0)
 include 'framework:framework-archtest'        // 테스트 전용: ArchUnit 아키텍처/레이어/네이밍/순환 규칙 강제(배포 산출물 아님)
 
 // ----- 업무 / 인프라 서비스 -----

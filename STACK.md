@@ -76,6 +76,8 @@
 >
 > **framework-context(2026-06-03: 요청 컨텍스트/멀티테넌시)도 새 의존성 0.** `api framework-core` + `compileOnly spring-boot-starter-web`(`OncePerRequestFilter`/`ClientHttpRequestInterceptor`/servlet API — 호스트 웹앱이 런타임 제공). `RequestContext`/`ContextHolder`/`ContextTaskDecorator` 는 순수 JDK(+slf4j MDC, core 전이). 테스트는 starter-web(testImplementation: `MockHttpServletRequest`/`WebApplicationContextRunner`) — 전부 Boot BOM 관리라 카탈로그 무변경.
 
+> **framework-image(2026-06-03: 이미지 처리)도 새 의존성 0.** `api framework-core` 만 — 리사이즈/썸네일·EXIF orientation 보정·메타 제거 엔진이 전부 **JDK 내장**(`javax.imageio`/`java.awt.image`/`java.awt.geom.AffineTransform`)이라 외부 이미지 라이브러리(thumbnailator/metadata-extractor/TwelveMonkeys 등) 불필요. `ExifOrientation` 은 JPEG APP1/TIFF 를 직접 파싱(메타 라이브러리 무), 메타 제거는 디코드→리인코딩 부수효과. **web 도 불필요**(`@ConditionalOnWebApplication` 미부착 → 배치/MQ 컨슈머 사용). 테스트는 starter-test(testImplementation, 합성 JPEG/PNG 바이트 생성)만 — 카탈로그/ext 무변경.
+
 ## 4. 테스트 / 개발 도구
 | 항목 | 버전 | 용도 | 적용 위치 |
 |---|---|---|---|

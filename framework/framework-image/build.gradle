@@ -1,0 +1,16 @@
+// 선택형 모듈: 이미지 처리 — 리사이즈/썸네일 · EXIF orientation 보정 · 민감 EXIF(GPS) 제거 · 출력 포맷 화이트리스트.
+//   - 엔진은 JDK 내장 javax.imageio + java.awt 만 사용 → "새 외부 의존성 0(버전 0)".
+//   - EXIF orientation 은 외부 메타데이터 라이브러리 없이 JPEG APP1/TIFF 를 직접 파싱(secure-web 의 수기 파싱과 같은 결).
+//   - 메타데이터 제거(GPS 포함)는 ImageIO 디코드→리인코드 시 메타가 보존되지 않는 성질을 이용 → 별도 의존성 불필요.
+//   - 순수 처리 로직(ExifOrientation/DefaultImageProcessor 등)은 Spring 무의존 → JDK 단독 단위검증 가능.
+// 루트 build.gradle 이 java-library/dependency-management/spotless/jacoco 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // 표준 예외/에러코드(BusinessException/ErrorCode). 디코드/포맷 실패를 표준 예외로 던진다.
+    api project(':framework:framework-core')
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

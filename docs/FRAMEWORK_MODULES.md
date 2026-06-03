@@ -12,7 +12,7 @@
 - ✅ **보안 완성(ISMS-P)**: framework-security 확장(비번 만료/이력·동시로그인) · framework-audit(접속/감사 로그 적재·조회, logging|jdbc|kafka)
 - ✅ **framework-secure-web**: 보안헤더·경로조작 차단·인젝션 스크리닝·CSRF 더블서브밋(필터 계층, XSS 본문은 core)
 - ✅ **금융 핵심**: framework-datasource(읽기/쓰기 분리 라우팅 + 독립 다중 DB) · framework-messaging(Transactional Outbox + Kafka 릴레이 **+ 소비자측 멱등 소비**, `x-event-id`↔framework-idempotency) · audit↔messaging 연동(`store.type=kafka`)
-- ✅ **업무 생산성**: framework-excel(POI 스트리밍/양식검증) · framework-batch(Batch6+Quartz) · framework-notification(메일/SMS/알림톡) · framework-pdf(PDF 산출물·한글 TTF 임베딩, OpenPDF)
+- ✅ **업무 생산성**: framework-excel(POI 스트리밍/양식검증) · framework-batch(Batch6+Quartz) · framework-notification(메일/SMS/알림톡) · framework-pdf(PDF 산출물·한글 TTF 임베딩, OpenPDF) · framework-image(리사이즈/썸네일·EXIF 보정·메타 제거, ImageIO·의존성 0)
 - ✅ **규제특화 시작**: framework-mfa(2단계 인증 — TOTP/OTP + ISMS-P 복구코드, **외부 의존성 0개**, security 로그인 흐름에 `MfaGate` SPI 로 연결)
 - ✅ **운영/관측**: framework-observability(공통 메트릭 태그 `MeterRegistryCustomizer` · Boot4 네이티브 구조화 JSON 로그 · 메트릭/트레이스 OTLP 익스포터 표준, 전부 토글·기본 off). **외부 의존성 0개**(레지스트리/익스포터는 호스트 runtimeOnly opt-in, Boot BOM 관리). k8s 샘플 `deploy/k8s/observability.yaml`
 - ✅ **SI 공통 유틸 보강(2026-06-02)**: `framework-core/util` 에 검증(`KoreanRegNoUtils`·`ValidationUtils`)·날짜/영업일(`DateUtils`·`HolidayUtils`)·금액(`MoneyUtils`)·한글(`HangulUtils`)·해시(`HashUtils`)·JSON(`JsonUtils`) 신규 + `MaskingUtils` 확장. 빈/오토컨피그 없는 순수 정적, **새 외부 의존성 0**(JSON 만 Jackson 3). 회귀 테스트 `CoreUtilsTest`. + **빌드 인프라 픽스**: 루트 `subprojects` 에 `testRuntimeOnly junit-platform-launcher` 추가(Gradle 9 에서 테스트 발견 단계 실패 방지, 전 모듈 공통).
@@ -28,7 +28,8 @@
 - ✅ **개인정보 로그 마스킹(2026-06-03)**: **framework-log-masking 신설** — core `MaskingUtils`(값 단위)의 보완으로 **자유 텍스트 로그**에 섞인 PII 를 정규식 탐지 후 `MaskingUtils` 형식에 위임(전사 일관). 두 경로: **(1)** `SensitiveDataMasker` 빈 명시 호출(구조화 로그까지, 1차) **(2)** Logback `%mmsg` 컨버터(`MaskingMessageConverter`+정적 다리 `MaskingSupport` 폴백+`LogMaskingInstaller`, 패턴 로그 자동, 2차 방어망). 내장 규칙 RRN/카드/휴대폰/이메일(계좌는 오탐 위험 기본 off)+커스텀 정규식. 순수 엔진은 Spring 무의존 JDK 검증. 3단 토글+레지스트레이션 가드. **외부 의존성 0개**(logback-classic=Boot 기본 로깅·compileOnly+test). **사용자 환경 빌드 검증 완료(2026-06-03)** — 테스트 1건(`LogMaskingAutoConfigurationTest` phone-off 단언) 수정 후 22 통과. (실패는 모듈이 아닌 테스트 결함: `account=true` 의 계좌 정규식이 dashed 휴대폰을 잡아 발생 → 검증 입력을 dashless 로 교체. 계좌가 dash-grouped 숫자열을 잡는 건 의도된 동작이라 기본 off.)
 - 🏁 **기본기능 갭 정리 종료(2026-06-03)**: 분산 락(lock)·PDF(pdf)·분산 캐시(cache-redis)·로그 마스킹(log-masking) 4종 완료. 이후는 갭이 아니라 심화/운영.
 - ✅ **요청 컨텍스트 / 멀티테넌시(2026-06-03)**: **framework-context 신설** — 기본기능 카탈로그(`docs/BASELINE_FEATURES.md`) #5. 요청마다 `RequestContext`(불변·JDK단독, tenantId/userId/locale+확장 attributes)를 `ContextHolder`(정적 ThreadLocal, **상속형 아님** — 가상스레드/풀 누수 방지)에 바인딩(`ContextBindingFilter`, `MdcTraceFilter` 안쪽·+MDC), 종료 시 정리. 전파 **명시 2경로**: `ContextTaskDecorator`(@Async/풀에 컨텍스트+MDC) · `ContextPropagationInterceptor`(아웃바운드 헤더). 해소 전략 `ContextResolver` 교체 가능(기본 `HeaderContextResolver`, `@ConditionalOnMissingBean` → JWT/SecurityContext). 서블릿 한정. 3단 토글+레지스트레이션 가드. **외부 의존성 0개**(servlet/web=compileOnly+test). **사용자 환경 컴파일 BUILD 통과 확인(2026-06-03)**.
-- 📋 **기본기능 카탈로그 신설(2026-06-03)**: `docs/BASELINE_FEATURES.md` — 기본기능 10항목 실측 체크(있음/부분/없음 + 위치 + 인수기준). 다음 활성=파일 하드닝 묶음(대용량 스트리밍/presigned·메타 정합성·AV 훅). 추가 요청은 §6 대기열로 수집.
+- ✅ **이미지 처리(2026-06-03)**: **framework-image 신설** — 기본기능 카탈로그 #7. `ImageProcessor` SPI(`process`/`thumbnail`/`probe`)+`DefaultImageProcessor`(JDK `javax.imageio`+`java.awt`). 비율유지 리사이즈/썸네일(상한 박스·업스케일 옵트인·2배 초과는 단계적 절반축소 고품질), **EXIF orientation 보정**(`ExifOrientation` 순수 JDK JPEG APP1/TIFF 파서 1~8, AffineTransform·5~8 가로세로 스왑), **민감 EXIF(GPS) 제거**(디코드→리인코딩 부수효과로 메타 미보존), 출력 포맷 화이트리스트(JPEG/PNG), **디컴프레션 폭탄 방지**(디코드 전 헤더 픽셀수 검사·기본 40MP), JPEG 알파 흰배경 평탄화, 헤드리스. 웹 비의존(배치 가능). 3단 토글 기본 off+레지스트레이션 가드. **신규 외부 의존성 0개**(web 불필요·엔진 전부 JDK). 엔진 javac 단독 + 기능 하니스 **26/26** 통과, config/배선은 context·pdf 패턴 미러(사용자 Gradle 검증 예정).
+- 📋 **기본기능 카탈로그 신설(2026-06-03)**: `docs/BASELINE_FEATURES.md` — 기본기능 10항목 실측 체크(있음/부분/없음 + 위치 + 인수기준). #5 컨텍스트·#7 이미지 완료. 다음 활성=파일 하드닝 묶음(#8+#9+#10: 대용량 스트리밍/presigned·메타 정합성·AV 훅). 추가 요청은 §6 대기열로 수집.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
 ---
@@ -105,6 +106,7 @@ public class XxxAutoConfiguration {
 | ✅ framework-batch | **Spring Batch 6 실행**(JobLaunchSupport: JobOperator 래핑+run.id 재실행보장)·**표준 로깅 리스너**·**Quartz cron 스케줄**(yaml 선언만으로 Job 기동) | `framework.batch.enabled`,`framework.scheduler.enabled` | [선택] | 공통 |
 | ✅ framework-notification | **메일/SMS/알림톡 채널 추상화** — NotificationService 가 ChannelType 라우팅. 메일=JavaMailSender, SMS·알림톡=벤더 SPI(SmsClient/AlimtalkClient)+기본 로깅구현(@ConditionalOnMissingBean 교체) | `framework.notification.enabled` + `channels.{mail,sms,alimtalk}.enabled` | [선택] | 공통 |
 | ✅ framework-pdf | **PDF 산출물 생성**(거래내역서/통지서) — 표 기반 `PdfReport`/`PdfColumn` → `PdfExporter` OutputStream 스트리밍. **한글 TTF IDENTITY_H 임베딩**(미설정 시 라틴 폴백), 헤더 페이지반복+하단 페이지번호. 엔진 OpenPDF 2.0.2(iText4 LGPL/MPL, `com.lowagie` 패키지·implementation 비노출; 3.0+ `org.openpdf` 리네임이라 2.x 고정) | `framework.pdf.enabled` (+`page-size`/`landscape`/`margin`/`*-font-size`/`page-number`/`font.location`) | [선택] | 공통 |
+| ✅ framework-image | **이미지 처리** — `ImageProcessor` SPI(`process`/`thumbnail`/`probe`)+`DefaultImageProcessor`(JDK ImageIO+AWT). 비율유지 리사이즈/썸네일(상한 박스·업스케일 옵트인·2배 초과 단계 축소)·**EXIF orientation 보정**(순수 JDK APP1/TIFF 파서 1~8)·**민감 EXIF(GPS) 제거**(리인코딩 부수효과)·출력 화이트리스트(JPEG/PNG)·**디컴프레션 폭탄 방지**(헤더 픽셀수 검사·기본 40MP)·JPEG 알파 평탄화·헤드리스. 웹 비의존(배치 가능). **외부 의존성 0개**(엔진 전부 JDK) | `framework.image.enabled` (+`default-format`/`thumbnail-max-edge`/`jpeg-quality`/`max-source-pixels`) | [선택] | 공통 |
 
 ### 2.5 신규 — 데이터/연계 (금융 핵심 ★)
 
@@ -167,7 +169,8 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
        ├── cache-redis     (분산 캐시; core Caffeine 대체, before=CacheAutoConfiguration)
        ├── log-masking     (로그 PII 마스킹; core MaskingUtils 위임, Logback %mmsg)
        ├── pdf             (PDF 산출물; OpenPDF impl 비노출, 한글 TTF 임베딩)
-       └── context         (요청 컨텍스트/멀티테넌시; ThreadLocal 비상속, @Async·아웃바운드 명시 전파)
+       ├── context         (요청 컨텍스트/멀티테넌시; ThreadLocal 비상속, @Async·아웃바운드 명시 전파)
+       └── image           (이미지 처리; ImageIO+AWT, 웹 비의존, 외부 의존성 0)
 ```
 원칙: 상위(토대)는 하위를 모른다. 순환 금지. impl 모듈(redis 등)이 추상(security/idempotency)을 의존. **saga 는 messaging(Outbox) 위에 오케스트레이션만 얹는다**(전송/멱등 소비 재사용, compileOnly 비전이라 의존 서비스가 messaging 도 명시).
 
@@ -178,7 +181,7 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
 1. **토대** — framework-i18n, framework-idgen, framework-client
 2. **보안 완성(심의)** — 비번 만료/이력, 동시로그인, framework-audit, framework-secure-web
 3. **금융 핵심** — **framework-idempotency**, framework-messaging(+Outbox), framework-datasource
-4. **업무 생산성** — framework-excel, framework-batch, framework-notification, framework-pdf
+4. **업무 생산성** — framework-excel, framework-batch, framework-notification, framework-pdf, framework-image
 5. **규제 특화** — framework-pki, framework-mfa, framework-crypto-hsm, framework-recon, (공공 시) framework-egov-compat
 6. **운영/관측** — framework-observability ✅ · framework-lock ✅(분산 락·`@Scheduled` 중복방지) · framework-cache-redis ✅(분산 캐시) · framework-log-masking ✅(개인정보 로그 마스킹) · framework-context ✅(요청 컨텍스트/멀티테넌시·횡단)
 7. **그릇 정비** — 게이트웨이(폴백·CORS·rate-limit)·k8s(redis/secret/멀티서비스)·CI/CD 멀티서비스화

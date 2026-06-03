@@ -44,4 +44,5 @@ dependencies {
     testImplementation project(':framework:framework-cache-redis')
     testImplementation project(':framework:framework-log-masking')
     testImplementation project(':framework:framework-context')
+    testImplementation project(':framework:framework-image')
 }
