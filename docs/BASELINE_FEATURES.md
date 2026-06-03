@@ -21,6 +21,7 @@
 | 8 | 대용량/스트리밍 · S3 presigned | ✅ | `framework-file*` 확장 (Range·presigned) |
 | 9 | 이미지/문서 파일 메타 정합성 | ✅ | `framework-file` Tika 검출 + 확장자↔MIME 정합 |
 | 10 | 안티바이러스 훅 | ✅ | `framework-file` `scan/` (ClamAV INSTREAM) |
+| 11 | 아카이빙 / 압축 | ✅ | `framework-archive` (ZIP 다중엔트리 + GZIP 단일스트림, zip-slip·압축폭탄 가드) |
 
 > 범례 — ✅ 있음 · 🟡 부분(보강 필요) · 🔴 없음 · 🔧 작업 중
 
@@ -73,6 +74,11 @@
 - 충족: `FileScanner` SPI(no-op 기본) · ClamAV INSTREAM 어댑터(청크 프레이밍, 외부 의존성 0) · 저장 전 스캔 게이트 · 감염 시 거부(`BusinessException`)+감사로그(`@AuditLog FILE_UPLOAD`) · **fail-closed 기본**(데몬 장애 시 거부), `fail-open` 옵션.
 - 비고: presigned PUT 업로드는 서버 본문 비경유 → 콘텐츠/AV 검증 미적용(파일명 확장자만). 신뢰경계 밖이면 비동기 후처리 스캔 별도.
 
+### 11) 아카이빙 / 압축 ✅ (`framework-archive`, 완료)
+- 위치: `framework-archive` — `Archiver`(SPI: `zip`/`unzip`/`unzipToDirectory`/`gzip`/`gunzip`) + `ZipArchiver`(순수 JDK `java.util.zip`). `ArchiveEntry`(record, 본문은 `ContentSupplier` 지연 스트림) · `ArchiveSafety`(zip-slip 정규화/거부) · `ArchiveErrorCode`(`ARC****`). 토글 `framework.archive.enabled`(기본 false) + 상한 `max-entries`/`max-entry-size`/`max-total-bytes`.
+- 충족: **스트리밍** zip 생성/해제(대용량 메모리 비적재, `transferTo`) · 엔트리 단위 콜백 해제(`EntryConsumer`) · **zip-slip 차단**(`../`/절대경로/드라이브 거부, `unzipToDirectory` 는 baseDir 밖 해석 거부) · **압축폭탄 가드**(엔트리 수·단일 엔트리·총 해제 바이트 상한, 해제 도중 초과 시 즉시 예외) · 호출자 입력/출력 스트림 비폐쇄(소유권 보존) · **신규 외부 의존성 0**.
+- 비고: **tar/tar.gz 는 JDK 미지원** → commons-compress 옵트인 후속(본 코어는 의존성 0 유지). 암호화 아카이브(zip 패스워드)는 미지원(at-rest 암호화는 `framework-file` `storage.encrypt` 가 별도 담당).
+
 ---
 
 ## 3. 우선순위(현재 합의)
@@ -96,7 +102,8 @@
 - 2026-06-03: **#8+#9+#10 파일 하드닝 묶음 완료**(`framework-file*` 확장) — Range 206 스트리밍 다운로드 + S3 presigned PUT/GET(대용량 직행) · 확장자↔MIME 계열 정합(Tika 확장) · ClamAV INSTREAM AV 게이트(순수 소켓, 외부 의존성 0). 기존 `FileStorage` 불변(ISP capability 추가). 순수 JDK 코어 javac+하니스 35/35 통과(ByteRange 파서·확장자 정책·ClamAV mock 소켓 왕복·FileSystem Range), 정식 JUnit 6종 추가. **사용자 환경 빌드/테스트 통과 확인** — `:framework:framework-file:test :framework:framework-file-s3:test :framework:framework-archtest:test spotlessApply` 그린(S3 오토컨피그 테스트는 신규 `S3Presigner` 빈에 맞춰 mock 추가로 수정). image deprecation(PAYLOAD_TOO_LARGE→CONTENT_TOO_LARGE) 동봉.
 - 2026-06-03: **환경정비 + 보안·검증 + spotless 확장** — 프로파일 local/dev/prod 통일 + `local-xx` 오버레이, 감사 로그 DB 적재 활성화(`audit_log` 마이그레이션 추가), JWT 시크릿 prod 가드, 요청 검증 빈틈 보강(Spring7 `HandlerMethodValidationException`·로그인 `@Valid`), spotless 다소스 확장 + 설정 캐시 충돌 해결(`lineEndings=UNIX`). 문서: `LOCAL_SETUP`/`CHANGES_AND_DEPRECATIONS`/`SECURITY_VALIDATION_ADDITIONS`/`SPOTLESS_NOTES`. 신규 의존성 0(감사/Redis 만 모듈 의존 1줄 추가 필요).
 - ✅ 2026-06-03: **설정값(YAML) 패스워드 암호화** 완료. `framework-core` 의 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor` 가 `ENC(...)` 프로퍼티를 기존 `AesCryptoService`(AES-GCM)로 **지연 복호화**(마스터키 `framework.crypto.aes-secret`/`AES_SECRET`). 토글 `framework.crypto.config-decryption.enabled`(기본 on, ENC 없으면 무동작). 토큰 생성 CLI `CryptoCli`. prod 마스터키 가드 `AesMasterKeySafetyGuard`. **Jasypt 미도입·신규 의존성 0·Jackson 무관**. 설계서 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
+- ✅ 2026-06-03: **#11 아카이빙/압축** 완료(`framework-archive` 신설). ZIP(다중 엔트리)+GZIP(단일 스트림) 순수 JDK `java.util.zip`, **스트리밍**(transferTo)·**zip-slip 차단**·**압축폭탄 가드**(엔트리수/엔트리크기/총바이트), `Archiver` SPI + `ZipArchiver`, 3단 토글 기본 off, 등록=settings+archtest+`.imports`+등록가드. **신규 외부 의존성 0**. 순수 로직(zip-slip 정규화·폭탄 카운팅·gzip 라운드트립) 독립 재현 14/14 통과(작성 환경 JRE-only 라 Spring 부 gradle 컴파일은 받는 쪽). **tar/tar.gz 는 commons-compress 옵트인 후속.**
 
 ## 6. 추가 요청 대기열 (여기에 먼저 적어주세요 — 착수 시 위 표로 승격)
-- [ ] 아카이빙(Archiving) 또는 압축(Archiving)
+- [x] ~~아카이빙(Archiving) 또는 압축~~ — ✅ 완료(`framework-archive`, 2026-06-03). ZIP+GZIP 순수 JDK·zip-slip/폭탄 가드·스트리밍. tar/tar.gz 만 commons-compress 옵트인 후속.
 - [ ] 일괄 처리(Batch Processing) - 여러 개의 파일에 대해 똑같은 작업(이름 변경, 변환 등)을 한꺼번에 적용

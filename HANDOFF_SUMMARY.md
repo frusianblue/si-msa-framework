@@ -6,65 +6,66 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**YAML(설정값) 패스워드 암호화** 완료 — 직전 세션 최우선(#0). `framework-core` 에 커스텀 Boot4 **`EncryptedPropertyEnvironmentPostProcessor`** + enumerable 지연 래퍼 **`DecryptingPropertySource`** 신설: `application*.yml`/env 의 `ENC(...)` 값을 기동 시 기존 **`AesCryptoService`(AES-GCM)** 로 복호화. 등록은 framework-core **신설 `META-INF/spring.factories`**(`org.springframework.boot.EnvironmentPostProcessor` 키). 마스터키=`framework.crypto.aes-secret`/`AES_SECRET`(평문 주입, ENC 불가=닭달걀). 토글 `framework.crypto.config-decryption.enabled`(**기본 on** — ENC 없으면 완전 무동작이라 안전). 토큰 생성 CLI **`CryptoCli`**, prod 마스터키 가드 **`AesMasterKeySafetyGuard`**(JWT 가드 패턴) 동봉. **Jasypt 미도입·신규 외부 의존성 0·Jackson 무관.** **다음 세션 최우선 = (devops) CI 게이트 + 멀티모듈 jacoco 집계.**
+**(1) YAML 설정값 암호화 + (2) 아카이빙/압축** 두 건 완료. (1) `framework-core` 에 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor`+`DecryptingPropertySource` 로 `ENC(...)` 를 기존 `AesCryptoService`(AES-GCM) 지연 복호화(`spring.factories` 등록, 마스터키 `AES_SECRET` 평문 주입, 토글 기본 on, `CryptoCli`/`AesMasterKeySafetyGuard` 동봉). (2) **신규 모듈 `framework-archive`** — `Archiver` SPI + `ZipArchiver`(순수 JDK `java.util.zip`): ZIP 다중엔트리 + GZIP 단일스트림, **스트리밍(transferTo)**·**zip-slip 차단**·**압축폭탄 가드**(엔트리수/엔트리크기/총바이트). 둘 다 **신규 외부 의존성 0**. **tar/tar.gz 는 JDK 미지원 → commons-compress 옵트인 후속**(코어는 의존성 0 유지). 기본기능 카탈로그 11/11(#4 리포트만 🟡 보류). 추가로 **공통 유틸 6종**(Io/Csv/FixedWidth/Charset/Text/Collection) 도 `framework-core/util` 에 신설(RetryUtils 제외). **다음 최우선 = (devops) CI 게이트 + jacoco 집계**, 또는 §6 대기열 잔여 "파일 일괄처리".
 
 ## 최종 갱신
-- 일자: 2026-06-03 · 갱신자: YAML 설정값 암호화 세션
+- 일자: 2026-06-03 · 갱신자: YAML 암호화 + 아카이빙 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-### 설정값 암호화 (framework-core, 신규 외부 의존성 0)
-1. **EPP 진입점** `EncryptedPropertyEnvironmentPostProcessor`(`org.springframework.boot.EnvironmentPostProcessor`, `getOrder=LOWEST_PRECEDENCE`): ① 토글 off면 무동작 ② 어느 소스에도 `ENC(...)` 없으면 무동작(마스터키 불요) ③ ENC 있으면 마스터키로 `AesCryptoService` **직접 생성**(EPP 는 빈 못 씀) ④ 각 `EnumerablePropertySource` 를 래퍼로 replace.
-2. **지연 복호화 래퍼** `DecryptingPropertySource extends EnumerablePropertySource`: 값 읽는 시점에만 `ENC(...)` 복호화(평문은 위임), `getPropertyNames()` 위임(바인딩 보존). 프로파일별 yaml 늦게 들어와도 누락 없음.
-3. **등록** framework-core 신설 `META-INF/spring.factories`(`.imports` 아님 — 컨텍스트 이전 동작). observability EPP 와 동일 패턴.
-4. **토글 필드** `CryptoProperties.ConfigDecryption.enabled`(기본 true) 추가 — 바인딩/메타데이터 일관성(판정은 EPP 가 env 직접 읽음).
-5. **CLI** `CryptoCli encrypt <평문>`(`AES_SECRET` env) → `ENC(...)` 출력(암호화 엔드포인트 노출 대신 CLI).
-6. **prod 마스터키 가드** `AesMasterKeySafetyGuard`(`InitializingBean`, JWT 가드 패턴): prod 에서 비었거나·기본 placeholder(`change-me`/`change-this`)·16바이트 미만이면 부팅 실패, 비-prod 는 경고. `CryptoAutoConfiguration` 에 빈 등록.
-7. **테스트** EPP 7(복호화/평문보존/getPropertyNames보존/ENC無 무동작/마스터키無 실패/마스터키ENC 실패/오키 읽기시 복호화실패/토글off 리터럴) + 가드 6(prod 기본·빈·짧음 실패 / prod 강한키 ok / 비-prod 경고 / 16B 경계).
-8. **문서 동기화**: STACK.md(표 ✅)·README.md(ENC 사용법+토글)·docs/FRAMEWORK_MODULES.md(core 책임 확장·완료)·docs/BASELINE_FEATURES.md(✅)·HANDOFF.md(§6 함정·§7 완료·다음순위)·본 SUMMARY.
+### A. 설정값(YAML) 암호화 (framework-core, 의존성 0)
+- `EncryptedPropertyEnvironmentPostProcessor`(LOWEST_PRECEDENCE) + `DecryptingPropertySource`(enumerable 지연 래퍼, `getPropertyNames` 위임). 등록=framework-core 신설 `META-INF/spring.factories`. 마스터키=`framework.crypto.aes-secret`/`AES_SECRET`(평문, ENC 불가). 토글 `framework.crypto.config-decryption.enabled` 기본 on. `CryptoCli`(토큰 생성)·`AesMasterKeySafetyGuard`(prod 가드). 테스트 EPP 7 + 가드 6.
+
+### B. 아카이빙/압축 (framework-archive 신설, 의존성 0)
+- `Archiver` SPI(`zip`/`unzip`/`unzipToDirectory`/`gzip`/`gunzip`) + `ZipArchiver`(JDK `java.util.zip`). `ArchiveEntry`(record, `ContentSupplier` 지연 스트림)·`ArchiveSafety`(zip-slip 정규화/거부)·`ArchiveErrorCode`(`ARC****`)·config(`ArchiveProperties`/`ArchiveAutoConfiguration`+`.imports`).
+- **스트리밍**: zip 생성·해제 모두 `transferTo`, unzip 은 엔트리 단위 콜백(`EntryConsumer`) — 전체 버퍼링 없음. 호출자 입/출력 스트림 비폐쇄(NonClosing 래퍼).
+- **보안**: zip-slip(`../`/절대/드라이브 거부, `resolveSafely` baseDir 밖 거부) + 압축폭탄 가드(`BombGuardInputStream`: 엔트리크기·총바이트, `maxEntries`).
+- settings include + archtest testImplementation + `.imports` + 등록가드 테스트. 테스트 3(Safety/ZipArchiver/AutoConfig).
+
+### C. 문서 동기화
+- STACK·README·FRAMEWORK_MODULES·BASELINE_FEATURES·HANDOFF·SUMMARY. BASELINE §6 대기열의 "아카이빙/압축" → 완료 승격(잔여 1건=파일 일괄처리). framework-openapi=springdoc/Swagger UI 이미 존재 확인(RestDocs 미사용).
+
+### D. 공통 유틸 6종 추가 (framework-core/util, 의존성 0)
+- **IoUtils**(가드된 스트리밍: `copyLimited` size-cap·`copyAndSha256` tee·drain/closeQuietly) · **CsvUtils**(RFC4180 write/parse) · **FixedWidthUtils**(바이트 고정폭 전문, CP949) · **CharsetUtils**(MS949/EUC-KR↔UTF-8·decodeLenient) · **TextUtils**(null안전·`truncateByBytes` 한글/이모지 안전 절단·패딩·snake/camel) · **CollectionUtils**(`chunk`·null안전). 전부 순수 정적 JDK. RetryUtils 는 제외(사용자 판단; HTTP 재시도=framework-client). 테스트 `CoreUtilsExtraTest`(@Nested 6). 비자명 로직 독립 재현 10/10 통과.
 
 ## 현재 상태 (적용/검증)
-- ✅ **AES-GCM 바이트 스킴(SHA-256 키파생·IV(12B)선두·128bit태그·Base64) + ENC 토큰 substring 추출을 독립 재현 5/5 통과**(round-trip·랜덤IV·분류·오키 인증실패·유니코드).
-- ⚠️ 작성 환경이 **JRE-only(javac 없음) + Maven Central 차단** → Spring 의존부(EPP/가드/테스트)의 **gradle 컴파일은 미실행**. 신규 클래스는 archtest 5규칙(순환·Jackson3·레이어·네이밍·필드주입) 정적 검토상 무충돌(전부 `core.crypto` 동일 모듈·Jackson 0·생성자주입·`*AutoConfiguration`/`*Properties` 비충돌).
-- 신규 파일 6: `EncryptedPropertyEnvironmentPostProcessor`·`DecryptingPropertySource`·`CryptoCli`·`AesMasterKeySafetyGuard`(+test 2) · `META-INF/spring.factories`. 수정 2: `CryptoProperties`(토글 필드)·`CryptoAutoConfiguration`(가드 빈). 문서 6.
+- ✅ **사용자 환경에서 YAML 암호화 모듈 컴파일 성공 확인**(직전 메시지). 실제 ENC 키 기동 테스트는 사용자가 나중에.
+- ✅ **아카이빙 순수 로직 독립 재현 14/14 통과**(zip-slip 정규화·폭탄 카운팅·실제 `../` zip 탐지·gzip 라운드트립).
+- ⚠️ 작성 환경 **JRE-only(javac 없음)+Maven Central 차단** → 두 건 모두 **Spring 부 gradle 컴파일은 미실행**. archtest 5규칙 정적 무충돌(동일 모듈·Jackson0·생성자주입·네이밍). 받는 쪽 검증 경로 아래.
+- 신규 파일: 암호화 6(+test2)·`spring.factories`·CryptoProperties/AutoConfig 패치 / 아카이빙 모듈 11(main7+test3+build.gradle)·settings+archtest 와이어링.
 
 ## 켜는 법
 ```bash
-# 1) 토큰 생성(개발자 1회) — 마스터키는 env 로만
-AES_SECRET='프로젝트마스터키' java -cp <classpath> com.company.framework.core.crypto.CryptoCli encrypt 'sipass'
-#   → ENC(Qk9k...) 를 application*.yml 에 붙여넣기
-# 2) yaml
-#   spring.datasource.password: ENC(Qk9k...)
-#   framework.crypto.aes-secret: ${AES_SECRET}   # 평문 주입(ENC 불가)
-# 3) 기동 — AES_SECRET 주입하면 자동 복호화
-AES_SECRET='프로젝트마스터키' ./gradlew :services:user-service:bootRun
+# 아카이빙
+#   framework.archive.enabled: true   (+ max-entries / max-entry-size / max-total-bytes)
+#   Archiver archiver; archiver.zip(List.of(ArchiveEntry.of("a.txt", bytes)), out);
+#   archiver.unzip(in, (name, content) -> ...);  // 엔트리 단위 스트리밍
+#   archiver.unzipToDirectory(in, targetDir);    // zip-slip 안전
+#   archiver.gzip(in, out); archiver.gunzip(in, out);
+# 검증(받는 쪽)
+./gradlew :framework:framework-archive:test :framework:framework-core:test :framework:framework-archtest:test spotlessApply
 ```
-- 토글 끄기: `framework.crypto.config-decryption.enabled=false`(끄면 ENC 리터럴 그대로 → 권장하지 않음).
-- 검증(받는 쪽): `./gradlew :framework:framework-core:test :framework:framework-archtest:test spotlessApply` + 한 서비스에서 `ENC()` 실제 기동.
 
 ## 바로 다음 할 일 (Next)
-1. **★ (devops) CI 게이트** — `:framework-archtest:test` + 전 모듈 `:test` 를 PR 차단 게이트로. + **멀티모듈 jacoco 집계 리포트**(루트 aggregate).
-2. (devops) **그릇 정비** — 게이트웨이 런타임 점검(CORS preflight·rate-limit 429)·k8s 멀티서비스(redis/secret/configmap·observability ServiceMonitor 실배포)·CI-CD 멀티서비스화.
-3. (선택) 카탈로그 §6 대기열: 아카이빙/압축·일괄 처리 / 서버측 S3 멀티파트 병렬 업로드(TransferManager).
-4. (선택) **마스터 키 회전(rotation)** 절차/스크립트(구키 복호→신키 재암호) — 설계서 §6 백로그.
+1. **★ (devops) CI 게이트** — `:framework-archtest:test` + 전 모듈 `:test` PR 차단 + 멀티모듈 jacoco 집계.
+2. (기본기능) §6 대기열 잔여 **"파일 일괄처리"**(여러 파일 일괄 이름변경/포맷변환) — archive/image/file 와 결합.
+3. (선택) 아카이빙 후속: **tar/tar.gz**(commons-compress 옵트인) · zip 패스워드/암호화 아카이브.
+4. (선택) 아카이빙 후속: **tar/tar.gz**(commons-compress 옵트인) · zip 패스워드/암호화 아카이브. 공통 유틸 잔여=RetryUtils(보류).
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **설정값 암호화 토글은 기본 on**(일반 "3단 토글 기본 off" 규약의 의도적 예외): `ENC(...)` 가 없으면 EPP 가 완전 무동작이라 켜 둬도 무해하고, 오히려 off면 토글을 잊었을 때 `ENC(...)` 리터럴이 그대로 다운스트림(예: DB 패스워드)으로 흘러 **조용히 깨진다**. 그래서 안전 측면에서 on.
-- **EPP 등록은 framework-core 신설 `META-INF/spring.factories`**(`org.springframework.boot.EnvironmentPostProcessor` 키, `.imports` 아님). framework-core 엔 spring.factories 가 없었음 → 신설. 키 한 글자만 틀려도 조용히 미등록=복호화 안 됨.
-- **마스터키는 `ENC()` 불가**(닭-달걀) → `framework.crypto.aes-secret`/`AES_SECRET` 는 항상 평문(env/시크릿). 코드가 마스터키 값이 `ENC(`로 시작하면 기동 실패시킴.
-- **enumerable 래퍼는 `getPropertyNames()` 도 위임 필수** — 누락하면 Binder 가 ENC 값을 못 봐 바인딩 실패. 지연 복호화라 사전 스캔 단계(`containsEncrypted`)는 복호화하지 않고 ENC 존재만 본다 → 오키/조작값은 **읽는 시점**에 GCM 인증 실패로 기동 중단(조용히 통과 안 함).
-- **복호화 실패=기동 실패가 정답**. 예외 메시지/로그에 평문·키 노출 금지(래퍼는 복호화값 로깅 안 함).
-- **운영 정책=권장 (a)**: prod 비밀은 env/시크릿 주입 유지, ENC 는 dev 편의 + 저장소에 평문 안 남기기 용도(prod yaml 의 `${DB_PASSWORD}` 와 ENC 를 같은 값에 이중 적용하지 말 것).
-- **작성 환경 JRE-only**: 컨테이너에 javac 없음 → 순수 JDK 로직도 Python 재현으로 검증. Spring 부는 받는 쪽 gradle 컴파일 필수.
-- (지난·유효) 토글3단 기본 off(이번 암호화 토글은 예외) / Jackson3(`tools.jackson.*`, annotation만 예외) / compileOnly 타입 test 재선언 / `.imports` 가드 / EPP 는 spring.factories(Boot4 패키지) / spotless Palantir·`lineEndings=UNIX`·설정캐시 / 감사로그 DB 적재 3요건 / JWT·DevAuth·Password·AES 마스터키 prod 가드 / 필터·EPP 는 GlobalExceptionHandler 밖 / Boot4 패키지 리네임 추측 금지.
+- **tar 는 JDK 에 없다** — `java.util.zip` 은 zip/gzip/deflate 만. tar/tar.gz 는 commons-compress 가 필요 → "의존성 0" 원칙상 코어는 ZIP+GZIP 만, tar 는 옵트인 후속으로 분리.
+- **아카이브는 항상 안전 가드와 함께**: 해제는 zip-slip(`ArchiveSafety.sanitizeEntryName`/`resolveSafely`) + 압축폭탄(엔트리수·엔트리크기·총바이트) 둘 다 필수. `unzip` 콜백에 넘기는 스트림은 `BombGuardInputStream` 으로 감싸 **읽는 도중** 초과 시 예외(헤더 신뢰 금지).
+- **스트림 소유권**: archiver 메서드는 호출자 입/출력 스트림을 닫지 않는다(NonClosing 래퍼). 내부 Inflater/Deflater 만 try-with-resources 로 정리.
+- **설정값 암호화 토글 기본 on**(일반 3단 토글 off 규약의 의도적 예외 — ENC 없으면 무동작이라 안전, off면 ENC 리터럴이 조용히 샘). EPP 등록=`spring.factories`(framework-core 신설), 마스터키 ENC 불가.
+- (지난·유효) Jackson3(`tools.jackson.*`, annotation만 예외) / compileOnly 타입 test 재선언 / 새 오토컨피그 `.imports`+등록가드 / EPP 는 spring.factories(Boot4 패키지) / spotless Palantir·`lineEndings=UNIX`·설정캐시 / 필터·EPP 는 GlobalExceptionHandler 밖 / prod 가드(JWT·DevAuth·Password·AES마스터키) / Boot4 패키지 리네임 추측 금지 / Swagger=springdoc(framework-openapi, [선택] opt-in).
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
 1. 신규 모듈/기존 확장. 순수 로직은 Spring 무의존 코어로 분리해 JDK 단독 검증 가능하게.
-2. 기존 인터페이스는 건드리지 말고 capability 인터페이스로 확장(ISP). 생성자 변경 시 기존 오버로드 유지.
-3. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+test 재선언), BOM 밖=`implementation`. 의존성 추가는 곧 1단(모듈) 토글.
-4. 새 오토컨피그면 `.imports`+가드 테스트. **EPP 는 `spring.factories`**(키 정확히, Boot4 패키지) — `.imports` 아님.
-5. 오토컨피그 토글 + `@ConditionalOnMissingBean`. 선택 백엔드는 설정 분기.
-6. 테스트: 핵심 알고리즘 단위(JDK) + 오토컨피그 빈 선택 + 동작 게이트. EPP 는 `StandardEnvironment`+`MapPropertySource` 로 단위 검증.
+2. 기존 인터페이스는 capability 인터페이스로 확장(ISP). 생성자 변경 시 기존 오버로드 유지.
+3. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+test 재선언), BOM 밖=`implementation`.
+4. 새 오토컨피그면 `.imports`+등록가드 테스트. **EPP 는 `spring.factories`**(Boot4 패키지). 신규 모듈은 settings include + archtest testImplementation 도 추가.
+5. 오토컨피그 토글 기본 off + `@ConditionalOnMissingBean`(암호화 설정복호화 토글만 예외적 on).
+6. 테스트: 핵심 알고리즘 단위(JDK) + 오토컨피그 토글/빈선택/등록가드. EPP 는 `StandardEnvironment`+`MapPropertySource`.
 7. 드롭인: 변경 파일 전부 한 zip, 루트 `unzip -o`. 문서 동기화. 사용자 환경 `./gradlew :...:test :framework-archtest:test spotlessApply` 검증.
 
 <!-- 갱신 끝 -->

@@ -1,0 +1,17 @@
+// 선택형 모듈: 아카이빙/압축 — ZIP(다중 엔트리) + GZIP(단일 스트림).
+//   - 엔진은 JDK 내장 java.util.zip 만 사용 → "새 외부 의존성 0(버전 0)".
+//   - 스트리밍이 1급: zip 생성/해제 모두 OutputStream/InputStream 으로 흐르게 해 대용량도 메모리 비적재.
+//   - 보안: zip-slip(경로조작) 차단 + 압축폭탄 가드(엔트리 수·엔트리 크기·총 해제 바이트 상한).
+//   - 순수 로직(ArchiveSafety/ZipArchiver)은 Spring 무의존 → JDK 단독 단위검증 가능.
+//   - tar/tar.gz 는 JDK 미지원 → commons-compress 옵트인 후속(본 코어는 의존성 0 유지).
+// 루트 build.gradle 이 java-library/dependency-management/spotless/jacoco 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // 표준 예외/에러코드(BusinessException/ErrorCode). 안전 위반/한도 초과를 표준 예외로 던진다.
+    api project(':framework:framework-core')
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

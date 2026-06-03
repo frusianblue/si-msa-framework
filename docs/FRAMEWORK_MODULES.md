@@ -73,7 +73,7 @@ public class XxxAutoConfiguration {
 
 | 모듈 | 책임 | 대표 토글 | 분류 | 규제 |
 |---|---|---|---|---|
-| framework-core | 응답/에러/페이징/AOP/로깅/트레이스/XSS/캐시/AES + **설정값 암호화(`ENC(...)` 자동 복호화)** + **SI 공통 유틸(`util`: 검증·마스킹·날짜/영업일·금액·한글·해시·JSON)** | `framework.core.{trace,httpLogging,xss,auditAspect,...}`, `framework.crypto.{enabled,aes-secret,config-decryption.enabled}` (util 은 토글 없는 정적) | [코어] | 공통 |
+| framework-core | 응답/에러/페이징/AOP/로깅/트레이스/XSS/캐시/AES + **설정값 암호화(`ENC(...)` 자동 복호화)** + **SI 공통 유틸(`util`: 검증·마스킹·날짜/영업일·금액·한글·해시·JSON + IO/스트림·CSV·고정폭전문·문자셋(CP949/EUC-KR)·텍스트(바이트절단)·컬렉션)** | `framework.core.{trace,httpLogging,xss,auditAspect,...}`, `framework.crypto.{enabled,aes-secret,config-decryption.enabled}` (util 은 토글 없는 정적) | [코어] | 공통 |
 | framework-mybatis | 감사필드·암호화 타입핸들러·CurrentUser | (코어 연동) | [코어] | 공통 |
 | framework-security | 인증추상화·JWT·TokenStore·RBAC·비번정책·로그인잠금 | `framework.security.*` | [코어] | 공통 |
 | framework-openapi | API 문서 | `framework.openapi.enabled` | [선택] | 공통 |
@@ -109,6 +109,7 @@ public class XxxAutoConfiguration {
 | ✅ framework-notification | **메일/SMS/알림톡 채널 추상화** — NotificationService 가 ChannelType 라우팅. 메일=JavaMailSender, SMS·알림톡=벤더 SPI(SmsClient/AlimtalkClient)+기본 로깅구현(@ConditionalOnMissingBean 교체) | `framework.notification.enabled` + `channels.{mail,sms,alimtalk}.enabled` | [선택] | 공통 |
 | ✅ framework-pdf | **PDF 산출물 생성**(거래내역서/통지서) — 표 기반 `PdfReport`/`PdfColumn` → `PdfExporter` OutputStream 스트리밍. **한글 TTF IDENTITY_H 임베딩**(미설정 시 라틴 폴백), 헤더 페이지반복+하단 페이지번호. 엔진 OpenPDF 2.0.2(iText4 LGPL/MPL, `com.lowagie` 패키지·implementation 비노출; 3.0+ `org.openpdf` 리네임이라 2.x 고정) | `framework.pdf.enabled` (+`page-size`/`landscape`/`margin`/`*-font-size`/`page-number`/`font.location`) | [선택] | 공통 |
 | ✅ framework-image | **이미지 처리** — `ImageProcessor` SPI(`process`/`thumbnail`/`probe`)+`DefaultImageProcessor`(JDK ImageIO+AWT). 비율유지 리사이즈/썸네일(상한 박스·업스케일 옵트인·2배 초과 단계 축소)·**EXIF orientation 보정**(순수 JDK APP1/TIFF 파서 1~8)·**민감 EXIF(GPS) 제거**(리인코딩 부수효과)·출력 화이트리스트(JPEG/PNG)·**디컴프레션 폭탄 방지**(헤더 픽셀수 검사·기본 40MP)·JPEG 알파 평탄화·헤드리스. 웹 비의존(배치 가능). **외부 의존성 0개**(엔진 전부 JDK) | `framework.image.enabled` (+`default-format`/`thumbnail-max-edge`/`jpeg-quality`/`max-source-pixels`) | [선택] | 공통 |
+| ✅ framework-archive | **아카이빙/압축** — `Archiver` SPI(`zip`/`unzip`/`unzipToDirectory`/`gzip`/`gunzip`)+`ZipArchiver`(순수 JDK `java.util.zip`). **스트리밍**(transferTo, 대용량 메모리 비적재)·엔트리 단위 콜백 해제·**zip-slip 차단**(`ArchiveSafety`)·**압축폭탄 가드**(엔트리수/엔트리크기/총바이트 상한). `ArchiveEntry`(지연 스트림)·`ArchiveErrorCode`(`ARC****`). **외부 의존성 0개**(tar/tar.gz 만 commons-compress 옵트인 후속) | `framework.archive.enabled` (+`max-entries`/`max-entry-size`/`max-total-bytes`) | [선택] | 공통 |
 
 ### 2.5 신규 — 데이터/연계 (금융 핵심 ★)
 
