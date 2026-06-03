@@ -71,4 +71,17 @@ class GatewayTokenVerifierTest {
                 .compact();
         assertThat(verifier.verify(t).roles()).isEmpty();
     }
+
+    @Test
+    void jti_is_extracted_for_blacklist_lookup() {
+        String t = Jwts.builder()
+                .id("jti-123")
+                .subject("user-1")
+                .claim("typ", "access")
+                .claim("roles", List.of("USER"))
+                .expiration(Date.from(Instant.now().plusSeconds(60)))
+                .signWith(key)
+                .compact();
+        assertThat(verifier.verify(t).jti()).isEqualTo("jti-123");
+    }
 }

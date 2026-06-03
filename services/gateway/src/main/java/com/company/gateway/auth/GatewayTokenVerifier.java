@@ -37,7 +37,7 @@ public class GatewayTokenVerifier {
         if (userId == null || userId.isBlank()) {
             throw new JwtException("subject(userId) 가 없습니다.");
         }
-        return new Verified(userId, extractRoles(claims));
+        return new Verified(userId, claims.getId(), extractRoles(claims));
     }
 
     private static List<String> extractRoles(Claims claims) {
@@ -48,6 +48,6 @@ public class GatewayTokenVerifier {
         return List.of();
     }
 
-    /** 검증된 신원. */
-    public record Verified(String userId, List<String> roles) {}
+    /** 검증된 신원. jti 는 중앙 로그아웃(블랙리스트) 조회에 사용(토큰에 없으면 null). */
+    public record Verified(String userId, String jti, List<String> roles) {}
 }

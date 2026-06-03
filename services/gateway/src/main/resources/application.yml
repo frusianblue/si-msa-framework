@@ -74,6 +74,8 @@ gateway:
     enabled: ${GATEWAY_AUTH_ENABLED:false}
     jwt-secret: ${JWT_SECRET:}
     token-type: access
+    blacklist-check:
+      enabled: ${GATEWAY_BLACKLIST_CHECK_ENABLED:false}  # 중앙 로그아웃(SSO). true 면 reactive Redis 필요.
     permit-all-patterns:
       - /api/*/auth/**
       - /actuator/**

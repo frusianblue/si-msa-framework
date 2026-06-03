@@ -13,6 +13,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     enabled: false                 # 기본 off(점진 도입). 운영에서 true.
  *     jwt-secret: "${JWT_SECRET}"     # framework.security.jwt.secret 와 "동일한" 비밀키여야 한다.
  *     token-type: access             # JWT typ 클레임 검증값(access 토큰만 통과)
+ *     blacklist-check:                # 중앙 로그아웃(SSO) — 기본 off
+ *       enabled: false               #   true 면 jti 를 reactive Redis 블랙리스트와 대조
  *     user-id-header: X-User-Id       # 검증 성공 시 sub 를 이 헤더로 다운스트림에 주입
  *     roles-header: X-User-Roles      # roles 를 쉼표로 연결해 주입
  *     tenant-header: X-Tenant-Id      # 클라이언트 위조 방지를 위해 항상 제거(주입은 하지 않음 — 토큰에 없음)
@@ -35,6 +37,7 @@ public class GatewayAuthProperties {
     private String rolesHeader = "X-User-Roles";
     private String tenantHeader = "X-Tenant-Id";
     private List<String> permitAllPatterns = new ArrayList<>(List.of("/api/*/auth/**", "/actuator/**", "/fallback/**"));
+    private final BlacklistCheck blacklistCheck = new BlacklistCheck();
 
     public boolean isEnabled() {
         return enabled;
@@ -90,5 +93,32 @@ public class GatewayAuthProperties {
 
     public void setPermitAllPatterns(List<String> permitAllPatterns) {
         this.permitAllPatterns = permitAllPatterns;
+    }
+
+    public BlacklistCheck getBlacklistCheck() {
+        return blacklistCheck;
+    }
+
+    /**
+     * 중앙 로그아웃(SSO) 옵트인 설정. {@code enabled=true} 면 게이트웨이가 access jti 를 공유 저장소
+     * (reactive Redis)의 블랙리스트와 대조해 로그아웃된 토큰을 엣지에서 차단한다. 기본 off(서명/만료만 검증).
+     *
+     * <pre>
+     * gateway:
+     *   auth:
+     *     blacklist-check:
+     *       enabled: false   # 운영 SSO 에서 true. true 면 reactive Redis 필요(없으면 fail-fast).
+     * </pre>
+     */
+    public static class BlacklistCheck {
+        private boolean enabled = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 }

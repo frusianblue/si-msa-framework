@@ -59,6 +59,15 @@ export GATEWAY_AUTH_ENABLED=true
 권한(`X-User-Roles`)이 필요하면 헤더에서 직접 읽거나, 서비스가 `Authorization` 토큰을 그대로 재검증해도 된다
 (게이트웨이는 Authorization 을 제거하지 않는다 — 심층 방어).
 
+---
+
+## 중앙 로그아웃(SSO) 연동
+
+엣지 인증 위에 **중앙 로그아웃**을 옵트인으로 얹을 수 있다(`gateway.auth.blacklist-check.enabled=true`).
+켜면 검증 통과한 토큰의 `jti` 를 공유 Redis 블랙리스트(`bl:{jti}`)와 대조해, 로그아웃된 토큰을 엣지에서 차단한다.
+서명/만료만으로는 막을 수 없는 "로그아웃 후에도 살아 있는 토큰" 문제를 해결한다. 자세한 설정/설계는
+[`SSO_CENTRAL_LOGOUT.md`](./SSO_CENTRAL_LOGOUT.md) 참고.
+
 > **신뢰 경계**: "게이트웨이를 거친 요청만 신뢰"는 네트워크에서 보장하는 게 정석이다. K8s 라면 NetworkPolicy 로
 > 백엔드 서비스의 인그레스를 게이트웨이 파드로만 제한하라. `AddRequestHeader=X-Gateway` 같은 상수 헤더는
 > 위조 가능하므로 신뢰 근거로 쓰지 말 것.
