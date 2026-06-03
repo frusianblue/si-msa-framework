@@ -18,7 +18,7 @@
 | `io.spring.dependency-management` | 1.1.7 | BOM 기반 의존성 버전 관리 | 전 모듈 |
 | `java-library` | (내장) | 라이브러리 모듈 컴파일 | 전 서브프로젝트 |
 | `jacoco` | (내장) | 테스트 커버리지 → Sonar 연동 | 전 서브프로젝트 |
-| `com.diffplug.spotless` | 8.5.1 | 코드 포맷(Palantir Java Format) 게이트 | 전 서브프로젝트 |
+| `com.diffplug.spotless` | 8.5.1 | 코드 포맷(**Palantir** Java Format) 게이트 — Java(subprojects) + 루트에서 gradle/yaml/sql/md. **설정 캐시 호환 위해 `lineEndings=UNIX` 고정**(GIT_ATTRIBUTES 는 직렬화 불가). `docs/SPOTLESS_NOTES.md` | 전 서브프로젝트 + 루트 |
 | `org.owasp.dependencycheck` | 12.1.0 | 의존성 CVE 스캔(CVSS 7.0+ 빌드 실패) | 루트(aggregate) |
 | `org.sonarqube` | 6.0.1.5171 | 정적분석/보안 핫스팟/커버리지 수집 | 루트 |
 | `org.flywaydb.flyway` | 11.15.0 | CI 마이그레이션(flywayValidate/Info/Migrate) | user/admin 서비스 |
@@ -120,6 +120,7 @@
 | Awaitility | 라이브러리 | 비동기/가상스레드 테스트 검증 | 선택 |
 | `com.tngtech.archunit:archunit-junit5:1.4.2` | 라이브러리 | 모듈/레이어 의존 규칙 강제 | ✅ **도입**(테스트전용 `framework-archtest`: 순환·Jackson3·레이어·네이밍·필드주입 7규칙) |
 | Error Prone + NullAway | 플러그인 | 컴파일타임 버그/NPE 탐지 | 신규 모듈부터 점진(초기 노이즈 많음) |
+| 설정값(YAML) 암호화 | 기능 | yaml 시크릿 `ENC(...)` 자동 복호화 | ⏭️ **다음 작업** — **Jasypt 미도입**(Boot4 지원 불명확). 커스텀 Boot4 `EnvironmentPostProcessor` + 기존 `AesCryptoService`(AES-GCM, 마스터키 `AES_SECRET`) 재사용, **신규 의존성 0**. 설계 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md` |
 
 ## 7. 버전 확인 / 업데이트 방법
 - 의존성 최신 여부: `./gradlew dependencyUpdates` (ben-manes 플러그인 도입 후)

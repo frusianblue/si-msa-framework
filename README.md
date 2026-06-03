@@ -58,11 +58,19 @@ deploy/
 ```
 
 ```bash
-# 로컬 기동: 기본 활성 프로파일이 없으므로 local 을 반드시 명시해야 H2+시드가 적용된다.
-./gradlew :services:user-service:bootRun  --args='--spring.profiles.active=local'   # → :8080
-./gradlew :services:admin-service:bootRun --args='--spring.profiles.active=local'   # → :8081 (다른 터미널)
-# 환경변수도 가능: SPRING_PROFILES_ACTIVE=local  /  devtools 포함이라 코드 변경 시 핫리로드
+# 로컬 기동: 기본 활성 프로파일 = local (인자 없이 띄우면 H2 인메모리+시드). 컨테이너는 SPRING_PROFILES_ACTIVE 로 override.
+./gradlew :services:user-service:bootRun     # → :8080 (= local, H2 메모리)
+./gradlew :services:admin-service:bootRun    # → :8081 (다른 터미널)
+
+# DB/Redis 를 로컬 설치본으로 전환하는 local-xx 오버레이 (local 위에 겹쳐 사용)
+./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,local-postgres'        # 로컬 PostgreSQL
+./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,local-postgres,local-redis'  # +Redis
+./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,local-noauth'           # 로그인/권한 우회(개발)
+# ⚠️ 로그인 우회는 과거 'local,dev' → 이제 'local,local-noauth'. dev 는 개발 서버 환경(env 주입)을 뜻한다.
+# 환경 구분은 local / dev / prod 로 통일. 로컬 설치·검증 상세는 docs/LOCAL_SETUP.md.
 ```
+
+> **설정값(시크릿) 암호화 — 예정**: yaml 의 패스워드/시크릿을 `ENC(...)` 로 두고 기동 시 자동 복호화하는 기능이 다음 작업이다(마스터키 = `framework.crypto.aes-secret`/`AES_SECRET`, 기존 `AesCryptoService` 재사용, 신규 의존성 0). 설계: `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
 
 ```bash
 # 동작 확인 — 시드 계정: admin/admin123(ADMIN), hong/hong123(USER)

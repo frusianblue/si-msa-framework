@@ -94,6 +94,8 @@
 - 2026-06-03: #5 `framework-context` 완료(사용자 환경 빌드 통과).
 - 2026-06-03: **#7 `framework-image` 완료** — ImageIO 기반 리사이즈/썸네일·EXIF orientation 보정·메타(GPS) 제거·디컴프레션 폭탄 방지, 신규 외부 의존성 0. 엔진 javac 단독 + 기능 하니스 26/26 통과, config/배선은 context·pdf 패턴 미러(사용자 Gradle 검증 예정).
 - 2026-06-03: **#8+#9+#10 파일 하드닝 묶음 완료**(`framework-file*` 확장) — Range 206 스트리밍 다운로드 + S3 presigned PUT/GET(대용량 직행) · 확장자↔MIME 계열 정합(Tika 확장) · ClamAV INSTREAM AV 게이트(순수 소켓, 외부 의존성 0). 기존 `FileStorage` 불변(ISP capability 추가). 순수 JDK 코어 javac+하니스 35/35 통과(ByteRange 파서·확장자 정책·ClamAV mock 소켓 왕복·FileSystem Range), 정식 JUnit 6종 추가. **사용자 환경 빌드/테스트 통과 확인** — `:framework:framework-file:test :framework:framework-file-s3:test :framework:framework-archtest:test spotlessApply` 그린(S3 오토컨피그 테스트는 신규 `S3Presigner` 빈에 맞춰 mock 추가로 수정). image deprecation(PAYLOAD_TOO_LARGE→CONTENT_TOO_LARGE) 동봉.
+- 2026-06-03: **환경정비 + 보안·검증 + spotless 확장** — 프로파일 local/dev/prod 통일 + `local-xx` 오버레이, 감사 로그 DB 적재 활성화(`audit_log` 마이그레이션 추가), JWT 시크릿 prod 가드, 요청 검증 빈틈 보강(Spring7 `HandlerMethodValidationException`·로그인 `@Valid`), spotless 다소스 확장 + 설정 캐시 충돌 해결(`lineEndings=UNIX`). 문서: LOCAL_SETUP/CHANGES_AND_DEPRECATIONS/SECURITY_VALIDATION_ADDITIONS/SPOTLESS_NOTES. 신규 의존성 0.
+- 2026-06-03(예정): **★ 설정값(YAML) 패스워드 암호화** = 다음 세션 최우선. 커스텀 Boot4 `EnvironmentPostProcessor` 가 `ENC(...)` 를 기존 `AesCryptoService`(AES-GCM)로 복호화(Jasypt 보류, 신규 의존성 0). 설계서 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
 
 ## 6. 추가 요청 대기열 (여기에 먼저 적어주세요 — 착수 시 위 표로 승격)
 > 형식: `- [ ] <기능명> — <왜 필요한지/기대 인수기준 한 줄>`
