@@ -20,7 +20,9 @@
 
 현재 자산: `JwtProvider`/`TokenStore`(memory|jdbc|redis)/`AuthenticatedUser`/`TokenResponse`, RBAC, MFA(`MfaGate`),
 게이트웨이 엣지 검증(jjwt)+**jti 블랙리스트 reactive 조회**, `framework-context`(헤더 신원 전파),
-`framework-oauth-client`(OAuth2 **+ OIDC RP 강화**).
+`framework-oauth-client`(OAuth2 **+ OIDC RP 강화**), `framework-saml-sp`(**SAML 2.0 SP**).
+
+> **➡️ 다음 세션 후보(택1, 착수 설계 = §6)**: **6.1** SAML redis `Saml2AuthenticationRequestRepository`(멀티 파드) · **6.2** SAML SLO(`saml2Logout`) · **6.3** C) Authorization Server(별도 서비스, 명시 요구 시·후순위) · (그 다음) **6.4** 4) Passwordless. 권장 순서 = 6.1 → 6.2 → (필요 시) 6.3.
 
 ---
 
@@ -143,15 +145,41 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 - SAML 본체: Spring Security `Saml2` 테스트 유틸/OpenSAML 로 **서명된 assertion 을 in-test 생성** → 인증 provider 통과/위변조 실패. (OpenSAML init 필요 → 받는 쪽 gradle.)
 - 오토컨피그 토글/백오프(`FilteredClassLoader` 로 SAML2 클래스 부재).
 
-### 5.9 후속(다음 단계 — SAML 모듈 내)
-- **redis 기반 `Saml2AuthenticationRequestRepository`**(멀티 파드, 스티키 세션 없이). SS7 인터페이스(확인됨):
-  `T loadAuthenticationRequest(req)` · `void saveAuthenticationRequest(T, req, resp)` · `T removeAuthenticationRequest(req, resp)`
-  (`T extends AbstractSaml2AuthenticationRequest`). 키는 `Saml2ParameterNames.RELAY_STATE`. **난점 = `AbstractSaml2AuthenticationRequest`
-  (Redirect/Post 하위타입, samlRequest/relayState/authnRequestUri/relyingPartyRegistrationId/sigAlg/signature 필드) 직렬화** —
-  Java 직렬화는 파드 버전 간 취약 → 빌더 기반 수동 (역)직렬화 권장. 작성 환경 컴파일 불가라 **검증 후 도입**(이번 드롭 미포함, redis 설정 시 fail-fast).
-- (선택) **SLO**(`saml2Logout`) · **메타데이터 없는 IdP**(엔드포인트/인증서 수동 입력) 지원.
+### 5.9 후속(SAML 모듈 내 — 상세 착수 설계는 §6)
+- ✅ **받는 쪽 BUILD SUCCESSFUL + 컴파일 정상 확인(2026-06-04)**: `:framework-saml-sp:test :framework-archtest:test spotlessApply` 통과, OpenSAML `5.1.6`(Shibboleth)·`spring-security-saml2-service-provider:7.0.5` 정상 해소.
+- ✅ **`Saml2AuthenticatedPrincipal` deprecation 경고 처리(2026-06-04)**: SS7 이 assertion 세부를 principal 에서 분리하며 deprecated(후속=`Saml2AssertionAuthentication.getRelyingPartyRegistrationId()`+`Saml2ResponseAssertionAccessor`). 7.0.x 완전 동작·제거는 빨라야 SS8 → `SamlAuthenticationSuccessHandler.onAuthenticationSuccess` 에 **메서드 한정 `@SuppressWarnings("deprecation")`+마이그레이션 TODO**. 정식 교체는 §6.2(또는 별도)에서 IDE 컴파일로 접근자 메서드 확정 후.
+- ⏭️ **redis 기반 `Saml2AuthenticationRequestRepository`**(멀티 파드) → 설계 **§6.1**.
+- ⏭️ **SLO(Single Logout, `saml2Logout`)** → 설계 **§6.2**.
+- (선택) 메타데이터 없는 IdP(엔드포인트/인증서 수동 입력) 지원.
 
 ---
 
-## 6. 이후(참고) — C) Authorization Server
-별도 `services/auth-server`(Spring Authorization Server). 대부분 SI 는 불필요 → 명시 요구 시에만. B-SAML 이후로.
+## 6. ⏭️ 다음 세션 작업 후보 (착수 설계)
+
+> B-SAML 까지 완료. 다음 세션은 아래 셋 중 택1(또는 순서대로). 각 항목은 **결정 → 인터페이스 → 함정 → 테스트** 순으로 바로 착수 가능하게 정리.
+> 공통 제약(되풀이): 작성 환경은 Maven Central/Shibboleth 차단 → SAML/SS 본체 컴파일 불가. 순수 로직만 JDK 검증하고 본체는 받는 쪽 gradle(sshd/SAML 패턴).
+
+### 6.1 SAML redis `Saml2AuthenticationRequestRepository` (멀티 파드, 스티키 세션 제거)
+- **왜**: SP-initiated 흐름은 AuthnRequest↔Response 상관(InResponseTo/RelayState)을 기본 HTTP 세션에 둔다 → 게이트웨이가 authorize 와 ACS 콜백을 다른 파드로 보내면 깨짐. 현재는 게이트웨이 스티키 세션으로 핸드셰이크(수초)를 묶고 있음. redis 공유로 스티키 의존 제거 = k8s 친화.
+- **SS7 인터페이스(확인됨)**: `Saml2AuthenticationRequestRepository<T extends AbstractSaml2AuthenticationRequest>` — `T loadAuthenticationRequest(HttpServletRequest)` · `void saveAuthenticationRequest(T, HttpServletRequest, HttpServletResponse)` · `T removeAuthenticationRequest(HttpServletRequest, HttpServletResponse)`. 노출: `@Bean` 으로 등록하면 `Saml2WebSsoAuthenticationRequestFilter`(save)·`Saml2WebSsoAuthenticationFilter`/`Saml2AuthenticationTokenConverter`(load/remove)가 사용. 키 = 요청 파라미터 `Saml2ParameterNames.RELAY_STATE`(없으면 거부/로그). 기본 구현 `HttpSessionSaml2AuthenticationRequestRepository` 참고.
+- **핵심 난점 = 직렬화**: `AbstractSaml2AuthenticationRequest` 는 추상(하위타입 `Saml2RedirectAuthenticationRequest`/`Saml2PostAuthenticationRequest`), 필드 = `samlRequest`(인코딩 본문)·`relayState`·`authenticationRequestUri`·`relyingPartyRegistrationId`(+Redirect 는 `sigAlg`/`signature`). **Java 직렬화 금지**(파드 버전·SS 버전 간 취약, OAuth state 와 같은 결로 회피). → **필드를 명시 추출해 수기 고정 셰이프로 (역)직렬화**(`SecureWebResponder`/OAuth state 수기 직렬화 선례) 후 redis `SET ... PX ttl` 1회용 저장, load 시 binding(`relayState`/`REDIRECT|POST`)으로 하위타입 복원. **빌더 = `AbstractSaml2AuthenticationRequest.Builder` 하위(`Saml2RedirectAuthenticationRequest.withRelayState(...)` 류) — IDE 에서 정확한 빌더/게터 확정 필수.**
+- **결정 필요**: ① 키 prefix(`saml:authnreq:` 류) · ② TTL(AuthnRequest 수명, 기본 2~5m) · ③ 토글 = 이미 있는 `framework.saml-sp.request-repository: redis`(현재 fail-fast 가드 → 구현되면 가드를 redis 빈 등록으로 교체) · ④ redis 미가용 시 fail-fast vs 세션 폴백.
+- **배선**: `SamlSpAutoConfiguration` 에서 `request-repository=redis` & `StringRedisTemplate` 존재 시 `RedisSaml2AuthenticationRequestRepository` 빈 등록(현 fail-fast 분기 대체), `@ConditionalOnClass(StringRedisTemplate)`+`compileOnly spring-boot-starter-data-redis`(+test 재선언). OAuth `RedisOAuthStateStore` 패턴 그대로.
+- **테스트**: 직렬화 왕복(라운드트립) 순수 단위(redis/SS 없이 fake map 또는 직렬화 함수 직접) + 오토컨피그 토글(redis 빈 등록/세션 백오프). 본체는 받는 쪽.
+
+### 6.2 SAML SLO (Single Logout, `saml2Logout`)
+- **왜**: 현재 중앙 로그아웃(SSO A)은 우리 토큰(jti 블랙리스트)만 무효화. SAML 로그인 사용자를 **IdP 세션까지** 끊으려면 SAML SLO(SP-initiated LogoutRequest → IdP → LogoutResponse) 필요. 규제/공공에서 요구되기도 함.
+- **구현 방향**: SS7 DSL `http.saml2Logout(Customizer)` 를 SAML 체인에 추가. RP 메타데이터에 SLO 엔드포인트가 있어야 함(메타데이터 등록이면 자동). 우리 토큰 무효화(`LoginService.logout`/`logoutAll`)와 **순서/연계** 결정 필요 = SAML SLO 성공 핸들러에서 우리 JWT 블랙리스트도 함께 태움.
+- **결정 필요**: ① 우리 로그아웃(JWT 블랙리스트)과 SAML SLO 의 트리거 순서·단일 진입점(`POST /api/v1/auth/logout` 확장 vs 별도 `/saml2/logout`) · ② SLO 서명 키(SP 서명 인증서 = RP 등록의 signing credential, 메타데이터/설정) · ③ 멀티 파드 LogoutRequest 상관도 §6.1 과 동일한 세션/redis 이슈 → §6.1 선행 권장 · ④ IdP 가 SLO 미지원 시 우리 토큰만 무효화(graceful).
+- **함정**: SLO 는 IdP 별 상호운용성이 까다로움(바인딩·서명·NameID/SessionIndex 매칭). RP 등록에 SLO location + signing credential 필요. **§6.1(redis 상태) 이후**가 자연스러움.
+- **테스트**: LogoutRequest 빌드/서명 검증은 본체(받는 쪽). 우리 토큰 연계(블랙리스트 호출)는 순수 단위.
+
+### 6.3 C) Authorization Server — 우리가 IdP/OP 가 되기 (별도 `services/auth-server`)
+- **언제**: 대부분 SI 는 **불필요**(우리는 지금까지 RP/SP = 소비자). 우리 서비스가 **다른 시스템에 토큰을 발급하는 OAuth2/OIDC Provider** 가 되어야 할 때만(예: 그룹사 공통 인증, 외부 파트너 OIDC). **명시 요구 시에만 착수.**
+- **구현 방향**: **Spring Authorization Server**(별도 서비스 `services/auth-server`, 라이브러리 모듈 아님 — 프레임워크는 RP 자산만 제공). authorization_code+PKCE/client_credentials, JWKS 공개, OIDC discovery. 우리 `framework-security` 의 사용자/RBAC 를 사용자 소스로 연결.
+- **결정 필요**: ① 정말 OP 가 되어야 하는가(아니면 기존 RP/SP 로 충분) · ② 서비스 경계(별도 배포·키 관리/회전·동의 화면) · ③ 우리 JWT(자체 발급) vs AS 발급 토큰의 관계(이중 발급기 정리) · ④ 클라이언트 등록 저장소(jdbc).
+- **규모**: 별도 서비스 1개 신설 수준 = 가장 큰 작업. SAML 후속(6.1/6.2)보다 **후순위 권장**(명시 요구 전엔 보류).
+- **참고**: Spring Authorization Server 는 Boot 4/SS7 정합 버전 사용(BOM 관리 여부 받는 쪽 확인). 새 외부 의존성 0 원칙의 또 다른 예외 가능성(AS 라이브러리) → STACK 갱신 대상.
+
+### 6.4 (그 다음) 4) Passwordless — 패스키/WebAuthn
+- 인증 로드맵 4번째. SSO 갈래 정리 후. 별도 설계 노트 신설 예정(`docs/NEXT_PASSWORDLESS.md`).

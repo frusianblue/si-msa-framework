@@ -6,7 +6,7 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**인증 로드맵 3) SSO — B-SAML) SAML 2.0 SP 완료 (`framework-saml-sp` 신설·등록·검증가능 상태).** 다음 = SSO 후속(redis AuthnRequest 저장소·SLO) 또는 C) Authorization Server / 4) Passwordless.
+**인증 로드맵 3) SSO — B-SAML) SAML 2.0 SP 완료 + 받는 쪽 컴파일/BUILD 정상 확인 + deprecation 경고 처리 + 다음 세션 착수 문서 정비 완료.** 다음 세션 = `docs/NEXT_SSO.md` **§6** 택1(권장 6.1→6.2): 6.1 SAML redis AuthnRequest 저장소 · 6.2 SAML SLO · 6.3 C) Authorization Server(후순위) · 6.4 Passwordless.
 
 외부 SAML IdP(공공 통합인증·Keycloak/Azure AD SAML 모드)에 **SP 로 연동** → IdP 메타데이터 기반 RelyingParty 등록(`RelyingPartyRegistrations.fromMetadataLocation`) → 전용 `SecurityFilterChain`(`/saml2/**`,`/login/saml2/**`) → ACS 성공 시 **서버 세션 없이** NameID/속성 → `SamlAttributeMapper` 정규화 → `SamlUserResolver`(앱 구현) 매핑 → `SamlTokenIssuer`(security `JwtProvider`/`TokenStore` 재사용)로 **자체 JWT 즉시 발급**(수기 JSON, Jackson 비의존). framework-security 무수정(`@AutoConfiguration(after=SecurityAutoConfiguration)`+securityMatcher+높은 우선순위). OAuth/OIDC 와 같은 결(외부 신원확인→자체 JWT, stateless 유지).
 
@@ -58,8 +58,8 @@ framework:
 
 ## 바로 다음 할 일 (Next)
 0. ✅ **받는 쪽 빌드 검증 완료(2026-06-04)**: `:framework-saml-sp:test :framework-archtest:test spotlessApply` → **BUILD SUCCESSFUL**(15 executed). `:dependencies` 로 OpenSAML 해소 확인 — `spring-security-saml2-service-provider:7.0.5` → `opensaml-saml-api/core/messaging:5.1.6` + `net.shibboleth:shib-support:9.1.6`(Shibboleth 저장소에서 정상 해소, SS 가 버전 관리=핀 안 한 결정 검증). **남은 deprecation 경고 1건 처리**: `Saml2AuthenticatedPrincipal`(SS7 deprecated, 후속=`Saml2AssertionAuthentication`+`Saml2ResponseAssertionAccessor`) → `SamlAuthenticationSuccessHandler.onAuthenticationSuccess` 에 메서드 한정 `@SuppressWarnings("deprecation")`+마이그레이션 TODO(7.0.x 완전 동작·제거는 빨라야 SS8, 새 접근자 메서드는 IDE 컴파일 확인 후 교체).
-1. **SSO 후속 택1**: (a) **redis `Saml2AuthenticationRequestRepository`**(멀티 파드, 스티키 세션 불요 — SS7 인터페이스 `load/save/removeAuthenticationRequest`, key=`Saml2ParameterNames.RELAY_STATE`, 난점=`AbstractSaml2AuthenticationRequest` 빌더 기반 수동 직렬화) · (b) **SLO**(`saml2Logout`) · (c) **`Saml2AuthenticatedPrincipal` deprecation 정식 마이그레이션**(IDE 에서) · (d) **C) Authorization Server**(별도 `services/auth-server`, 명시 요구 시) · (e) **4) Passwordless(WebAuthn)**.
-2. (devops, 병행) CI 게이트(`:framework-archtest:test`+전 모듈 `:test` PR 차단)+멀티모듈 jacoco 집계 · 게이트웨이 런타임 점검(CORS preflight·rate-limit 429)·k8s 멀티서비스.
+1. **SSO 후속 — 착수 설계 `docs/NEXT_SSO.md` §6**(택1, 권장 순서 6.1→6.2): **6.1** SAML redis `Saml2AuthenticationRequestRepository`(멀티 파드/스티키 세션 제거 — SS7 인터페이스·직렬화 난점·`SamlSpAutoConfiguration` 배선·OAuth `RedisOAuthStateStore` 패턴 정리됨; 현 `request-repository=redis` fail-fast 가드를 redis 빈 등록으로 교체) · **6.2** SAML SLO(`saml2Logout` + 우리 JWT 블랙리스트 연계, 6.1 선행 권장) · **6.3** C) Authorization Server(별도 `services/auth-server`, 명시 요구 시·최대 작업) · **6.4** Passwordless(WebAuthn). 각 항목 결정/인터페이스/함정/테스트는 §6 에 정리.
+2. (병행 가능, devops) CI 게이트(`:framework-archtest:test`+전 모듈 `:test` PR 차단)+멀티모듈 jacoco 집계 · 게이트웨이 런타임 점검(CORS preflight·rate-limit 429)·k8s 멀티서비스.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
 - **OpenSAML = 첫 비-Central 저장소**: OpenSAML 4+ 는 Maven Central 에 **없다**(Shibboleth 전용). `spring-security-saml2-service-provider` 가 전이로 끌어오고 **버전은 SS 가 관리** → opensaml **명시 선언/핀 금지**(SS 관리 버전과 어긋남 + 루트 ext 미정의 시 설정 단계 실패. 초안 `${openSamlVersion}` 가 바로 이 함정). 루트 `allprojects.repositories` 에 Shibboleth 를 **org.opensaml/net.shibboleth 그룹 한정**으로 추가(그 외는 Central 유지). poi/openpdf/sshd 의 "BOM 밖→버전 핀" 패턴과 다름(SAML 은 저장소만 추가).
