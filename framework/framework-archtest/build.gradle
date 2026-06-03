@@ -43,4 +43,5 @@ dependencies {
     testImplementation project(':framework:framework-pdf')
     testImplementation project(':framework:framework-cache-redis')
     testImplementation project(':framework:framework-log-masking')
+    testImplementation project(':framework:framework-context')
 }

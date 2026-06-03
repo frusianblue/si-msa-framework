@@ -1,0 +1,19 @@
+// 선택형 모듈: 요청 컨텍스트 / 멀티테넌시.
+// 요청마다 tenantId/userId/locale 등을 컨텍스트로 바인딩하고, @Async·아웃바운드 호출로 전파한다.
+// 새 외부 의존성 0(버전 0): servlet/web 은 호스트 앱이 제공 → 컴파일만(드래그인 방지).
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // ApiResponse/ErrorCode 등 core 기반(core 가 spring-web 도 전이 노출).
+    api project(':framework:framework-core')
+
+    // OncePerRequestFilter / ClientHttpRequestInterceptor 등 web API 컴파일 확보. 런타임은 호스트 제공 → compileOnly.
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // 필터/리졸버/오토컨피그 테스트: MockHttpServletRequest, WebApplicationContextRunner, RestClient 인터셉터 introspection.
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+}
