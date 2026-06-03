@@ -34,7 +34,7 @@
 | `springdoc-openapi-starter-webmvc-ui` | 3.0.3 | Swagger UI / OpenAPI | framework-openapi |
 | `org.mapstruct:mapstruct(+processor)` | 1.6.3 | DTO 컴파일타임 변환(런타임 비용 0) | framework-commoncode 등 |
 | `org.projectlombok:lombok-mapstruct-binding` | 0.2.0 | Lombok+MapStruct 병행 | (MapStruct 쓰는 모듈) |
-| `software.amazon.awssdk:bom` / `s3` | 2.31.0 | S3 저장소 (Spring Cloud AWS 회피) | framework-file-s3 |
+| `software.amazon.awssdk:bom` / `s3` | 2.31.0 | S3 저장소 (Spring Cloud AWS 회피). **presigned PUT/GET 용 `S3Presigner` 도 이 `s3` 아티팩트에 포함**(별도 의존 불필요) | framework-file-s3 |
 | `com.github.gavlyukovskiy:datasource-proxy-spring-boot-starter` | 2.0.0 | SQL 디버깅(바인딩 값/슬로우쿼리) — **Boot 4 는 2.0.0+** | 서비스(개발) |
 | `org.apache.poi:poi-ooxml` | 5.5.1 | Excel 업/다운로드(XSSF/SXSSF/HSSF) — **Boot BOM 미관리**(여기서 고정), 모듈 내부 implementation | framework-excel(선택) |
 | `org.apache.tika:tika-core` | 3.1.0 | 업로드 콘텐츠 타입 매직넘버 검출 — **Boot BOM 미관리**(여기서 고정). file 에 `compileOnly`(선택 의존·가드된 인스턴스화) + test. 검출만이라 tika-core 단독(파서 모듈 불필요) | framework-file(선택, `validation.content-type-detection=true` 시) |
@@ -99,6 +99,7 @@
 - **Spring Cloud 2025.1.x(Oakwood)** — 2025.0.x 는 Boot 4 비호환.
 - **datasource-proxy / p6spy 스타터** — 반드시 `2.0.0+`.
 - **Spring Cloud AWS 미사용** — Jackson2 의존 회피 위해 AWS SDK v2 직접 사용.
+- **안티바이러스(framework-file `scan/`)** — ClamAV `clamd` 와 **INSTREAM(순수 JDK `java.net.Socket`)** 으로 통신해 **새 외부 의존성 0**(클라이언트 라이브러리 미사용). `scan.enabled=true`+`scan.type=clamav` 옵트인, fail-closed 기본. HTTP Range/presigned 도 신규 의존 없음(Range=JDK NIO, S3Presigner=awssdk:s3 포함).
 - Docker 이미지: 레이어 추출 후 엔트리포인트는 `org.springframework.boot.loader.launch.JarLauncher` (구 `java -jar` 대체).
 - **Spring 7 `HttpHeaders`** — `MultiValueMap` 미구현. `containsKey→containsHeader`, `keySet→headerNames()`, `forEach/entrySet` 제거. 헤더 다루는 코드 주의.
 - **Boot 4 모듈 분리** — `org.springframework.boot.http.client.*` 는 starter-web 컴파일 경로에 없을 수 있음 → RestClient 타임아웃은 spring-web `SimpleClientHttpRequestFactory` 로. `RestTemplateBuilder` 는 `org.springframework.boot.restclient` 모듈.

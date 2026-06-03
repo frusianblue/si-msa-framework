@@ -17,7 +17,7 @@ public enum ImageErrorCode implements ErrorCode {
     /** 화이트리스트 밖 출력 포맷 요청 등. */
     UNSUPPORTED_FORMAT("IMG0003", "지원하지 않는 이미지 포맷입니다.", HttpStatus.BAD_REQUEST),
     /** 픽셀 수가 안전 상한(디컴프레션 폭탄 방지)을 초과. */
-    IMAGE_TOO_LARGE("IMG0004", "이미지 크기가 허용 범위를 초과했습니다.", HttpStatus.PAYLOAD_TOO_LARGE),
+    IMAGE_TOO_LARGE("IMG0004", "이미지 크기가 허용 범위를 초과했습니다.", HttpStatus.CONTENT_TOO_LARGE),
     /** 인코딩(쓰기) 단계 실패. */
     ENCODE_FAILED("IMG0005", "이미지 인코딩에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
 

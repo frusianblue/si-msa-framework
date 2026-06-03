@@ -1,10 +1,14 @@
 package com.company.framework.file.config;
 
 import com.company.framework.file.mapper.FileMapper;
+import com.company.framework.file.scan.ClamavFileScanner;
+import com.company.framework.file.scan.FileScanner;
+import com.company.framework.file.scan.NoOpFileScanner;
 import com.company.framework.file.service.FileService;
 import com.company.framework.file.storage.EncryptingFileStorage;
 import com.company.framework.file.storage.FileStorage;
 import com.company.framework.file.storage.FileSystemFileStorage;
+import com.company.framework.file.validator.ExtensionContentTypePolicy;
 import com.company.framework.file.validator.FileContentTypeValidator;
 import com.company.framework.file.validator.NoOpFileContentTypeValidator;
 import com.company.framework.file.validator.TikaFileContentTypeValidator;
@@ -53,13 +57,34 @@ public class FileStorageAutoConfiguration {
             FileStorage storage,
             FileMapper fileMapper,
             FileStorageProperties props,
-            FileContentTypeValidator contentTypeValidator) {
-        return new FileService(storage, fileMapper, props, contentTypeValidator);
+            FileContentTypeValidator contentTypeValidator,
+            FileScanner fileScanner) {
+        return new FileService(storage, fileMapper, props, contentTypeValidator, fileScanner);
+    }
+
+    /**
+     * 업로드 안티바이러스 스캐너. scan.enabled=true 이고 type=clamav 면 ClamAV(INSTREAM) 스캐너를,
+     * 아니면 NoOp(통과)을 등록한다. 다른 백엔드는 FileScanner 빈을 직접 등록하면 양보한다.
+     */
+    @Bean
+    @ConditionalOnMissingBean(FileScanner.class)
+    public FileScanner fileScanner(FileStorageProperties props) {
+        FileStorageProperties.Scan s = props.getScan();
+        if (s.isEnabled() && "clamav".equalsIgnoreCase(s.getType())) {
+            return new ClamavFileScanner(
+                    s.getHost(),
+                    s.getPort(),
+                    s.getConnectTimeoutMs(),
+                    s.getReadTimeoutMs(),
+                    s.getMaxChunkSize(),
+                    s.isFailOpen());
+        }
+        return new NoOpFileScanner();
     }
 
     @Bean
-    public FileController fileController(FileService fileService) {
-        return new FileController(fileService);
+    public FileController fileController(FileService fileService, FileStorageProperties props) {
+        return new FileController(fileService, props);
     }
 
     /**
@@ -72,7 +97,9 @@ public class FileStorageAutoConfiguration {
         FileStorageProperties.Validation v = props.getValidation();
         if (v.isContentTypeDetection()) {
             if (ClassUtils.isPresent("org.apache.tika.Tika", getClass().getClassLoader())) {
-                return new TikaFileContentTypeValidator(v.getBlockedContentTypes());
+                ExtensionContentTypePolicy policy =
+                        v.isEnforceExtensionMatch() ? ExtensionContentTypePolicy.withDefaults() : null;
+                return new TikaFileContentTypeValidator(v.getBlockedContentTypes(), policy);
             }
             LoggerFactory.getLogger(FileStorageAutoConfiguration.class)
                     .warn("framework.file.validation.content-type-detection=true 이지만 tika-core 가 클래스패스에 "

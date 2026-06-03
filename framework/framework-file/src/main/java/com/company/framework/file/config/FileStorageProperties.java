@@ -1,5 +1,6 @@
 package com.company.framework.file.config;
 
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,6 +25,7 @@ public class FileStorageProperties {
     private boolean enabled = true;
     private Storage storage = new Storage();
     private Validation validation = new Validation();
+    private Scan scan = new Scan();
 
     public boolean isEnabled() {
         return enabled;
@@ -49,6 +51,14 @@ public class FileStorageProperties {
         this.validation = validation;
     }
 
+    public Scan getScan() {
+        return scan;
+    }
+
+    public void setScan(Scan scan) {
+        this.scan = scan;
+    }
+
     /**
      * 업로드 콘텐츠 검증 설정.
      *  - content-type-detection=true 면 Tika 로 실제 바이트(매직넘버) 기반 MIME 을 검출해 위장 업로드를 차단하고,
@@ -56,6 +66,7 @@ public class FileStorageProperties {
      */
     public static class Validation {
         private boolean contentTypeDetection = false;
+        private boolean enforceExtensionMatch = false; // true 면 선언 확장자와 검출 MIME 의 계열 정합까지 강제(content-type-detection 필요)
         private Set<String> blockedContentTypes = new LinkedHashSet<>(List.of(
                 "application/x-dosexec",
                 "application/x-msdownload",
@@ -82,6 +93,14 @@ public class FileStorageProperties {
             this.contentTypeDetection = contentTypeDetection;
         }
 
+        public boolean isEnforceExtensionMatch() {
+            return enforceExtensionMatch;
+        }
+
+        public void setEnforceExtensionMatch(boolean enforceExtensionMatch) {
+            this.enforceExtensionMatch = enforceExtensionMatch;
+        }
+
         public Set<String> getBlockedContentTypes() {
             return blockedContentTypes;
         }
@@ -96,6 +115,8 @@ public class FileStorageProperties {
         private String basePath = "./uploads";
         private long maxSize = 10 * 1024 * 1024;
         private boolean encrypt = false; // true 면 저장소에 AES 암호화하여 보관(at-rest)
+        private Duration presignedGetTtl = Duration.ofMinutes(5); // presigned GET 만료(S3)
+        private Duration presignedPutTtl = Duration.ofMinutes(10); // presigned PUT 만료(S3)
         private List<String> allowedExtensions = List.of(
                 "jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "hwp", "txt", "csv",
                 "zip");
@@ -136,6 +157,22 @@ public class FileStorageProperties {
 
         public void setEncrypt(boolean encrypt) {
             this.encrypt = encrypt;
+        }
+
+        public Duration getPresignedGetTtl() {
+            return presignedGetTtl;
+        }
+
+        public void setPresignedGetTtl(Duration presignedGetTtl) {
+            this.presignedGetTtl = presignedGetTtl;
+        }
+
+        public Duration getPresignedPutTtl() {
+            return presignedPutTtl;
+        }
+
+        public void setPresignedPutTtl(Duration presignedPutTtl) {
+            this.presignedPutTtl = presignedPutTtl;
         }
 
         public List<String> getAllowedExtensions() {
@@ -182,6 +219,87 @@ public class FileStorageProperties {
 
         public void setEndpoint(String endpoint) {
             this.endpoint = endpoint;
+        }
+    }
+
+    /**
+     * 업로드 안티바이러스 스캔 설정.
+     *  - enabled=false(기본) → NoOp(통과).
+     *  - type=clamav → ClamAV {@code clamd} 에 INSTREAM 으로 검사(순수 소켓, 새 의존성 0).
+     *  - fail-open=false(기본) → 데몬 장애 시 업로드 거부(fail-closed, 보안 우선).
+     */
+    public static class Scan {
+        private boolean enabled = false;
+        private String type = "none"; // none | clamav
+        private String host = "localhost";
+        private int port = 3310;
+        private int connectTimeoutMs = 3000;
+        private int readTimeoutMs = 30000;
+        private int maxChunkSize = 1024 * 1024; // 1MB
+        private boolean failOpen = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public void setType(String type) {
+            this.type = type;
+        }
+
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public int getConnectTimeoutMs() {
+            return connectTimeoutMs;
+        }
+
+        public void setConnectTimeoutMs(int connectTimeoutMs) {
+            this.connectTimeoutMs = connectTimeoutMs;
+        }
+
+        public int getReadTimeoutMs() {
+            return readTimeoutMs;
+        }
+
+        public void setReadTimeoutMs(int readTimeoutMs) {
+            this.readTimeoutMs = readTimeoutMs;
+        }
+
+        public int getMaxChunkSize() {
+            return maxChunkSize;
+        }
+
+        public void setMaxChunkSize(int maxChunkSize) {
+            this.maxChunkSize = maxChunkSize;
+        }
+
+        public boolean isFailOpen() {
+            return failOpen;
+        }
+
+        public void setFailOpen(boolean failOpen) {
+            this.failOpen = failOpen;
         }
     }
 }

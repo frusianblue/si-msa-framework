@@ -554,6 +554,31 @@ ImageInfo info = imageProcessor.probe(originalBytes); // width/height/formatName
 - **EXIF orientation 보정은 best-effort**: APP1 부재·비JPEG·깨진 바이트면 원본 방향 유지(예외 없음). PNG 등은 orientation 개념 없음.
 - **JPEG 알파 평탄화**: JPEG 출력 시 투명은 흰 배경으로 평탄화 — 투명 보존이 필요하면 `default-format: PNG`. 상세 `framework/framework-image/README.md`.
 
+### framework-file (파일 하드닝 — Range 스트리밍·presigned·확장자 정합·안티바이러스)
+기존 파일 저장(로컬/NAS/S3)에 더해 **대용량/스트리밍·메타 정합성·안티바이러스**를 옵트인으로 얹는다. 기존 `FileStorage` 인터페이스는 불변이며, 선택 기능은 capability 인터페이스로 추가돼 미지원 저장소는 자동 폴백한다. **신규 외부 의존성 0**(Range=JDK NIO, ClamAV=순수 소켓, S3Presigner=awssdk:s3 포함).
+```yaml
+framework:
+  file:
+    enabled: true
+    storage:
+      type: s3                       # local | nas | s3
+      presigned-get-ttl: 5m          # presigned GET 만료(S3)
+      presigned-put-ttl: 10m         # presigned PUT 만료(S3)
+    validation:
+      content-type-detection: true   # Tika 매직넘버 검출(확장자 정합의 전제)
+      enforce-extension-match: true  # 선언 확장자↔검출 MIME 계열 정합 강제(.png 인데 PDF/zip 거부)
+    scan:
+      enabled: true                  # 안티바이러스 게이트
+      type: clamav                   # none | clamav
+      host: localhost
+      port: 3310
+      fail-open: false               # 기본 fail-closed(데몬 장애 시 업로드 거부)
+```
+- **HTTP Range 스트리밍 다운로드**: `GET /api/v1/files/{id}` 에 `Range: bytes=...` 가 오면 206 Partial Content(+`Content-Range`/`Accept-Ranges`), 만족 불가 시 416. 영상/대용량 부분전송에 사용. *암호화(`storage.encrypt=true`) 저장소는 Range 미지원 → 자동으로 전체 다운로드.*
+- **S3 presigned**(대용량 직행): `GET /{id}/presigned`(다운로드 URL) · `POST /presigned-upload?filename=&contentType=`(업로드 URL 발급) · `POST /presigned-complete`(업로드 후 메타 등록). 클라이언트가 S3 로 직접 PUT/GET 하므로 서버가 본문 바이트를 경유하지 않는다. *presigned 업로드는 서버 본문 비경유라 콘텐츠/AV 검증이 적용되지 않음(파일명 확장자만) — 신뢰경계 밖이면 비동기 후처리 스캔 별도.*
+- **확장자↔MIME 계열 정합**: `enforce-extension-match=true` 면 `.png` 인데 실제 PDF/zip/실행파일이면 거부. 단 tika-core 매직넘버는 컨테이너(zip/OLE2)까지만 정확해 docx↔xlsx 같은 계열 내 구분은 통과(오탐 방지).
+- **안티바이러스(ClamAV)**: 저장 전 `clamd` 에 INSTREAM 으로 검사, 감염 시 거부+감사로그. 데몬 장애 시 기본 거부(fail-closed); 가용성 우선이면 `fail-open: true`. 상세 `framework/framework-file/README.md`.
+
 
 
 ## 추가된 공통 (이번 보강)
