@@ -1,3 +1,5 @@
+> 🗄️ **보관용(ARCHIVED) — 이 기능은 완료됨.** 이 문서는 설계 근거를 위한 히스토리 기록이며 현행 작업 대상이 아니다. 현재 카탈로그는 `docs/FRAMEWORK_MODULES.md`, 다음 작업은 `docs/NEXT_SSO.md`.
+
 # NEXT_FILE_BATCH_PROCESSING.md — 다음 세션 작업 설계서 (파일 일괄처리)
 
 > 목적: 다음 세션 최우선 작업인 **파일 일괄처리(Batch File Processing)** 를 막힘 없이 진행하기 위한 결정·설계·함정·체크리스트.

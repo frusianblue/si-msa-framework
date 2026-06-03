@@ -72,7 +72,7 @@ deploy/
 # 환경 구분은 local / dev / prod 로 통일. 로컬 설치·검증 상세는 docs/LOCAL_SETUP.md.
 ```
 
-> **설정값(시크릿) 암호화**: yaml 의 패스워드/시크릿을 `ENC(...)` 로 두면 기동 시 자동 복호화한다. 마스터키 = `framework.crypto.aes-secret`(운영 `AES_SECRET`, **항상 평문 주입** — 닭-달걀이라 마스터키 자신은 `ENC()` 불가). 토큰 생성: `AES_SECRET=... java -cp <cp> com.company.framework.core.crypto.CryptoCli encrypt '평문'` → `ENC(...)` 출력. 토글 `framework.crypto.config-decryption.enabled`(기본 on; `ENC()` 가 없으면 무동작). 기존 `AesCryptoService`(AES-GCM) 재사용, 신규 의존성 0. 키가 틀리거나 마스터키 미주입 시 **기동 실패**(조용히 통과 안 함). 상세 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
+> **설정값(시크릿) 암호화**: yaml 의 패스워드/시크릿을 `ENC(...)` 로 두면 기동 시 자동 복호화한다. 마스터키 = `framework.crypto.aes-secret`(운영 `AES_SECRET`, **항상 평문 주입** — 닭-달걀이라 마스터키 자신은 `ENC()` 불가). 토큰 생성: `AES_SECRET=... java -cp <cp> com.company.framework.core.crypto.CryptoCli encrypt '평문'` → `ENC(...)` 출력. 토글 `framework.crypto.config-decryption.enabled`(기본 on; `ENC()` 가 없으면 무동작). 기존 `AesCryptoService`(AES-GCM) 재사용, 신규 의존성 0. 키가 틀리거나 마스터키 미주입 시 **기동 실패**(조용히 통과 안 함). 상세 `docs/archive/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
 
 ```bash
 # 동작 확인 — 시드 계정: admin/admin123(ADMIN), hong/hong123(USER)

@@ -22,7 +22,7 @@
 게이트웨이 엣지 검증(jjwt)+**jti 블랙리스트 reactive 조회**, `framework-context`(헤더 신원 전파),
 `framework-oauth-client`(OAuth2 **+ OIDC RP 강화**), `framework-saml-sp`(**SAML 2.0 SP**).
 
-> **➡️ 다음 세션 후보(택1, 착수 설계 = §6)**: ~~**6.1** SAML redis `Saml2AuthenticationRequestRepository`(멀티 파드)~~ ✅**완료(2026-06-04)** · ~~**6.2** SAML SLO IdP-initiated 수신~~ ✅**완료(A) (2026-06-04)** · **6.2-B** SP-initiated(우리앱→IdP, 후속) · **6.3** C) Authorization Server(별도 서비스, 명시 요구 시·후순위) · (그 다음) **6.4** 4) Passwordless. 권장 순서 = ~~6.1~~ → ~~6.2-A~~ → (필요 시) 6.2-B/6.3.
+> **➡️ 다음 세션 = §6.3 C) Authorization Server**(사용자 지정, 2026-06-04). 완료: ~~**6.1** SAML redis AuthnRequest~~ ✅ · ~~**6.2-A** SAML SLO IdP-initiated 수신~~ ✅. 보류: **6.2-B** SP-initiated SLO(우리앱→IdP, 명시 요구 시) · **6.4** Passwordless(WebAuthn). 착수 설계 = 아래 **§6.3**.
 
 ---
 
@@ -156,8 +156,8 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 
 ## 6. ⏭️ 다음 세션 작업 후보 (착수 설계)
 
-> B-SAML 까지 완료. 다음 세션은 아래 셋 중 택1(또는 순서대로). 각 항목은 **결정 → 인터페이스 → 함정 → 테스트** 순으로 바로 착수 가능하게 정리.
-> 공통 제약(되풀이): 작성 환경은 Maven Central/Shibboleth 차단 → SAML/SS 본체 컴파일 불가. 순수 로직만 JDK 검증하고 본체는 받는 쪽 gradle(sshd/SAML 패턴).
+> B-SAML + 6.1(redis AuthnRequest) + 6.2-A(IdP-initiated SLO) 완료. **다음 세션 = §6.3 Authorization Server**(사용자 지정). 6.2-B(SP-initiated SLO)·6.4(Passwordless)는 보류.
+> 공통 제약(되풀이): 작성 환경은 Maven Central/Shibboleth 차단 → SAML/SS/AS 본체 컴파일 불가. 순수 로직만 JDK 검증하고 본체는 받는 쪽 gradle(sshd/SAML 패턴).
 
 ### 6.1 SAML redis `Saml2AuthenticationRequestRepository` (멀티 파드, 스티키 세션 제거) — ✅ 구현 완료(2026-06-04)
 
@@ -189,12 +189,33 @@ OAuth/OIDC 클라이언트와 **같은 결**: 외부 신원확인 → 앱 리졸
 - **테스트**: `SamlSloService`(매핑/무매핑/blank·null no-op/SessionIndex 방어복사) + `SamlSloLogoutHandler.registrationIdFromUri`(경로 파싱) 순수 단위 — JDK 단독 15/15. 서명검증·LogoutResponse 라운드트립은 받는 쪽 통합/실앱 기동으로 검증.
 - **다음(B, SP-initiated)**: 로그인 시 SAML 로그아웃 주체(`{registrationId,nameId,sessionIndex}`)를 redis 영속(6.1 코덱 패턴) → 별도 브라우저 엔드포인트(`GET /saml2/logout`)에서 무상태 복원 후 IdP 로 LogoutRequest. 명시 요구 시 착수.
 
-### 6.3 C) Authorization Server — 우리가 IdP/OP 가 되기 (별도 `services/auth-server`)
-- **언제**: 대부분 SI 는 **불필요**(우리는 지금까지 RP/SP = 소비자). 우리 서비스가 **다른 시스템에 토큰을 발급하는 OAuth2/OIDC Provider** 가 되어야 할 때만(예: 그룹사 공통 인증, 외부 파트너 OIDC). **명시 요구 시에만 착수.**
-- **구현 방향**: **Spring Authorization Server**(별도 서비스 `services/auth-server`, 라이브러리 모듈 아님 — 프레임워크는 RP 자산만 제공). authorization_code+PKCE/client_credentials, JWKS 공개, OIDC discovery. 우리 `framework-security` 의 사용자/RBAC 를 사용자 소스로 연결.
-- **결정 필요**: ① 정말 OP 가 되어야 하는가(아니면 기존 RP/SP 로 충분) · ② 서비스 경계(별도 배포·키 관리/회전·동의 화면) · ③ 우리 JWT(자체 발급) vs AS 발급 토큰의 관계(이중 발급기 정리) · ④ 클라이언트 등록 저장소(jdbc).
-- **규모**: 별도 서비스 1개 신설 수준 = 가장 큰 작업. SAML 후속(6.1/6.2)보다 **후순위 권장**(명시 요구 전엔 보류).
-- **참고**: Spring Authorization Server 는 Boot 4/SS7 정합 버전 사용(BOM 관리 여부 받는 쪽 확인). 새 외부 의존성 0 원칙의 또 다른 예외 가능성(AS 라이브러리) → STACK 갱신 대상.
+### 6.3 C) Authorization Server — 우리가 IdP/OP 가 되기 (별도 `services/auth-server`) ◀ 다음 세션
+- **언제**: 대부분 SI 는 **불필요**(우리는 지금까지 RP/SP = 소비자). 우리 서비스가 **다른 시스템에 토큰을 발급하는 OAuth2/OIDC Provider(OP)** 가 되어야 할 때만(예: 그룹사 공통 인증, 외부 파트너 OIDC, 사내 1차 IdP). 일반 SI 면 기존 RP/SP 로 충분.
+- **⚠️ 가장 큰 작업·구조 결정 먼저**: 이건 라이브러리 모듈이 아니라 **별도 배포 서비스**다(`services/auth-server`). 프레임워크(라이브러리)는 RP 자산만 제공하고, OP 는 독립 수명주기(키 회전·동의·클라이언트 등록 DB·가용성)를 가진다. **세션 시작 시 §6.3-결정 4건을 먼저 확정**하고 들어갈 것.
+
+- **구현 방향(확인 필요 사실 = 세션 첫 web_search 대상)**:
+  - **Spring Authorization Server(SAS)** 를 별도 부트 앱으로. Boot 4 / Spring Security 7 정합 SAS 버전이 **Boot BOM 으로 관리되는지** 먼저 확인(아니면 STACK 에 버전 핀 — "새 외부 의존성 0" 의 또 다른 예외 가능). SAS 는 SS 의 일부 모듈이므로 보통 BOM 안이지만 **버전 정합 반드시 검증**.
+  - 그랜트: `authorization_code`+**PKCE**(사용자 대면) · `client_credentials`(서버-서버). implicit/password 는 미채택(폐기 그랜트).
+  - 엔드포인트(SAS 기본): `/oauth2/authorize` · `/oauth2/token` · `/oauth2/jwks`(공개키) · `/.well-known/openid-configuration`(OIDC discovery) · `/userinfo` · `/oauth2/revoke`·`/oauth2/introspect`.
+  - **사용자 소스 = 우리 `framework-security`** 의 인증/RBAC 재사용: SAS 의 `UserDetailsService`/인증을 우리 `Authenticator`/사용자 저장소에 연결(로그인 화면은 SAS form login 또는 우리 로그인 재사용). 발급 토큰 클레임에 우리 roles/권한 매핑.
+
+- **결정 필요(세션 착수 전 확정)**:
+  ① **정말 OP 가 되어야 하는가** — 소비(RP/SP)로 충분하면 보류. 요구 출처(어느 클라이언트가 우리 토큰을 원하나)·표준(OAuth2 only vs OIDC) 확인.
+  ② **서비스 경계** — 별도 배포(독립 포트/도메인), **서명키 관리·회전**(JWKS, kid 로테이션), **동의(consent) 화면** 필요 여부, 멀티 파드 시 키/인가코드/동의 저장의 공유(redis/jdbc).
+  ③ **우리 JWT(자체 발급) vs AS 발급 토큰의 관계** — 현재 `framework-security` 가 자체 JWT 를 발급한다. OP 도입 시 **이중 발급기**가 생김 → (a) 내부 서비스는 기존 자체 JWT 유지 + 외부 클라이언트만 AS 토큰, (b) AS 를 단일 발급원으로 통합 중 택1. 리소스 서버(기존 `framework-security` 검증)가 AS 발급 토큰(JWKS 검증)도 받도록 `issuer`/`jwk-set-uri` 정합 필요.
+  ④ **클라이언트 등록 저장소** — `RegisteredClientRepository` = jdbc(SAS 제공 스키마) 권장(in-memory 는 데모용). 클라이언트 시크릿 해시·redirect-uri 화이트리스트.
+
+- **인터페이스/산출물(예상)**: 신규 **서비스** `services/auth-server`(부트 앱) — `AuthorizationServerConfig`(SAS `SecurityFilterChain` + `RegisteredClientRepository`(jdbc) + `JWKSource`(키 회전) + `AuthorizationServerSettings`(issuer)) · 사용자 인증을 `framework-security` 에 연결하는 어댑터 · (선택) 동의 화면. 프레임워크 라이브러리 쪽은 변경 최소(리소스 서버가 AS issuer/JWKS 를 받도록 문서/설정 가이드 정도).
+
+- **함정(예상)**:
+  - **이중 발급기 혼란**(결정 ③) — 토큰 출처가 둘이면 검증·로그아웃·블랙리스트 경로가 갈린다. 경계를 문서로 못 박을 것.
+  - **키 회전**(JWKS kid) — RP/리소스서버 캐시(우리 `JwksKeyResolver` 가 이미 회전 재조회+쿨다운 보유, OIDC 강화 때 만든 패턴 재사용 가능) 와 정합.
+  - **별도 서비스 = CI/CD·k8s 매니페스트·시크릿(서명키)·가용성** 신규(라이브러리와 배포 모델 다름).
+  - **버전 정합** — SAS↔Boot4/SS7. BOM 밖이면 STACK 핀(SAML 의 Shibboleth 처럼 "예외" 기록).
+
+- **테스트**: 순수 로직(클레임 매핑·스코프 정책 등) JDK 단독 + SAS 와이어링/토큰 발급 라운드트립은 받는 쪽(WireMock/슬라이스 또는 실 기동). 작성 환경 본체 컴파일 불가 전제.
+
+- **규모**: 별도 서비스 1개 신설 = 지금까지 중 **가장 큰 작업**. 첫 세션은 (1) 결정 4건 확정 + (2) 최소 골격(SAS 부트 앱·jdbc 클라이언트·JWKS·issuer·우리 사용자 연결) + (3) 리소스 서버 정합 가이드까지를 목표로 잡기를 권장.
 
 ### 6.4 (그 다음) 4) Passwordless — 패스키/WebAuthn
 - 인증 로드맵 4번째. SSO 갈래 정리 후. 별도 설계 노트 신설 예정(`docs/NEXT_PASSWORDLESS.md`).

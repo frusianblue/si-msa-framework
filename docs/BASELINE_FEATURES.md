@@ -86,7 +86,7 @@
 2. ~~#7 이미지 처리~~ — ✅ 완료(`framework-image`).
 3. ~~#8+#9+#10 파일 하드닝 묶음~~ — ✅ 완료(`framework-file*` 확장).
 4. ~~#11 아카이빙/압축~~ — ✅ 완료(`framework-archive`).
-5. **▶ 다음: 파일 일괄처리**(§6 대기열) — `framework-file-batch`, 설계서 `docs/NEXT_FILE_BATCH_PROCESSING.md`.
+5. **▶ 다음: 파일 일괄처리**(§6 대기열) — `framework-file-batch`, 설계서 `docs/archive/NEXT_FILE_BATCH_PROCESSING.md`.
 6. #4 리포트는 보류(분리 필요성 낮음).
 
 ## 4. 설계 원칙(이 카탈로그 항목 모두 공통)
@@ -103,10 +103,10 @@
 - 2026-06-03: **#7 `framework-image` 완료** — ImageIO 기반 리사이즈/썸네일·EXIF orientation 보정·메타(GPS) 제거·디컴프레션 폭탄 방지, 신규 외부 의존성 0. 엔진 javac 단독 + 기능 하니스 26/26 통과, config/배선은 context·pdf 패턴 미러(사용자 Gradle 검증 예정).
 - 2026-06-03: **#8+#9+#10 파일 하드닝 묶음 완료**(`framework-file*` 확장) — Range 206 스트리밍 다운로드 + S3 presigned PUT/GET(대용량 직행) · 확장자↔MIME 계열 정합(Tika 확장) · ClamAV INSTREAM AV 게이트(순수 소켓, 외부 의존성 0). 기존 `FileStorage` 불변(ISP capability 추가). 순수 JDK 코어 javac+하니스 35/35 통과(ByteRange 파서·확장자 정책·ClamAV mock 소켓 왕복·FileSystem Range), 정식 JUnit 6종 추가. **사용자 환경 빌드/테스트 통과 확인** — `:framework:framework-file:test :framework:framework-file-s3:test :framework:framework-archtest:test spotlessApply` 그린(S3 오토컨피그 테스트는 신규 `S3Presigner` 빈에 맞춰 mock 추가로 수정). image deprecation(PAYLOAD_TOO_LARGE→CONTENT_TOO_LARGE) 동봉.
 - 2026-06-03: **환경정비 + 보안·검증 + spotless 확장** — 프로파일 local/dev/prod 통일 + `local-xx` 오버레이, 감사 로그 DB 적재 활성화(`audit_log` 마이그레이션 추가), JWT 시크릿 prod 가드, 요청 검증 빈틈 보강(Spring7 `HandlerMethodValidationException`·로그인 `@Valid`), spotless 다소스 확장 + 설정 캐시 충돌 해결(`lineEndings=UNIX`). 문서: `LOCAL_SETUP`/`CHANGES_AND_DEPRECATIONS`/`SECURITY_VALIDATION_ADDITIONS`/`SPOTLESS_NOTES`. 신규 의존성 0(감사/Redis 만 모듈 의존 1줄 추가 필요).
-- ✅ 2026-06-03: **설정값(YAML) 패스워드 암호화** 완료. `framework-core` 의 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor` 가 `ENC(...)` 프로퍼티를 기존 `AesCryptoService`(AES-GCM)로 **지연 복호화**(마스터키 `framework.crypto.aes-secret`/`AES_SECRET`). 토글 `framework.crypto.config-decryption.enabled`(기본 on, ENC 없으면 무동작). 토큰 생성 CLI `CryptoCli`. prod 마스터키 가드 `AesMasterKeySafetyGuard`. **Jasypt 미도입·신규 의존성 0·Jackson 무관**. 설계서 `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
+- ✅ 2026-06-03: **설정값(YAML) 패스워드 암호화** 완료. `framework-core` 의 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor` 가 `ENC(...)` 프로퍼티를 기존 `AesCryptoService`(AES-GCM)로 **지연 복호화**(마스터키 `framework.crypto.aes-secret`/`AES_SECRET`). 토글 `framework.crypto.config-decryption.enabled`(기본 on, ENC 없으면 무동작). 토큰 생성 CLI `CryptoCli`. prod 마스터키 가드 `AesMasterKeySafetyGuard`. **Jasypt 미도입·신규 의존성 0·Jackson 무관**. 설계서 `docs/archive/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
 - ✅ 2026-06-03: **#11 아카이빙/압축** 완료(`framework-archive` 신설). ZIP(다중 엔트리)+GZIP(단일 스트림) 순수 JDK `java.util.zip`, **스트리밍**(transferTo)·**zip-slip 차단**·**압축폭탄 가드**(엔트리수/엔트리크기/총바이트), `Archiver` SPI + `ZipArchiver`, 3단 토글 기본 off, 등록=settings+archtest+`.imports`+등록가드. **신규 외부 의존성 0**. 순수 로직(zip-slip 정규화·폭탄 카운팅·gzip 라운드트립) 독립 재현 14/14 통과(작성 환경 JRE-only 라 Spring 부 gradle 컴파일은 받는 쪽). **tar/tar.gz 는 commons-compress 옵트인 후속.**
 - ✅ 2026-06-03: **공통 유틸 6종 추가**(`framework-core/util`) — IoUtils(가드 스트리밍 copyLimited/copyAndSha256)·CsvUtils(RFC4180)·FixedWidthUtils(바이트 고정폭 전문, CP949)·CharsetUtils(MS949/EUC-KR↔UTF-8)·TextUtils(truncateByBytes 한글안전)·CollectionUtils(chunk). 전부 순수 정적 JDK·신규 의존성 0. RetryUtils 는 제외(HTTP 재시도=framework-client). 비자명 로직 독립 재현 10/10 통과, 사용자 환경 컴파일 통과.
 
 ## 6. 추가 요청 대기열 (여기에 먼저 적어주세요 — 착수 시 위 표로 승격)
 - [x] ~~아카이빙(Archiving) 또는 압축~~ — ✅ 완료(`framework-archive`, 2026-06-03). ZIP+GZIP 순수 JDK·zip-slip/폭탄 가드·스트리밍. tar/tar.gz 만 commons-compress 옵트인 후속.
-- [ ] **▶ 다음 착수: 일괄 처리(Batch Processing)** — 여러 파일에 동일 작업(이름변경·변환·압축)을 한꺼번에. 얇은 오케스트레이션 모듈 `framework-file-batch`(부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임). **설계서 `docs/NEXT_FILE_BATCH_PROCESSING.md`.**
+- [ ] **▶ 다음 착수: 일괄 처리(Batch Processing)** — 여러 파일에 동일 작업(이름변경·변환·압축)을 한꺼번에. 얇은 오케스트레이션 모듈 `framework-file-batch`(부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임). **설계서 `docs/archive/NEXT_FILE_BATCH_PROCESSING.md`.**

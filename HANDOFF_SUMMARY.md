@@ -6,12 +6,12 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**SSO 6.2-A) SAML IdP-initiated SLO 수신 구현 완료** — 외부 IdP 가 중앙에서 로그아웃할 때 우리 앱의 자체 JWT 도 함께 무효화("중앙 로그아웃 준수"). 방향 택1에서 **A) IdP-initiated 수신**(무상태/멀티 파드 친화·규제 직답) 채택, B) SP-initiated(우리앱→IdP)는 후속. **SAML 본체(서명검증·XML·LogoutResponse 생성)는 SS `saml2Logout` 기본구현에 위임 → 우리 기여물은 OpenSAML 무의존**(6.1 코덱과 동일 분리 철학). 다음 세션 = `docs/NEXT_SSO.md` **§6.2-B**(SP-initiated SLO) 또는 **§6.3** Authorization Server(후순위).
+**SSO 6.2-A) SAML IdP-initiated SLO 수신 완료 + 받는 쪽 컴파일 확인, 그리고 문서 정리.** 외부 IdP 중앙 로그아웃 시 우리 JWT 도 무효화(SAML 본체는 SS `saml2Logout` 위임 → 우리 기여물 OpenSAML 무의존). 추가로 누적 문서를 정리(루트 중복/고아 4종 삭제 + 완료 설계서 `docs/archive/` 이동). **다음 세션 = `docs/NEXT_SSO.md` §6.3 C) Authorization Server**(사용자 지정·최대 작업).
 
 핵심 설계: ① 우리 SAML 로그인은 **무상태**(ACS 성공 즉시 자체 JWT, 서버 SAML 세션 없음) → SS `saml2Logout` 의 SP-initiated 는 세션의 `Saml2Authentication` 의존이라 충돌. IdP-initiated 만 `{registrationId}` URL 경로로 무상태 수신(SS 이슈 #10820). ② NameID→우리 userId **역매핑 SPI `SamlLogoutUserResolver`**(로그인 `SamlUserResolver` 대칭, 미매칭=null graceful). ③ userId 로 전 세션 무효화 = `LoginService.logoutAllByUserId` 신설(access token 불요). ④ SAML 모듈이 security `LoginService` 에 하드결합 안 되도록 `SamlSessionTerminator` 로 분리(SAML 전용 앱 확장점). ⑤ 토글 `framework.saml-sp.slo.enabled=false` 기본 — 켜야 체인에 `/logout/saml2/**`+`saml2Logout`+핸들러 추가, 끄면 기존 SAML SP 무변경.
 
 ## 최종 갱신
-- 일자: 2026-06-04 · 갱신자: SSO 6.2-A(SAML IdP-initiated SLO 수신) 세션
+- 일자: 2026-06-04 · 갱신자: SSO 6.2-A(SAML IdP-initiated SLO) 컴파일 확인 + 문서 정리 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
@@ -51,12 +51,27 @@ framework:
 ```
 + 앱이 `SamlLogoutUserResolver` 빈 등록(NameID→우리 userId; 미매칭 null=graceful). (SAML 전용 앱이면 `SamlSessionTerminator` 빈도 직접 등록.)
 
-## 다음 (Next)
-- **§6.2-B SP-initiated SLO**(우리앱→IdP): 로그인 시 SAML 로그아웃 주체(`{registrationId,nameId,sessionIndex}`)를 redis 영속(6.1 코덱 패턴) → 별도 브라우저 엔드포인트 `GET /saml2/logout` 에서 무상태 복원 후 LogoutRequest. 명시 요구 시.
-- 또는 **§6.3** Authorization Server(별도 `services/auth-server`, 명시 요구 시·후순위) · **§6.4** Passwordless.
+## 문서 정리(이번 세션)
+누적 문서에서 중복·고아 제거 + 완료 설계서 보관. (삭제) 루트 `BASELINE_FEATURES.md`(구버전, 정본=`docs/`)·루트 `LOCAL_SETUP.md`(`docs/` 와 동일)·`_APPLY_THIS.md`(일회성)·`NEXT_SESSION_KICKOFF.md`(참조 0·stale). (이동) `docs/NEXT_YAML_PASSWORD_ENCRYPTION.md`·`docs/NEXT_FILE_BATCH_PROCESSING.md` → **`docs/archive/`**(ARCHIVED 배너+링크 수정). **규칙: 완료된 `NEXT_*` 는 `docs/archive/` 로**(활성 설계서만 `docs/` 직하). 끊어진 링크 0 검증.
 
-## 받는 쪽 검증
+> ⚠️ 받는 쪽은 zip 적용 후 **삭제/이동된 원본을 직접 제거**해야 한다(아래 "받는 쪽 적용" 참조 — unzip 은 파일을 지우지 못함).
+
+## 다음 (Next) = §6.3 C) Authorization Server (사용자 지정)
+우리가 **OP(OAuth2/OIDC Provider)** 가 되어 외부/그룹사에 토큰 발급. **별도 배포 서비스 `services/auth-server`**(라이브러리 모듈 아님) = 지금까지 중 가장 큰 작업. 착수 설계 = `docs/NEXT_SSO.md` **§6.3**(보강 완료).
+- **세션 시작 시 먼저 web_search**: Spring Authorization Server 의 **Boot 4 / Spring Security 7 정합 버전**(BOM 관리 여부 — 아니면 STACK 핀, "새 의존성 0" 예외 가능).
+- **결정 4건 선확정**: ① 정말 OP 필요한가(소비 RP/SP 로 충분?) ② 서비스 경계(키 회전·동의·멀티파드 저장) ③ 우리 자체 JWT vs AS 발급 토큰(**이중 발급기** 정리) ④ 클라이언트 등록 저장소(jdbc).
+- **재사용**: 사용자 소스=`framework-security`(Authenticator/RBAC), JWKS 회전 캐시=OIDC 강화 때 만든 `JwksKeyResolver` 패턴, 리소스 서버 검증=기존 `framework-security`(issuer/jwk-set-uri 정합).
+- 첫 세션 목표: 결정 4건 + 최소 골격(SAS 부트 앱·jdbc 클라이언트·JWKS·issuer·우리 사용자 연결) + 리소스 서버 정합 가이드.
+- (보류) **6.2-B** SP-initiated SLO · **6.4** Passwordless(WebAuthn).
+
+## 받는 쪽 적용 (이번 zip)
 ```bash
-./gradlew :framework:framework-saml-sp:test :framework:framework-security:test :framework:framework-archtest:test spotlessApply
+# 1) 문서 업데이트 적용(덮어쓰기) + 신규 archive 디렉터리 생성
+unzip -o si-msa-docs-cleanup.zip
+# 2) 삭제/이동된 원본 제거(unzip 이 못 지움) — 저장소 루트에서
+git rm -f BASELINE_FEATURES.md LOCAL_SETUP.md _APPLY_THIS.md NEXT_SESSION_KICKOFF.md \
+         docs/NEXT_YAML_PASSWORD_ENCRYPTION.md docs/NEXT_FILE_BATCH_PROCESSING.md
+# (git 미사용이면 rm -f 로 동일 파일 삭제)
 ```
+> 이번 zip 은 **문서만**(코드 변경 없음). 6.2-A 코드는 직전 zip 에서 이미 적용·컴파일 확인됨.
 <!-- 갱신 끝 -->
