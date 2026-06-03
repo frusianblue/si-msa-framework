@@ -27,6 +27,8 @@
 - ✅ **분산 캐시(2026-06-03)**: **framework-cache-redis 신설** — k8s 다중 파드 공유 캐시. core 의 로컬 Caffeine `CacheManager` 를 Redis 로 **대체**(`@AutoConfiguration(before=CacheAutoConfiguration.class)` 로 core 가 `@ConditionalOnMissingBean` 백오프하도록 먼저 등록). 값=**JDK 직렬화**(`RedisSerializer.java()`, Jackson2 직렬화기 회피)·키=String, 기본 TTL/keyPrefix/null정책 + 캐시별 `ttls`. JSON 직렬화 필요 시 앱이 `RedisCacheConfiguration` 빈 직접 등록(우선). 끄면(기본) core Caffeine. 3단 토글+레지스트레이션 가드. **외부 의존성 0개**(spring-data-redis=compileOnly+test, Boot BOM). **사용자 환경 빌드 검증 완료(2026-06-03)** — `:framework:framework-cache-redis:test` 이상 없음.
 - ✅ **개인정보 로그 마스킹(2026-06-03)**: **framework-log-masking 신설** — core `MaskingUtils`(값 단위)의 보완으로 **자유 텍스트 로그**에 섞인 PII 를 정규식 탐지 후 `MaskingUtils` 형식에 위임(전사 일관). 두 경로: **(1)** `SensitiveDataMasker` 빈 명시 호출(구조화 로그까지, 1차) **(2)** Logback `%mmsg` 컨버터(`MaskingMessageConverter`+정적 다리 `MaskingSupport` 폴백+`LogMaskingInstaller`, 패턴 로그 자동, 2차 방어망). 내장 규칙 RRN/카드/휴대폰/이메일(계좌는 오탐 위험 기본 off)+커스텀 정규식. 순수 엔진은 Spring 무의존 JDK 검증. 3단 토글+레지스트레이션 가드. **외부 의존성 0개**(logback-classic=Boot 기본 로깅·compileOnly+test). **사용자 환경 빌드 검증 완료(2026-06-03)** — 테스트 1건(`LogMaskingAutoConfigurationTest` phone-off 단언) 수정 후 22 통과. (실패는 모듈이 아닌 테스트 결함: `account=true` 의 계좌 정규식이 dashed 휴대폰을 잡아 발생 → 검증 입력을 dashless 로 교체. 계좌가 dash-grouped 숫자열을 잡는 건 의도된 동작이라 기본 off.)
 - 🏁 **기본기능 갭 정리 종료(2026-06-03)**: 분산 락(lock)·PDF(pdf)·분산 캐시(cache-redis)·로그 마스킹(log-masking) 4종 완료. 이후는 갭이 아니라 심화/운영.
+- ✅ **요청 컨텍스트 / 멀티테넌시(2026-06-03)**: **framework-context 신설** — 기본기능 카탈로그(`docs/BASELINE_FEATURES.md`) #5. 요청마다 `RequestContext`(불변·JDK단독, tenantId/userId/locale+확장 attributes)를 `ContextHolder`(정적 ThreadLocal, **상속형 아님** — 가상스레드/풀 누수 방지)에 바인딩(`ContextBindingFilter`, `MdcTraceFilter` 안쪽·+MDC), 종료 시 정리. 전파 **명시 2경로**: `ContextTaskDecorator`(@Async/풀에 컨텍스트+MDC) · `ContextPropagationInterceptor`(아웃바운드 헤더). 해소 전략 `ContextResolver` 교체 가능(기본 `HeaderContextResolver`, `@ConditionalOnMissingBean` → JWT/SecurityContext). 서블릿 한정. 3단 토글+레지스트레이션 가드. **외부 의존성 0개**(servlet/web=compileOnly+test). **사용자 환경 컴파일 BUILD 통과 확인(2026-06-03)**.
+- 📋 **기본기능 카탈로그 신설(2026-06-03)**: `docs/BASELINE_FEATURES.md` — 기본기능 10항목 실측 체크(있음/부분/없음 + 위치 + 인수기준). 다음 활성=파일 하드닝 묶음(대용량 스트리밍/presigned·메타 정합성·AV 훅). 추가 요청은 §6 대기열로 수집.
 - 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
 
 ---
@@ -93,6 +95,7 @@ public class XxxAutoConfiguration {
 | ✅ framework-audit | 접속/감사 로그 **DB 적재·조회** 표준(현 AOP 영속화) + **kafka 싱크**(messaging Outbox 발행) | `framework.audit.enabled` + `store.type=logging\|jdbc\|kafka` | [선택] | 공통 |
 | ✅ framework-secure-web | 보안헤더·경로조작·인젝션 스크리닝·CSRF 더블서브밋(SQLi 등, XSS는 core) | `framework.secure-web.enabled` (+`headers`/`path-traversal`/`injection`/`csrf`) | [선택] | 공통 |
 | ✅ framework-log-masking | **개인정보 로그 마스킹** — 자유 텍스트 로그 PII(주민/카드/휴대폰/이메일, 계좌 기본 off) 정규식 탐지 → core `MaskingUtils` 위임. (1) `SensitiveDataMasker` 빈 명시 호출 (2) Logback `%mmsg` 컨버터(정적 다리+폴백). 외부 의존성 0개(logback=compileOnly) | `framework.log-masking.enabled` (+`rules.*`/`custom-patterns`/`strip-newlines`/`install-converter`) | [선택] | 공통 |
+| ✅ framework-context | **요청 컨텍스트 / 멀티테넌시** — 요청마다 `RequestContext`(tenantId/userId/locale+확장 attributes)를 `ContextHolder`(정적 ThreadLocal, 상속형 아님)에 바인딩/정리(+MDC). 전파 명시 2경로: `ContextTaskDecorator`(@Async/풀) · `ContextPropagationInterceptor`(아웃바운드 헤더). 해소 전략 `ContextResolver` 교체 가능(기본 헤더→JWT 대체). 서블릿 한정. 외부 의존성 0개(web=compileOnly) | `framework.context.enabled` (+`tenant-header`/`user-header`/`put-to-mdc`/`propagate-downstream`) | [선택] | 공통(횡단) |
 
 ### 2.4 신규 — 업무 생산성 (업무개발자 직접 사용)
 
@@ -163,7 +166,8 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
        ├── lock            (분산 락; impl: redis/jdbc, 횡단)
        ├── cache-redis     (분산 캐시; core Caffeine 대체, before=CacheAutoConfiguration)
        ├── log-masking     (로그 PII 마스킹; core MaskingUtils 위임, Logback %mmsg)
-       └── pdf             (PDF 산출물; OpenPDF impl 비노출, 한글 TTF 임베딩)
+       ├── pdf             (PDF 산출물; OpenPDF impl 비노출, 한글 TTF 임베딩)
+       └── context         (요청 컨텍스트/멀티테넌시; ThreadLocal 비상속, @Async·아웃바운드 명시 전파)
 ```
 원칙: 상위(토대)는 하위를 모른다. 순환 금지. impl 모듈(redis 등)이 추상(security/idempotency)을 의존. **saga 는 messaging(Outbox) 위에 오케스트레이션만 얹는다**(전송/멱등 소비 재사용, compileOnly 비전이라 의존 서비스가 messaging 도 명시).
 
@@ -176,7 +180,7 @@ core ──┬── mybatis ── (audit, datasource, commoncode, file)
 3. **금융 핵심** — **framework-idempotency**, framework-messaging(+Outbox), framework-datasource
 4. **업무 생산성** — framework-excel, framework-batch, framework-notification, framework-pdf
 5. **규제 특화** — framework-pki, framework-mfa, framework-crypto-hsm, framework-recon, (공공 시) framework-egov-compat
-6. **운영/관측** — framework-observability ✅ · framework-lock ✅(분산 락·`@Scheduled` 중복방지) · framework-cache-redis ✅(분산 캐시) · framework-log-masking ✅(개인정보 로그 마스킹)
+6. **운영/관측** — framework-observability ✅ · framework-lock ✅(분산 락·`@Scheduled` 중복방지) · framework-cache-redis ✅(분산 캐시) · framework-log-masking ✅(개인정보 로그 마스킹) · framework-context ✅(요청 컨텍스트/멀티테넌시·횡단)
 7. **그릇 정비** — 게이트웨이(폴백·CORS·rate-limit)·k8s(redis/secret/멀티서비스)·CI/CD 멀티서비스화
 
 > 1·2단계 산출물은 3단계 이후 모든 모듈이 재사용한다(메시지·채번·연계·감사). 토대를 건너뛰면 각 모듈이 재발명한다.

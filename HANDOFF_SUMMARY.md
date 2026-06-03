@@ -6,88 +6,75 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**기본기능 갭 잔여 2종 완료** — 선택형 모듈 **`framework-cache-redis`**(분산 캐시: core 의 로컬 Caffeine 을 파드 간 공유 Redis 캐시로 **대체**, `@AutoConfiguration(before=CacheAutoConfiguration)`)와 **`framework-log-masking`**(개인정보 **로그** 마스킹: 자유 텍스트 PII 정규식 탐지 → core `MaskingUtils` 형식 위임, 빈 명시호출 1차 + Logback `%mmsg` 컨버터 2차 방어망) 신설. 둘 다 3단 토글·기본 off, **신규 외부 의존성 0**(spring-data-redis·logback-classic 모두 Boot BOM 관리, compileOnly 비노출). 이로써 분산 락(lock)·PDF(pdf)에 이어 캐시·로그마스킹까지 "기본기능 갭" 정리 완료.
+**기본기능 카탈로그 신설 + 카탈로그 #5 `framework-context` 신설·빌드 검증.** (1) `docs/BASELINE_FEATURES.md` — SI/MSA 공통 프레임워크가 갖춰야 할 기본기능 10항목을 레포 코드와 실측 대조(✅있음/🟡부분/🔴없음 + 위치 + 인수기준), 추가 요청은 §6 대기열로 수집. (2) **`framework-context`** — 요청마다 `RequestContext`(tenantId/userId/locale+확장 attributes)를 `ContextHolder`(정적 ThreadLocal, **상속형 아님**)에 바인딩/정리(+MDC), `@Async`·아웃바운드로 **명시 전파**. 3단 토글·기본 off, **신규 외부 의존성 0**(servlet/web compileOnly). 분산 락·PDF·캐시·로그마스킹에 이어 횡단 기반(컨텍스트)까지.
 
 ## 최종 갱신
 - 일자: 2026-06-03 · 갱신자: <!-- 채우기 -->
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)**
 
 ## 무엇을 했나 (Done)
-### A. framework-cache-redis (분산 캐시)
-1. **왜 별도 모듈**: core `CacheAutoConfiguration` 이 Caffeine `CacheManager` 를 `@ConditionalOnMissingBean(CacheManager)+matchIfMissing=true` 로 **항상** 등록 → Boot 네이티브 `spring.cache.type=redis` 는 백오프되어 무력. 그래서 본 모듈이 **core 보다 먼저**(`@AutoConfiguration(before=CacheAutoConfiguration.class)`) Redis 매니저를 올려 core 가 자기 `@ConditionalOnMissingBean` 으로 물러나게 함.
-2. **`RedisCacheAutoConfiguration`**: `@ConditionalOnClass(RedisConnectionFactory)`+`@ConditionalOnProperty(framework.cache.redis.enabled=true)`. 빈 `redisCacheConfiguration`(값=**JDK 직렬화 `RedisSerializer.java()`**·키=String·TTL/keyPrefix/null정책, `@ConditionalOnMissingBean(RedisCacheConfiguration)`) · `cacheManager`(`RedisCacheManager.builder(connectionFactory)`+캐시별 `ttls`, `@ConditionalOnMissingBean(CacheManager)`). `@EnableCaching` 재선언 안 함(core 가 이미 켬).
-3. **`RedisCacheProperties`**(`framework.cache.redis`): enabled=false·timeToLive=10m·keyPrefix=""·cacheNullValues=true·`ttls` Map<String,Duration>.
-4. build.gradle = `api framework-core` + **`compileOnly`+`testImplementation` spring-boot-starter-data-redis**(lock 패턴) + config-processor + starter-test. 테스트 4종(off기본·enabled+mock RCF→RedisCacheManager·앱제공 RedisCacheConfiguration 우선(isSameAs)·**.imports 등록 가드**).
+### A. docs/BASELINE_FEATURES.md (기본기능 카탈로그)
+1. 사용자 제시 10항목(회복탄력성·페이징/정렬·PDF·리포트·멀티테넌시/컨텍스트·분산캐시·이미지처리·대용량/presigned·파일 메타 정합성·AV 훅)을 **레포 코드와 실측 대조**. 결과: ✅5(client·core/page·pdf·cache-redis + 이번 context) · 🟡2(리포트=pdf+excel 조합으로 보류 권장 · 메타정합성=Tika 검출까지만) · 🔴3(이미지·presigned/스트리밍·AV 훅).
+2. 항목별 상태+위치+**인수기준**, 우선순위, 공통 설계원칙, **§6 추가 요청 대기열**(앞으로 떠오르는 기본기능을 여기 적어 승격).
 
-### B. framework-log-masking (개인정보 로그 마스킹)
-5. **왜 별도 모듈**: core `MaskingUtils` 는 "값을 이미 아는" 필드 단위 마스킹. 갭은 **자유 텍스트 로그**에 섞인 PII. 본 모듈은 정규식으로 탐지 후 실제 마스킹 모양은 `MaskingUtils` 에 위임(전사 형식 일관).
-6. **엔진(Spring 무의존, JDK 단독 검증)**: `MaskingRule`(name+Pattern+Function, `of`/`fullMask`, `Matcher.replaceAll`+`quoteReplacement`) · `KoreanPiiRules`(RRN/PHONE/CARD/EMAIL/ACCOUNT 정규식 상수 + `MaskingUtils::mask*` 위임 팩토리, `defaults()`=card·rrn·phone·email) · `SensitiveDataMasker`(불변, rules+stripNewlines+maxLength, `withDefaults()`, null→null).
-7. **Logback 경로(2차 방어망)**: `MaskingSupport`(정적 다리: volatile 마스커, 미설치 시 `withDefaults()` **폴백**) · `MaskingMessageConverter extends MessageConverter`(`%mmsg`, `convert`→`MaskingSupport.mask(super.convert)`) · `LogMaskingInstaller`(InitializingBean/DisposableBean 으로 다리에 설치/해제, 생성자 주입) · `logback-masking.xml`(conversionRule `mmsg` + `*_MASKED` appender, `%msg` 재정의 회피).
-8. **오토컨피그/프로퍼티**: `LogMaskingAutoConfiguration`(`@ConditionalOnProperty(framework.log-masking.enabled=true)`+`@EnableConfigurationProperties`). 빈 `sensitiveDataMasker`(프로퍼티→규칙 조립 card→rrn→phone→email→account→customPatterns(`fullMask`), `@ConditionalOnMissingBean`) · `logMaskingInstaller`(`install-converter` 토글, matchIfMissing=true). `LogMaskingProperties`(enabled=false·stripNewlines=true·maxLength=0·installConverter=true·nested Rules{rrn/card/phone/email=true,account=**false**}·customPatterns Map).
-9. build.gradle = `api framework-core` + **`compileOnly`+`testImplementation` logback-classic** + config-processor + starter-test. 테스트 3종(`SensitiveDataMaskerTest` 순수JDK 13케이스: 각 PII·account기본off/on·복합·stripNewlines·maxLength·custom·null/빈·비PII·ruleNames순서 / `MaskingMessageConverterTest` mock ILoggingEvent + 폴백 + clear격리 / `LogMaskingAutoConfigurationTest` off·on+설치·install-converter=false·규칙토글+커스텀·**가드**).
+### B. framework-context (요청 컨텍스트 / 멀티테넌시)
+3. **값/홀더(순수 JDK)**: `RequestContext`(불변·빌더, tenantId/userId/locale + 확장용 attributes 맵, EMPTY/hasTenant/toBuilder, 방어적 복사) · `ContextHolder`(정적 `ThreadLocal`, get 은 절대 null 아님=EMPTY, **상속형 미사용** — 가상스레드/풀 누수 방지).
+4. **해소(교체 가능)**: `ContextResolver`(SPI) · 기본 `HeaderContextResolver`(tenant/user 헤더 + Accept-Language 있을 때만 locale). 앱이 빈 정의 시 우선(`@ConditionalOnMissingBean`) → JWT/SecurityContext 로 대체.
+5. **바인딩**: `ContextBindingFilter extends OncePerRequestFilter`, `@Order(HIGHEST_PRECEDENCE+10)`(MdcTraceFilter 바로 안쪽). 진입 시 set+MDC(tenantId/userId), finally 에서 MDC 키 제거+`ContextHolder.clear()`(예외 포함).
+6. **전파(명시 2경로)**: `ContextTaskDecorator implements TaskDecorator`(@Async/풀에 컨텍스트+MDC 스냅샷 복원→종료 후 원복) · `ContextPropagationInterceptor implements ClientHttpRequestInterceptor`(아웃바운드에 헤더 전파, client 모듈 TracePropagation 패턴, 기존 헤더 비덮어쓰기).
+7. **오토컨피그/프로퍼티**: `ContextAutoConfiguration`(`@AutoConfiguration`+`@ConditionalOnWebApplication(SERVLET)`+`@ConditionalOnProperty(framework.context.enabled=true)`+`@EnableConfigurationProperties`). 빈 resolver/filter/decorator(`@ConditionalOnMissingBean`)·interceptor(`@ConditionalOnClass(ClientHttpRequestInterceptor)`+`propagate-downstream` 토글 matchIfMissing=true). `ContextProperties`(enabled=false·tenant-header=X-Tenant-Id·user-header=X-User-Id·put-to-mdc=true·mdc 키·propagate-downstream=true).
+8. build.gradle = `api framework-core` + **`compileOnly`+`testImplementation` spring-boot-starter-web**(secure-web 패턴) + config-processor + starter-test. 테스트 6종(RequestContext/ContextHolder 순수JDK · ContextTaskDecorator 전파+풀 누수 · HeaderContextResolver(MockHttpServletRequest) · ContextBindingFilter 바인딩/MDC off/예외정리 · ContextAutoConfiguration 토글·인터셉터 옵트아웃·앱 리졸버 우선(isSameAs)·**가드**).
 
 ### C. 공통 등록/문서
-10. **등록/배선**: `settings.gradle` 2종 include(pdf 다음, archtest 앞) · 각 모듈 `META-INF/spring/...AutoConfiguration.imports` · `framework-archtest/build.gradle` 에 2종 project 의존(arch 스캔 대상). 슬라이스 `cache`/`logmask` 신규(core 의 cache 는 `core` 슬라이스 — 충돌/순환 없음 확인).
-11. **문서 5종 동기화**: 두 모듈 `README.md` 신설 · 루트 `README.md` · `HANDOFF.md` · `docs/FRAMEWORK_MODULES.md` · `STACK.md`(신규 버전 없음 명시 — 둘 다 의존성 0).
+9. **등록/배선**: `settings.gradle` include(log-masking 다음, archtest 앞) · `.imports`(`ContextAutoConfiguration`) · `framework-archtest/build.gradle` 에 project 의존(arch 스캔). 신규 슬라이스 `context`→core 단방향(순환 없음).
+10. **문서 5종 동기화**: 모듈 `README.md` 신설 · 루트 `README.md`(요약/의존스니펫/섹션) · `HANDOFF.md`(모듈·함정 3종·최신세션·우선순위) · `docs/FRAMEWORK_MODULES.md`(완료/표/트리/로드맵) · `STACK.md`(의존성 0 명시). + `docs/BASELINE_FEATURES.md` 신설.
 
 ## 현재 상태 (적용/검증)
-- ✅ **사용자 환경 빌드 검증 완료(2026-06-03)**: `./gradlew :framework:framework-cache-redis:test :framework:framework-log-masking:test :framework:framework-archtest:test spotlessApply`. **log-masking 테스트 1건 실패→수정**(아래) 후 전부 통과. cache-redis·archtest 는 이상 없음.
-  - **수정한 실패**: `LogMaskingAutoConfigurationTest#appliesRuleTogglesAndCustomPatterns` 의 phone-off 단언이 **테스트 결함**이었음 — 같은 테스트에서 `account=true` 를 켜는데, 계좌 정규식(`\d{2,6}-\d{2,6}-\d{2,6}`)이 **구분자 있는 휴대폰 `010-1234-5678` 도 매칭**해 마스킹 → "변경 없음" 단언이 깨짐. 모듈 코드는 정상(계좌가 dash-grouped 숫자열을 잡는 건 의도된 동작). → phone-off 검증을 **구분자 없는 `01012345678`**(휴대폰 규칙만 매칭, 계좌는 dash 필수라 미매칭)로 교체.
-  - 재검증: `./gradlew :framework:framework-log-masking:test spotlessApply` → 22 통과.
-- 설계상 arch 규칙 통과 예상: `*AutoConfiguration`→`@AutoConfiguration` ✓ / top-level `*Properties`→`@ConfigurationProperties` ✓(중첩 `Rules` 제외) / 필드주입 0(`MaskingSupport` 정적필드는 `@Autowired` 아님 → `NO_CLASSES_SHOULD_USE_FIELD_INJECTION` 무관) / Jackson2 이동패키지 0 / 슬라이스 cache·logmask→core 단방향.
-- **신규 외부 의존성 0**: 둘 다 Boot BOM 관리(spring-data-redis·logback-classic) → 카탈로그/ext/STACK 버전 추가 불필요. compileOnly 비노출 + 테스트 재선언(established 패턴).
+- ✅ **사용자 환경 컴파일 BUILD 통과 확인(2026-06-03)** — "컴파일 이상없이 잘된다".
+- 설계상 arch 규칙 통과 예상: `ContextAutoConfiguration`→`@AutoConfiguration` ✓ / top-level `ContextProperties`→`@ConfigurationProperties` ✓ / 필드주입 0(`ContextHolder` 정적필드는 `@Autowired` 아님) / Jackson2 이동패키지 0 / 슬라이스 context→core 단방향.
+- **신규 외부 의존성 0**: servlet/web 은 Boot BOM(compileOnly 비노출) → 카탈로그/ext/STACK 버전 무변경.
 
 ## 켜는 법
 ```yaml
 framework:
-  cache:
-    redis:
-      enabled: true          # 끄면(기본) core Caffeine 로컬 캐시 그대로
-      time-to-live: 10m
-      key-prefix: ""
-      cache-null-values: true
-      ttls: { commonCode: 1h, userProfile: 5m }
-  log-masking:
-    enabled: true            # 끄면(기본) 빈 미등록
-    strip-newlines: true     # CR/LF→공백(로그 인젝션 방지)
-    install-converter: true  # Logback %mmsg 컨버터 설치기
-    rules: { rrn: true, card: true, phone: true, email: true, account: false }
-    custom-patterns: { employeeId: "EMP\\d{6}" }
+  context:
+    enabled: true               # 끄면(기본) 빈 미등록
+    tenant-header: X-Tenant-Id
+    user-header: X-User-Id
+    put-to-mdc: true            # tenantId/userId → MDC(로그 자동 노출)
+    propagate-downstream: true  # 아웃바운드 헤더 전파 인터셉터 등록
 ```
 ```java
-// 분산 캐시: 사용처 코드 불변 — @Cacheable("이름") 만, 로컬/분산은 설정으로 전환(@EnableCaching 은 core).
-// 로그 마스킹 1차(확실): SensitiveDataMasker 빈 주입 후 명시 호출(구조화 로그까지 커버).
-log.info("AUDIT payload={}", masker.mask(dto.toString()));
-// 로그 마스킹 2차(방어망): logback-spring.xml 에 logback-masking.xml include + root 를 CONSOLE_MASKED/FILE_MASKED 로.
+RequestContext ctx = ContextHolder.get();        // 어디서든(미바인딩=EMPTY, null 아님)
+executor.setTaskDecorator(contextTaskDecorator);  // @Async 전파(core 가상스레드 실행기에 연결)
+RestClient.builder().requestInterceptor(contextPropagationInterceptor).build(); // 아웃바운드 전파
+// 해소 전략 교체: ContextResolver 빈 정의(JWT 등) → 기본 헤더 리졸버 대체
 ```
-- 분산 캐시는 호스트 앱에 `spring-boot-starter-data-redis` + Redis 연결 필요(본 모듈은 compileOnly). 캐시 값은 `Serializable`(JDK 직렬화). JSON 필요 시 앱이 `RedisCacheConfiguration` 빈 직접 등록(우선).
-- 로그 마스킹은 **Boot 구조화 로깅(observability)**엔 `%mmsg` 가 안 먹음(PatternLayout 우회) → 그 경우 **1차(빈 명시호출)** 로 가려야 함.
+- 테넌트 필수 검증은 **서비스 레이어**에서 `ContextHolder.get().hasTenant()`(필터는 GlobalExceptionHandler 밖 → 거부 JSON 수기 회피).
+- 서블릿 웹 한정. `@Async` 전파는 실행기에 데코레이터를 직접 연결해야 동작(자동 재배선 안 함).
 
 ## 바로 다음 할 일 (Next)
-1. (devops) **CI 게이트**: `:framework-archtest:test` + 전 모듈 `:test` PR 차단 + **멀티모듈 jacoco 집계 리포트**(루트 aggregate).
-2. **그릇 정비**: 게이트웨이 런타임 점검(CORS preflight·rate-limit 429) · k8s 멀티서비스/CI-CD(redis/secret/observability ServiceMonitor 실배포).
-3. **기본기능 갭 정리 완료**(분산 락=lock, PDF=pdf, 분산 캐시=cache-redis, 로그 마스킹=log-masking). 다음은 갭이 아니라 심화/운영.
-4. 파일 후속(선택): 이미지 처리(썸네일/EXIF) · 대용량 스트리밍(HTTP Range/S3 presigned) · 안티바이러스 훅.
-5. (선택) 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · 멱등 재생 페이로드 지문.
-6. (선택) 캐시 **2단(near-cache+Redis)** 모드(로컬 near-cache 무효화=Redis pub/sub) · 로그 마스킹 커스텀 마스킹 함수 주입 포인트.
+1. **파일 하드닝 묶음**(카탈로그 #8+#9+#10, framework-file* 표면 공유): 대용량/스트리밍(HTTP Range·S3 presigned·멀티파트) · 메타 정합성 강화(확장자↔실제 MIME allowlist·EXIF) · 안티바이러스 훅(FileScanner SPI + ClamAV 어댑터 옵트인).
+2. **이미지 처리**(#7, framework-image): 썸네일/리사이즈·EXIF orientation 보정·민감 EXIF(GPS) 제거.
+3. (devops) **CI 게이트**: `:framework-archtest:test` + 전 모듈 `:test` PR 차단 + 멀티모듈 jacoco 집계.
+4. **추가 기본기능**: 떠오르면 `docs/BASELINE_FEATURES.md` §6 대기열에 적어 다음 세션에 승격.
+5. (선택) 컨텍스트 심화: core AsyncConfig 가상스레드 실행기에 데코레이터 자동 연결 옵션 · reactive(게이트웨이) 컨텍스트 전파 검토.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **core 가 CacheManager 를 항상 등록한다**: `matchIfMissing=true` 라 Boot 네이티브 redis 캐시는 무력. 분산 캐시는 반드시 `@AutoConfiguration(before=CacheAutoConfiguration.class)` 로 **core 보다 먼저** 매니저를 올려야 적용된다(끄면 core Caffeine 그대로).
-- **Redis 캐시 직렬화는 JDK(`RedisSerializer.java()`)**: Spring Data Redis 의 `GenericJackson2JsonRedisSerializer` 는 **Jackson 2** 라 본 스택(Jackson 3) 규약 위반 → 쓰지 않는다(레포 전역: RedisTokenStore/MFA 도 Redis 에 Jackson 미사용). JSON 필요 시 앱이 `RedisCacheConfiguration` 직접 주입(`@ConditionalOnMissingBean` 으로 우선).
-- **Logback 컨버터는 DI 불가**: `MessageConverter`/conversionRule 은 Logback 이 직접 인스턴스화 → Spring 빈 주입 불가. 그래서 **정적 다리(`MaskingSupport`)** 에 라이프사이클 빈(`LogMaskingInstaller`)이 마스커를 꽂는 패턴. 부팅 초기/순수 Logback 사용 대비 **미설치 시 기본규칙 폴백**(원문 노출 0).
-- **`%msg` 재정의 금지**: Logback 에서 표준 conversionWord(`msg`/`message`) 를 재정의하면 경고 → 별도 단어 **`%mmsg`** 를 둔다.
-- **로그 마스킹 오탐 정책**: 자유 로그에서 임의 숫자열 과잉 마스킹은 운영 가독성 저하 → 경계 엄격(`(?<![0-9])…(?![0-9])`, 카드=16자리/4-4-4-4 한정). **계좌는 오탐 커서 기본 off**. 규칙 순서는 자릿수 긴 카드 먼저(상호 오삼킴 방지).
-- **계좌 규칙은 dash-grouped 숫자열 전반을 잡는다(설계상 광범위, 2026-06-03 테스트 교훈)**: 계좌 정규식 `\d{2,6}-\d{2,6}-\d{2,6}` 은 구분자(`-`)로 묶인 2~6자리 그룹이면 **휴대폰 `010-1234-5678`·기타 코드도 매칭**한다(그래서 기본 off, 켤 땐 환경의 숫자열 형태 점검 필요). 테스트 교훈: account=on 상태에서 다른 규칙(예: phone off)을 검증할 땐 **구분자 없는 입력**으로 격리해야 계좌 매칭에 오염되지 않는다(`LogMaskingAutoConfigurationTest` 1차 실패가 바로 이 중첩 — 모듈 결함 아님, 테스트 결함이었음).
-- **Boot 구조화 로깅엔 %mmsg 미적용**: observability 의 JSON 로그는 PatternLayout 우회 → 컨버터 안 먹음. 그 경로는 1차(SensitiveDataMasker 빈 명시 호출)로 커버(README 명시).
-- (지난·유효) BOM 밖 의존=`implementation` 비노출+카탈로그/ext/STACK 고정(이번엔 의존성 0이라 해당 없음) / compileOnly 타입은 test 재선언 / 레지스트레이션 가드(`.imports` union 직접 단언) / 토글 3단 기본 off / Jackson3(`tools.jackson.*`, `.annotation` 만 예외) / 필터·로그 컨버터처럼 컨테이너 밖 컴포넌트는 GlobalExceptionHandler/DI 밖 / Boot4 패키지·외부 라이브러리 리네임 추측 금지 / JUnit launcher·starter-test 모듈마다 / 콘솔 UTF-8(미해결 보류).
+- **요청 컨텍스트는 상속형 ThreadLocal 금지**: `ContextHolder` 는 평범한 `ThreadLocal`. 가상 스레드/풀에서 `InheritableThreadLocal` 은 누수 → 전파는 **항상 명시적**(`ContextTaskDecorator` 스냅샷 복원 + 작업 후 원복, `ContextPropagationInterceptor` 헤더). 필터는 종료(예외 포함) 시 `clear()`+자기 MDC 키 제거. 정적상태라 테스트 `@AfterEach ContextHolder.clear()`+`MDC.clear()`.
+- **테넌트 필수 검증은 필터 아님**: 필터는 디스패처 이전이라 `GlobalExceptionHandler` 밖(secure-web `SecureWebResponder` 와 같은 결). `ContextBindingFilter` 는 **바인딩만**, 필수 여부는 서비스에서 `hasTenant()` 검사 후 `BusinessException`. `HeaderContextResolver` 는 신뢰 헤더 읽기만(외부 위조 방지는 게이트웨이/인증 책임).
+- **컨텍스트 필터 순서 = MdcTraceFilter 안쪽**: trace=HIGHEST_PRECEDENCE(최외곽, finally MDC.clear), context=HIGHEST_PRECEDENCE+10. traceId 가 이미 있는 상태에서 tenantId/userId 덧붙임, 외곽 clear 와 충돌 없음.
+- **리포트는 별도 모듈 보류**: pdf+excel 조합으로 커버. 멀티포맷 오케스트레이션이 실제 필요할 때만 신설(카탈로그 #4).
+- **파일 메타 정합성은 아직 부분**: 현 Tika 는 매직넘버 검출+차단목록까지. 확장자↔실제 MIME allowlist 미스매치 거부·EXIF 정합은 파일 하드닝에서 보강(카탈로그 #9).
+- (지난·유효) compileOnly 타입은 test 재선언 / 레지스트레이션 가드(`.imports` union 직접 단언) / 토글 3단 기본 off / Jackson3(`tools.jackson.*`, `.annotation` 만 예외) / 필터·로그컨버터 등 컨테이너 밖은 GlobalExceptionHandler/DI 밖 / 계좌 정규식은 dash-grouped 숫자열 광범위 매칭(log-masking, 기본 off) / Boot 구조화 로깅엔 %mmsg 미적용 / Boot4 패키지·외부 라이브러리 리네임 추측 금지 / JUnit launcher·starter-test 모듈마다 / 콘솔 UTF-8(미해결 보류).
 
 ## 모듈 추가/확장 레시피 (검증된 반복 절차)
-1. 신규 모듈/기존 확장. 순수 로직은 Spring 무의존 코어로 분리해 JDK 단독 검증(예: `SensitiveDataMasker`).
-2. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+테스트가 그 타입 참조 시 `testImplementation` 재선언), BOM 밖 내부 라이브러리=`implementation`(비노출). 이번 2모듈은 의존성 0(BOM 관리).
-3. `settings.gradle`/`imports` 등록. 신규 모듈이면 `framework-archtest/build.gradle` 에 project 의존 추가. **새 오토컨피그는 `.imports` 등록 + 등록 가드 테스트**(미등록=죽은 코드). 신규 top-level 패키지는 슬라이스 충돌/순환 확인.
-4. Boot4/Spring7/Jackson3 + 통합 대상 실제 시그니처를 레포 내 동일 사용처/공식 소스로 교차확인(core 의 기존 자동구성·기존 Redis 사용처 패턴 먼저 확인 — 이번에 core CacheAutoConfiguration 의 matchIfMissing 이 설계를 좌우).
-5. 오토컨피그 3단 토글 + 빈 `@ConditionalOnMissingBean`. core 보다 먼저 떠야 하면 `before=`. 컨테이너 밖 컴포넌트(Logback 컨버터 등)는 정적 다리+라이프사이클 빈으로 연결.
-6. **테스트**: 핵심 알고리즘 단위(JDK) + 오토컨피그 로딩(enabled/disabled) + 등록 가드. 정적 상태 쓰는 테스트는 `@AfterEach` 로 격리.
-7. 드롭인: 변경 파일 전부 → 한 zip, 루트에서 `unzip -o`. 문서 5종 동기화. 사용자 환경에서 `./gradlew :…:test :framework-archtest:test spotlessApply` 검증.
+1. 신규 모듈/기존 확장. 순수 로직은 Spring 무의존 코어로 분리해 JDK 단독 검증(예: `RequestContext`/`ContextHolder`/`ContextTaskDecorator`).
+2. `build.gradle`: 능력전이=`api`, 호스트/선택=`compileOnly`(+테스트가 그 타입 참조 시 `testImplementation` 재선언), BOM 밖 내부 라이브러리=`implementation`(비노출). 이번도 의존성 0(servlet/web=Boot BOM).
+3. `settings.gradle`/`imports` 등록. 신규 모듈이면 `framework-archtest/build.gradle` 에 project 의존 추가. **새 오토컨피그는 `.imports` 등록 + 등록 가드 테스트**. 신규 top-level 패키지는 슬라이스 충돌/순환 확인(context→core 단방향).
+4. 기존 패턴 교차확인 후 미러링(이번: `MdcTraceFilter` 순서/MDC, client `TracePropagationInterceptor`, secure-web build.gradle compileOnly web, log-masking 가드 테스트, core AsyncConfig 가상스레드 실행기).
+5. 오토컨피그 3단 토글 + 빈 `@ConditionalOnMissingBean`(+필요 시 `@ConditionalOnWebApplication`/`@ConditionalOnClass`). 컨테이너 밖/타 스레드 전파는 정적 다리·데코레이터·인터셉터로 명시 연결.
+6. **테스트**: 핵심 알고리즘 단위(JDK) + 오토컨피그 로딩(enabled/disabled, 서블릿은 `WebApplicationContextRunner`) + 등록 가드. 정적/MDC 상태 쓰는 테스트는 `@AfterEach` 격리.
+7. 드롭인: 변경 파일 전부 → 한 zip, 루트에서 `unzip -o`. 문서 5종 + 필요 시 카탈로그 동기화. 사용자 환경에서 `./gradlew :…:test :framework-archtest:test spotlessApply` 검증.
 
 <!-- 갱신 끝 -->

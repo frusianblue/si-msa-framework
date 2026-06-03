@@ -24,7 +24,7 @@ deploy/
   docker/ k8s/ cicd/  런타임 Dockerfile(레이어드/JarLauncher), K8s 매니페스트(프로브/HPA), Jenkins 파이프라인
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)는 아래 상세 섹션 참고.
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -177,6 +177,7 @@ dependencies {
     implementation project(':framework:framework-cache-redis')  // 분산 캐시(파드 간 공유, core Caffeine 대체)
     implementation project(':framework:framework-log-masking')  // 개인정보 로그 마스킹(자유 텍스트 PII 탐지)
     implementation project(':framework:framework-pdf')         // PDF 산출물 생성(거래내역서/통지서, 한글 임베딩)
+    implementation project(':framework:framework-context')     // 요청 컨텍스트/멀티테넌시(tenantId/userId/locale + @Async·아웃바운드 전파)
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).
@@ -494,6 +495,36 @@ log.info("AUDIT payload={}", masker.mask(dto.toString()));
 - `%mmsg` 는 `%msg` 와 같되 인자 치환 후 최종 텍스트를 마스킹(인자로 흘러든 PII 도 잡힘). 마스커 미설치 시에도 기본 규칙으로 폴백.
 - **주의**: Boot 구조화(JSON) 로그는 `PatternLayout` 을 우회해 `%mmsg` 가 안 먹는다 → 그 경로는 1차(빈 명시 호출)로. 상세 `framework/framework-log-masking/README.md`.
 - **계좌(`account`) 규칙을 켤 때**: 정규식이 구분자로 묶인 2~6자리 3그룹을 잡으므로 `010-1234-5678` 같은 dash형 휴대폰/코드도 함께 가린다(기본 off 인 이유). 켤 땐 로그 숫자열 포맷 점검 또는 `custom-patterns` 로 좁히기 권장.
+
+### framework-context (요청 컨텍스트 / 멀티테넌시)
+요청마다 **tenantId/userId/locale**(+확장 attributes)를 컨텍스트로 바인딩하고, `@Async`·아웃바운드 호출로 **명시적으로** 전파한다. 서블릿 웹 한정·기본 off, 신규 외부 의존성 0.
+```yaml
+framework:
+  context:
+    enabled: true
+    tenant-header: X-Tenant-Id
+    user-header: X-User-Id
+    put-to-mdc: true            # tenantId/userId 를 MDC 에 → 로그 자동 노출
+    propagate-downstream: true  # 아웃바운드 헤더 전파 인터셉터 등록
+```
+```java
+// 읽기: 어디서든(미바인딩이면 EMPTY, null 아님)
+RequestContext ctx = ContextHolder.get();
+String tenant = ctx.tenantId();
+
+// 해소 전략 교체(JWT 등) — 빈만 정의하면 기본 헤더 리졸버를 대체(@ConditionalOnMissingBean)
+@Bean ContextResolver contextResolver() {
+    return req -> RequestContext.builder().tenantId(jwt.getClaim("tenant")).userId(jwt.getSubject()).build();
+}
+
+// @Async 전파: core 의 가상 스레드 실행기에 데코레이터 연결
+executor.setTaskDecorator(contextTaskDecorator);
+// 아웃바운드 전파: RestClient/RestTemplate 인터셉터에 추가
+RestClient.builder().requestInterceptor(contextPropagationInterceptor).build();
+```
+- **상속형 ThreadLocal 미사용**: 가상 스레드/풀 누수 방지 — 전파는 데코레이터·인터셉터로 명시. 필터는 요청 종료(예외 포함) 시 컨텍스트+자기 MDC 키를 정리.
+- **헤더 신뢰 경계**: `HeaderContextResolver` 는 신뢰 헤더를 읽기만 함(외부 위조 방지는 게이트웨이/인증 책임). 테넌트 필수 검증은 서비스에서 `ContextHolder.get().hasTenant()` 로. 상세 `framework/framework-context/README.md`.
+
 
 ## 추가된 공통 (이번 보강)
 - **보안 예외 표준화**: 401/403 도 `ApiResponse` JSON 으로 통일(`RestAuthenticationEntryPoint`/`RestAccessDeniedHandler`).
