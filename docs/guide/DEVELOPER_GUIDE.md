@@ -134,12 +134,12 @@ public class Order extends BaseEntity { /* 업무 컬럼만 */ }
 <result property="rrn" column="rrn"
         typeHandler="com.company.framework.mybatis.handler.EncryptedStringTypeHandler"/>
 ```
-**매퍼 스캔** — 반드시:
+**매퍼 스캔** — 부트 클래스에 매퍼 패키지를 지정:
 ```java
-@MapperScan(basePackages = "com.company.order.mapper",
-            annotationClass = org.apache.ibatis.annotations.Mapper.class)
+@SpringBootApplication
+@MapperScan("com.company.order.mapper")   // @Mapper 인터페이스만 있는 패키지면 이대로 OK
 ```
-> `annotationClass` 를 빼면 SPI 인터페이스까지 스캔돼 `ConflictingBeanDefinitionException`. 카멜케이스 매핑(`user_name`↔`userName`)은 자동.
+> 매퍼 패키지에 `@Mapper` 가 아닌 인터페이스(SPI 등)가 섞여 있으면 `annotationClass = org.apache.ibatis.annotations.Mapper.class` 를 지정해 스캔 범위를 좁힌다(미지정 시 `ConflictingBeanDefinitionException` — framework-commoncode/file 등 일부 모듈이 그 경우). 카멜케이스 매핑(`user_name`↔`userName`)은 자동.
 
 ---
 
