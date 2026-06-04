@@ -58,6 +58,11 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
 
     // ===== 테스트 =====
+    // RP 연계 e2e(OidcRpLinkageTest): 우리 AS 가 발급한 id_token 을 RP 검증기(framework-oauth-client 의
+    //   IdTokenVerifier/JwksKeyResolver)로 검증해 발급↔검증 양끝이 모두 우리 코드임을 입증한다.
+    //   라이브러리 의존만 추가(서비스 간 의존 없음) — 라운드트립이 framework-security 검증기를 쓰는 것과 동일 패턴.
+    //   jjwt 는 두 모듈 모두 전이로 동일 버전.
+    testImplementation project(':framework:framework-oauth-client')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
