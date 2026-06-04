@@ -23,8 +23,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * 토글과 무관하게 항상 마커 인지({@code AesSigningKeyCipher#reveal})라 혼재/롤백 안전.
  */
 @ConfigurationProperties(prefix = "auth-server.signing-key")
-public record SigningKeyProperties(
-        @DefaultValue Rotation rotation, @DefaultValue Encryption encryption) {
+public record SigningKeyProperties(@DefaultValue Rotation rotation, @DefaultValue Encryption encryption) {
 
     public record Rotation(
             @DefaultValue("false") boolean enabled,
