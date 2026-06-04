@@ -22,6 +22,7 @@
 - **CI 멀티서비스화**: `deploy/cicd/ci-cd.yml`(verify 1회 → build-and-push 4서비스 matrix, bootJar+docker 동일 잡, `JAR_FILE=services/<svc>/build/libs/<svc>-1.0.0.jar` → deploy `kubectl apply -k overlays/prod` + `set image app=<sha>` 루프) · `Jenkinsfile`(게이트 → Flyway Validate authdb/sidb 병렬 → Build&Push `SERVICE` matrix → Deploy kustomize, matrix 밖).
 - **서비스 소스 보강 3건**: `services/auth-server/.../application-prod.yml` 신설(postgres datasource via env·flyway clean-disabled·health show-details never) · auth-server `application.yml` management 블록(probes.enabled + exposure health,info,prometheus,metrics) · `gateway/auth-server/user-service/admin-service` build.gradle 에 `runtimeOnly micrometer-registry-prometheus`.
 - **문서**: `docs/modules/K8S_CICD_MULTISERVICE.md` 신설(레이아웃·env 계약표·redis/DB 전제·ServiceMonitor·갭 3건·CI matrix·시크릿 주입·검증 체크리스트) · 4개 서비스 README §8 에 Kustomize 배포 포인터 · `HANDOFF.md`(§6 함정 묶음·§7 완료+우선순위 마킹) · 이 문서.
+- **(후속) `overlays/local` 추가 — kind/minikube 자기완결 로컬 테스트**: 인-클러스터 Postgres(`postgres.yaml`, authdb+sidb+역할 initdb, Service 이름 `postgres` → base DB_URL 무패치로 연결) + ServiceMonitor `$patch: delete`(로컬엔 Prometheus Operator CRD 없음) + 로컬 빌드 이미지 `:local`(IfNotPresent) + `secrets-local.yaml`(prod 프로파일 `AesMasterKeySafetyGuard` 통과용 강한 값, AES 정확히 32B; DB 계정은 initdb 역할과 일치). 한 줄 배포 `kubectl apply -k deploy/k8s/overlays/local`. kind 단계별 절차 `docs/modules/LOCAL_K8S_TEST.md`(클러스터 생성→4이미지 `kind load`→apply→port-forward 스모크→teardown, 관측은 kube-prometheus-stack 선택). 정적 검증: 역할/DB/시크릿 정합·SM delete 타깃·이미지 repo 일치 통과.
 
 ## 새로 확정한 함정 (HANDOFF §6 등록)
 - **컨테이너 이름 `app` + 포트 이름 `http` 규약** — 공통 하드닝 패치(전략적머지)와 CI `set image deployment/<svc> app=…` 가 이 이름에 의존. 서비스별 deployment 는 차이값만.
@@ -48,7 +49,7 @@ kubectl -n si-msa get deploy,po,svc,hpa,servicemonitor
 
 ## 다음 (Next) 후보
 - **▶ commit/push** (이번 산출물 = `deploy/k8s/` Kustomize 트리 + `deploy/cicd/{ci-cd.yml,Jenkinsfile}` matrix + auth-server `application-prod.yml`/management + 4서비스 build.gradle prometheus + 문서). 받는 쪽 `kubectl kustomize`/`--dry-run=server` + `:services:<svc>:bootJar`·`spotlessApply` 확인 후.
-- (devops 후속) gateway 외부 노출(Ingress/LoadBalancer + TLS)·NetworkPolicy(백엔드 인그레스 제한)·prod redis 매니지드 전환·PodDisruptionBudget·레이트리밋 429 Testcontainers Redis 통합테스트.
+- (devops 후속) gateway 외부 노출(Ingress/LoadBalancer + TLS)·NetworkPolicy(백엔드 인그레스 제한)·prod redis 매니지드 전환·PodDisruptionBudget·레이트리밋 429 Testcontainers Redis 통합테스트. (로컬 검증 환경 = `overlays/local` + `docs/modules/LOCAL_K8S_TEST.md` 로 마련됨.)
 - (보류) OIDC B안 전체 흐름 e2e(confidential demo-rp) · 게이트웨이 AS aud 검증 · 서명키 KMS/Vault 백엔드 · SAML 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn).
 - (선택 백로그) 아카이빙 tar/tar.gz(commons-compress) · RetryUtils · 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · S3 멀티파트 병렬 업로드(TransferManager).
 <!-- 갱신 끝 -->

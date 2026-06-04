@@ -23,9 +23,12 @@ deploy/k8s/
     admin-service/  {deployment,service,configmap,kustomization}.yaml
     kustomization.yaml                     # 위를 묶고 hardened 패치를 label 타깃으로 적용
   overlays/
-    dev/  {kustomization.yaml, secrets-dev.yaml}              # 1 레플리카, :dev, 약한 시크릿 동봉
-    prod/ {kustomization.yaml, hpa.yaml, secrets-prod.example.yaml}  # HPA, 외부 DB·issuer, 시크릿 미포함
+    local/ {kustomization.yaml, postgres.yaml, secrets-local.yaml}  # kind/minikube 자기완결: 인-클러스터 PG, SM 제외, :local
+    dev/   {kustomization.yaml, secrets-dev.yaml}              # 1 레플리카, :dev, 약한 시크릿 동봉
+    prod/  {kustomization.yaml, hpa.yaml, secrets-prod.example.yaml}  # HPA, 외부 DB·issuer, 시크릿 미포함
 ```
+
+> **로컬 자기완결 테스트**는 `overlays/local`(인-클러스터 Postgres 동봉·ServiceMonitor 제거·로컬 빌드 이미지)로 `kubectl apply -k deploy/k8s/overlays/local` 한 줄. kind 기준 단계별 절차는 `docs/modules/LOCAL_K8S_TEST.md`.
 
 **중복 제거의 핵심** — 서비스별 `deployment.yaml` 은 *차이값만*(이미지/포트번호/envFrom) 선언하고,
 보안 컨텍스트·프로브·리소스·`/tmp` 볼륨은 `common/deployment-hardening.yaml` 한 곳에서 정의해

@@ -1,0 +1,41 @@
+# deploy/k8s/overlays/local/kustomization.yaml
+# LOCAL: kind/minikube 등 자기완결 클러스터용. 인-클러스터 Postgres(authdb+sidb) 동봉,
+#        ServiceMonitor 제거(Prometheus Operator CRD 불요), 로컬 빌드 이미지(:local) 사용.
+#   한 줄 배포:  kubectl apply -k deploy/k8s/overlays/local
+#   ※ DB_URL 패치 없음 — base 가 이미 'postgres' 호스트를 가리키므로 동봉 Postgres Service(postgres)로 그대로 연결.
+#   ※ Redis 도 base 의 인-클러스터 redis 를 그대로 사용.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: si-msa
+
+resources:
+  - ../../base
+  - postgres.yaml
+  - secrets-local.yaml
+
+# 로컬은 서비스당 1 레플리카
+replicas:
+  - { name: gateway,       count: 1 }
+  - { name: auth-server,   count: 1 }
+  - { name: user-service,  count: 1 }
+  - { name: admin-service, count: 1 }
+
+# 로컬 빌드 이미지 태그(:local). :latest 가 아니므로 기본 imagePullPolicy=IfNotPresent →
+# kind load / minikube image load 로 노드에 적재된 이미지를 그대로 쓰고 레지스트리 접속을 시도하지 않는다.
+images:
+  - { name: registry.example.com/si-msa/gateway,       newTag: local }
+  - { name: registry.example.com/si-msa/auth-server,   newTag: local }
+  - { name: registry.example.com/si-msa/user-service,  newTag: local }
+  - { name: registry.example.com/si-msa/admin-service, newTag: local }
+
+patches:
+  # ServiceMonitor 제거 — 로컬 클러스터엔 monitoring.coreos.com CRD 가 없어 그대로 두면 apply 전체가 실패한다.
+  # 관측까지 보려면 이 패치를 빼고 kube-prometheus-stack(Helm)으로 오퍼레이터/CRD 를 먼저 설치한다.
+  - target: { group: monitoring.coreos.com, version: v1, kind: ServiceMonitor, name: si-msa-services }
+    patch: |-
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: si-msa-services
