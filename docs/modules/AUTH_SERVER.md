@@ -40,7 +40,7 @@ services/auth-server
 ├─ config/SigningKeyProperties       # auth-server.signing-key.{rotation,encryption}.*
 ├─ user/FrameworkAuthenticationProvider  # 폼 로그인 → framework-security Authenticator
 └─ user/RoleClaimTokenCustomizer     # 발급 토큰에 roles 클레임
-db/migration: V1(SAS 스키마) · V2(서명키) · V3(빈 RBAC) · V4(framework_lock) · V5(auth_signing_key.retired_at)
+db/migration: V1(SAS 스키마) · V2(서명키) · V3(빈 RBAC) · V4(framework_lock) · V5(auth_signing_key.retired_at) · **V6(SS7 정합 — `oauth2_authorization` device_code/user_code 8컬럼; SAS 가 그랜트 무관 고정 컬럼 목록을 INSERT 하므로 디바이스 그랜트 미채택이어도 필수. 토큰 발급 라운드트립 e2e 가 잡은 버그.)**
 ```
 
 - **사용자 소스 재사용**: `framework.security.enabled=true` 로 `Authenticator`/`LoginService` 빈 재사용. framework-security 기본 체인은 `@ConditionalOnMissingBean(SecurityFilterChain)` 이라 우리 AS 체인 정의 시 자동 백오프(충돌 없음). RBAC 메뉴는 `framework.security.menu=false`. 단 `SecurityMetadataService` 는 enabled=true 면 무조건 생성+생성자 eager 로딩이라, RBAC 테이블(resources/roles/role_resources)을 빈 채로 마련(Flyway V3)해 기동 WARN 을 없앤다(enabled=false 는 AuthAutoConfiguration→LoginService 의존 누락으로 기동 실패).
@@ -62,6 +62,15 @@ db/migration: V1(SAS 스키마) · V2(서명키) · V3(빈 RBAC) · V4(framework
 > `JwksKeyResolver` 패턴 자립 재현) + `GatewayTokenAuthenticator`(iss 분기). **프레임워크 라이브러리 무변경.**
 > 켜는 법은 [`GATEWAY_EDGE_AUTH.md`](./GATEWAY_EDGE_AUTH.md) "이중 발급기" 절. 다운스트림 servlet 자체 재검증
 > (zero-trust)은 선택적 심층방어이며 별도 후속(§8).
+>
+> **✅ 토큰 발급 라운드트립 e2e 통과(2026-06-04)** — `services/auth-server` `e2e/TokenIssuanceRoundTripTest`: 실 기동 AS 가
+> 두 그랜트(client_credentials·authorization_code+PKCE)로 발급한 RS256 access token 을 실 `/oauth2/jwks` + 논리 issuer 로
+> 다운스트림 zero-trust 검증기(`ResourceServerJwtVerifier`/`DownstreamTokenAuthenticator`)가 재검증(음성 2종 포함). 4/4 통과.
+> **단 leg2 는 `openid` 제외(id_token 미발급)** — id_token 의 `auth_time` 이 `SessionInformation`(세션 레지스트리) 의존인데
+> MockMvc 폼 로그인이 세션 이벤트를 안 일으켜 null → 코드 교환 실패. **OIDC id_token 발급/검증은 후속**:
+> [`../NEXT_OIDC_ID_TOKEN.md`](../NEXT_OIDC_ID_TOKEN.md).
+>
+> 암호화 값(서명키 개인키 `enc:` · 설정 `ENC(...)`) 다루는 법은 [`../ENCRYPTION_GUIDE.md`](../ENCRYPTION_GUIDE.md).
 
 ## 5. 엔드포인트 (SAS 기본)
 

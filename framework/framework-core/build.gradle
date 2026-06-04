@@ -19,3 +19,31 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
+
+// ===== 설정값 암호화 토큰 생성 CLI (docs/ENCRYPTION_GUIDE.md §2.2) =====
+// 평문을 ENC(...) 설정 토큰으로 암호화한다(AES-256-GCM). 암호화 엔드포인트를 노출하지 않기 위한 CLI.
+//   사용(권장 — 키는 환경변수, 데몬 env 격리 회피 위해 --no-daemon):
+//     AES_SECRET='마스터키' ./gradlew --no-daemon -q :framework:framework-core:encryptSecret -Pplain='sipass'
+//   대안(데몬 유지, 단 키가 셸 히스토리/프로세스 인자에 노출 — 개발용):
+//     ./gradlew -q :framework:framework-core:encryptSecret -PAES_SECRET='마스터키' -Pplain='sipass'
+//   → 출력: ENC(...). application*.yml 에 붙여넣으면 기동 시 자동 복호화된다.
+tasks.register('encryptSecret', JavaExec) {
+    group = 'crypto'
+    description = '평문을 ENC(...) 설정 토큰으로 암호화 (키=env AES_SECRET, 평문=-Pplain)'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.company.framework.core.crypto.CryptoCli'
+    doFirst {
+        def plain = project.findProperty('plain')
+        if (!plain) {
+            throw new GradleException("평문이 필요합니다: -Pplain='<평문>'")
+        }
+        args 'encrypt', plain.toString()
+        // CryptoCli 는 마스터 키를 환경변수 AES_SECRET 에서 직접 읽는다(인자/로그 노출 방지).
+        // --no-daemon 사용 시 현재 셸의 AES_SECRET 이 forked JVM 에 그대로 상속된다.
+        // 데몬을 유지하면 셸 env 가 안 보일 수 있으므로 -PAES_SECRET fallback 을 명시 전달.
+        def key = project.findProperty('AES_SECRET')
+        if (key) {
+            environment 'AES_SECRET', key.toString()
+        }
+    }
+}

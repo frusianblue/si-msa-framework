@@ -6,44 +6,38 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**직전 = AS 서명키 회전 스케줄러 + 개인키 암호화 완료 및 받는 쪽 기동 확인(2026-06-04).** OP RSA 서명키를 framework-lock `@SchedulerLock`(리더 선출)로 단일 파드만 주기 회전(직전 ACTIVE 전부 RETIRE → 새 ACTIVE INSERT → grace 정리, 한 트랜잭션), DB 개인키는 `AesCryptoService` AES-GCM 컬럼 암호화(`enc:` 마커). 새 외부 의존성 0. 기동 과정에서 **함정 2건(framework-lock optional 의존 introspect 폭발·`@MapperScan` 매퍼 오인) 수정 → ✅ 받는 쪽 `bootRun` 정상 기동 확인.** + **서비스 모듈 4종 README(기동 방법) 신설.** **바로 다음 = 토큰 발급 라운드트립 통합테스트.**
+**직전 = 토큰 발급 라운드트립 e2e 완료(✅ 4/4) + 스키마 버그(V6) 수정 + 전 서비스 README 정비 + 암호화 가이드 신설(2026-06-04).** 실제 기동한 AS 가 두 그랜트(demo-service client_credentials · demo-web authorization_code+PKCE)로 발급한 진짜 RS256 access token 을 실 `/oauth2/jwks` 공개키로 받는 쪽 zero-trust 검증기가 재검증 — 발급·전파·검증 전 구간 정합 확인(음성 2종 포함). **테스트가 실제 스키마 버그를 잡아 V6 마이그레이션 신설.** + 4개 서비스 README 를 8섹션(빌드/테스트/환경설정/기동/실행확인/사용/암호화/배포)으로 재작성 + `docs/ENCRYPTION_GUIDE.md` 신설 + `encryptSecret` Gradle 태스크 추가. **바로 다음 = OIDC id_token 발급(`docs/NEXT_OIDC_ID_TOKEN.md`).**
 
 ## 최종 갱신
-- 일자: 2026-06-04 · 갱신자: 서명키 회전 마감 + 기동 확정 + 서비스 README 작성 세션 (섹션 종료)
+- 일자: 2026-06-04 · 갱신자: 라운드트립 e2e 마감 + 문서/README 정비 세션 (섹션 종료)
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)** / Nimbus(SAS 전이)
 
-## 직전에 한 것 (Done, ✅ 받는 쪽 기동 확인)
-- **AS 서명키 회전 + 개인키 암호화** (`services/auth-server`, framework-lock/framework-core 재사용):
-  - 신규: `jose/SigningKeyCipher`(추상)·`AesSigningKeyCipher`(AES-GCM, `enc:` 마커, `AesCryptoService` 재사용)·`SigningKeyGenerator`(@FunctionalInterface)·`RsaSigningKeyGenerator`·`SigningKeyRotationService`(@Transactional `rotateOnce()`: RETIRE→INSERT→grace정리 + 멱등 가드, `Outcome` record)·`SigningKeyRotationScheduler`(@Scheduled cron + @SchedulerLock thin wrapper)·`config/SigningKeyProperties`(`auth-server.signing-key.{rotation,encryption}`).
-  - 수정: `SigningKey`(+`retiredAt`·`active()` 팩토리)·`SigningKeyMapper`(+`retireAllActive`/`deleteRetiredOlderThan`)·`SigningKeyMapper.xml`·`JdbcRotatingJwkSource`(ctor+cipher, 읽기 `reveal`·부트스트랩 `protect`)·`AuthorizationServerConfig`(@EnableConfigurationProperties + cipher/generator/service/scheduler 빈, 중첩 `SigningKeyRotationConfig` @ConditionalOnProperty)·`AuthServerApplication`(@EnableScheduling, `@MapperScan(annotationClass=Mapper.class)`)·`build.gradle`(framework-lock)·`application.yml`.
-  - 마이그레이션: `V4__framework_lock.sql`(H2/PG 호환)·`V5__auth_signing_key_retired_at.sql`.
-  - 테스트: `SigningKeyRotationServiceTest`(회전·멱등·grace)·`AesSigningKeyCipherTest`(마커 라운드트립·평문 passthrough·암호화 off·null) — JUnit5+AssertJ.
-- **기동 함정 2건 수정**(아래 함정 절): framework-lock `LockAutoConfiguration` 중첩 격리 + `@MapperScan` annotationClass 필터 → bootRun 정상 기동.
-- **★ 서비스 모듈 README 4종 신설**: `services/{auth-server,user-service,admin-service,gateway}/README.md` — 포트·프로파일 오버레이·`bootRun` 명령·환경변수·대표 엔드포인트·`bootJar`·문서 링크. (기존 서비스 README 전무 → 규약화: HANDOFF §8.)
-- **핵심 결정 2건 (설계 노트와 의도적 편차)**:
-  - ① **grace 정리 기준 `created_at`→`retired_at`**: grace(14d) < 회전주기(30d)면 `created_at` 기준 정리가 직전 키를 RETIRE 즉시 삭제해 오버랩 붕괴 → `retired_at` 컬럼(V5) 앵커.
-  - ② **회전 순서 retire-then-insert + 단일 트랜잭션**: insert-then-retire 는 다중 파드 경합 시 0-ACTIVE(서명 불가) 위험 → RETIRE 먼저 + 한 트랜잭션이면 독자에게 원자적, 최악도 ACTIVE 2개(오버랩 흡수).
-  - (부가) 프로퍼티 prefix `auth-server.signing-key.*`(노트 `auth.signing-key` 대신 기존 네임스페이스 통합), 환경변수명 `SIGNING_KEY_*` 유지.
-- 문서: `NEXT_SIGNING_KEY_ROTATION.md`(완료/편차 배너)·`modules/AUTH_SERVER.md` §3/§7/§8·`HANDOFF.md`(§3·§6 함정·§7·§8 README 규약)·서비스 README 4종·루트 `README.md`(서비스 README 링크).
+## 직전에 한 것 (Done, ✅ 받는 쪽 4/4 통과)
+- **신규 e2e** `services/auth-server/.../e2e/TokenIssuanceRoundTripTest`(@SpringBootTest RANDOM_PORT, profile local, MockMvc=webAppContextSetup+springSecurity()):
+  - leg1 client_credentials(Basic demo-service:demo-secret) · leg2 authorization_code+PKCE(formLogin demo/demo → 세션 → authorize S256 → 코드 교환 code_verifier). **leg2 는 scope 에서 openid 제외**(id_token 미발급 — 함정 ② 참조).
+  - 발급 토큰을 실 JWKS(`http://localhost:{random}/oauth2/jwks`) + 논리 issuer(`settings.getIssuer()`)로 `ResourceServerJwtVerifier`/`DownstreamTokenAuthenticator` 재검증. JSON 파싱=JsonPath(starter-test 전이, Jackson 우회). 서명 변조=중간 문자 변경.
+  - 음성: 잘못된 issuer 핀 → 진짜 토큰 거부 · 서명 변조 → 거부(+진입점 null 관용).
+- **신규 마이그레이션** `V6__auth_authorization_device_user_code.sql`: `oauth2_authorization` 에 `user_code_*`/`device_code_*` 8컬럼 추가(ALTER ADD COLUMN IF NOT EXISTS, H2/PG 멱등). SS7 7.0.0 정본 `oauth2-authorization-schema.sql` 1:1 대조.
+- **★ 전 서비스 README 8섹션 재작성**: auth-server/user-service/gateway/admin-service 각각 **빌드·테스트·환경설정·기동·실행확인·사용·암호화·배포**. 빌드/테스트 명령(`:build`/`:bootJar`/`:test --tests`)과 암호화 절(`ENC(...)` 생성 + `AES_SECRET` 규칙)을 필수 기재.
+- **★ `docs/ENCRYPTION_GUIDE.md` 신설**: 3경로(① 설정값 `ENC(...)` 자동복호 · ② 컬럼 `enc:` 마커 · ③ 파일 at-rest CBC) + 마스터키(`AES_SECRET`=`openssl rand -base64 32`, 교체금지, prod 가드) + `ENC(...)` 생성법 + 운영 체크리스트.
+- **★ `encryptSecret` Gradle 태스크 추가**(`framework/framework-core/build.gradle`, JavaExec→CryptoCli): `AES_SECRET=키 ./gradlew --no-daemon -q :framework:framework-core:encryptSecret -Pplain='평문'` → `ENC(...)`. (이전엔 CLI 만 있고 태스크 미노출.)
+- **다음 세션 착수 문서** `docs/NEXT_OIDC_ID_TOKEN.md` 신설(아래 함정 ②의 근본 원인 + 조사/구현/수용 기준).
 
 ## 새로 밟은/확정한 함정 (HANDOFF §6 등록)
-- **🔧 framework-lock 런타임 버그 수정 (auth-server jdbc-only 소비자에서 노출)**: `LockAutoConfiguration` 최상위에 `redisDistributedLock(StringRedisTemplate)` 빈이 있고 형제 `schedulerLockAspect` 가 타입 미지정 `@ConditionalOnMissingBean` 이라, 빈 타입 추론이 클래스 introspect(`getDeclaredMethods()`) 를 트리거 → redis 없는 런타임에서 `NoClassDefFoundError: StringRedisTemplate` → 기동 불가. **해법 = redis/jdbc 빈을 `@ConditionalOnClass` 가드 중첩 `@Configuration`(`RedisLockConfiguration`/`JdbcLockConfiguration`)으로 격리 + 애스펙트 `@ConditionalOnMissingBean(SchedulerLockAspect.class)` 타입 명시.** 일반 교훈: autoconfig 최상위 @Configuration 은 런타임 보장 타입만, compileOnly/optional 타입은 중첩 @ConditionalOnClass 로 격리. 테스트(클래스패스에 redis 있음)는 무영향 → 그래서 잠복했었음.
-- **🔧 `@MapperScan` 매퍼 오인 충돌 수정 (auth-server 기동)**: `@MapperScan("...jose")` 가 필터 없이 걸려 SPI 인터페이스 `SigningKeyCipher`/`SigningKeyGenerator` 까지 매퍼로 등록 → 동명 `@Bean` 과 `ConflictingBeanDefinitionException`. **해법 = `@MapperScan(annotationClass = Mapper.class)`** 로 `@Mapper` 인터페이스만 스캔. 일반 교훈: 명시적 `@MapperScan` 대상 패키지에 매퍼 외 인터페이스를 두려면 `annotationClass`/`markerInterface` 필터 필수(자동스캔은 기본 안전, 명시 스캔은 기본 무필터).
-- 회전 함정: **grace=`retired_at` 앵커** · **회전 순서 retire-then-insert**(0-ACTIVE 방지) · **`@SchedulerLock` 없으면 모든 파드 회전** · **`@EnableScheduling` 누락 시 조용히 무동작** · **개인키 `enc:` 마커 분기**(읽기는 토글 무관 인지) · **스케줄러=thin wrapper / 서비스=@Transactional 분리**.
+- **🔧 ① SS7 `JdbcOAuth2AuthorizationService` = 고정 컬럼 목록**: INSERT/UPDATE/SELECT 가 device_code/user_code 컬럼을 **채택 그랜트와 무관하게 항상 포함**. V1(SAS 1.0 핵심 컬럼만)에 이 8개가 빠져, **기동(토큰 미저장)에선 잠복하다 첫 토큰 발급 INSERT 에서 H2 가 미존재 컬럼을 grammar 오류로 보고 → BadSqlGrammarException**(client_credentials/authorization_code 모두). 해법=V6(정본 blob/timestamp → PG/H2 는 text/timestamp, V1 규약 유지). 교훈: SAS 스키마를 채택 그랜트만으로 줄이지 말 것. 발급 e2e 없이는 미검출.
+- **🔧 ② OIDC id_token `auth_time` ← `SessionInformation`**: SS7 `JwtGenerator`(141–144)가 id_token 의 auth_time/sid 를 OIDC 세션 추적(`SessionInformation.getLastRequest()`)에서 가져옴. **MockMvc 폼 로그인은 실 세션 이벤트를 안 일으켜 SessionRegistry 에 세션 미등록 → `SessionInformation` null → "authenticationTime cannot be null"**(패치본 Assert; 7.0.0 은 null 가드라 생략). `openid` 있으면 id_token 실패가 access_token 발급까지 막음. 해법(시험)=라운드트립 e2e 는 **scope 에서 openid 제외**. id_token e2e 는 별도(실 WebTestClient or SessionRegistry 시드) → `docs/NEXT_OIDC_ID_TOKEN.md`.
+- (테스트 헬퍼 함정) JWT 서명 변조는 **중간 문자**를 바꿔야 함(마지막 base64url 문자는 trailing-bit 특성상 변경이 무효될 수 있음).
+- (작업 환경) **Maven Central 차단**(`host_not_allowed`) → SB4/SS7 의존성 다운로드 불가 = 이 환경에서 빌드/테스트 실행 불가(정적 리뷰만). 로컬/CI 실행 필수.
 
-## 실행/검증 (✅ 받는 쪽 기동 확인 완료)
+## 실행/검증 (✅ 완료)
 ```bash
-# auth-server 회전 활성화 기동 (확인됨):
-export AES_SECRET="$(openssl rand -base64 32)"   # prod 약한키/기본값이면 부팅 차단(AesMasterKeySafetyGuard). 한 번 정하면 변경 금지
-export SIGNING_KEY_ROTATION_ENABLED=true LOCK_TYPE=jdbc
-./gradlew :services:auth-server:bootRun
-# → /.well-known/openid-configuration 200, 서명키 부트스트랩(enc: 마커 저장) 정상 기동 확인
+./gradlew :services:auth-server:test --tests "*TokenIssuanceRoundTripTest"   # → 4/4 통과
+# ENC 토큰 생성 (암호화 가이드 §2.2)
+AES_SECRET="$AES_SECRET" ./gradlew --no-daemon -q :framework:framework-core:encryptSecret -Pplain='평문'
 ```
-> 남은 런타임 확인(권장, 다음 세션 초입에 가볍게): 회전 1회 트리거 후 `/oauth2/jwks` 에 새 kid 등장 + 직전 kid grace 잔존(오버랩), 다중 파드면 `@SchedulerLock` 으로 회전 1회만.
-> 각 서비스 기동 방법은 신설된 `services/*/README.md` 참조.
 
 ## 다음 (Next) 후보
-- **▶ 토큰 발급 라운드트립 통합테스트** — demo-web authorization_code+PKCE / demo-service client_credentials → 게이트웨이 이중 발급기 → user-service zero-trust 재검증(전 구간 e2e).
+- **▶ OIDC id_token 발급 ← 다음 착수** — 착수 문서 `docs/NEXT_OIDC_ID_TOKEN.md`. (1) 실 환경 openid 로그인 시 auth_time 채워지는지 확인 → (2) 필요 시 SessionRegistry/세션관리 와이어링 → (3) WebTestClient 실 흐름으로 id_token e2e(클레임 iss/sub/aud/auth_time/nonce/sid 검증) → (4) RP `IdTokenVerifier` 연계.
 - (선택) 게이트웨이측 AS `aud` 검증 · introspection · 서명키 KMS/Vault 백엔드(`SigningKeyCipher` 교체).
 - (devops) CI 게이트(archtest + 전 모듈 test PR 차단) · 멀티모듈 jacoco 집계 · k8s 멀티서비스/observability 실배포.
 - (보류) SSO 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn).
