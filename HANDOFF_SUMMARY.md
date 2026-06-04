@@ -6,40 +6,39 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**직전 = OIDC id_token 발급 완료 + 직전 진단 정정(2026-06-04).** 라운드트립 e2e 가 미룬 조각(`openid` scope 코드 교환 → id_token)을 마감했다. **직전 함정 ②(`auth_time` ← `SessionInformation` null)는 SS7 7.0 기준 오진**으로 판명 — GitHub `7.0.x` 정본 `JwtGenerator` 대조 결과, `auth_time`/`sid` 는 `if (sessionInformation != null)` 가드 **안에서** 부여되고(즉 null 이면 Assert 가 아니라 조용히 생략) `auth_time` 값은 principal 의 **`FactorGrantedAuthority` 최신 `issuedAt`** 에서 산출된다. 진짜 원인 = **커스텀 `FrameworkAuthenticationProvider` 가 인증 팩터를 안 붙인 것**(표준 provider 는 `FACTOR_PASSWORD` 자동 부착). **수정 2건(auth-server 내부, framework-security 무변경)** + 신규 `e2e/OidcIdTokenIssuanceTest`(2테스트). MockMvc 로 충분(WebTestClient/SessionRegistry 시드 불필요). **받는 쪽(로컬/CI)에서 2/2 통과 확인(2026-06-04).** **바로 다음 = RP 연계(OIDC 풀루프 마감) — 착수 문서 `docs/NEXT_RP_IDTOKEN_LINK.md` 준비 완료(조사 끝, 바로 시작).**
+**직전 = RP 연계(OIDC 풀루프 마감) 완료 — A안(2026-06-04).** 우리 AS 가 발급한 id_token 을 우리 RP 검증기(`framework-oauth-client` 의 `IdTokenVerifier` + 실 `JwksKeyResolver` → 라이브 `/oauth2/jwks`)가 그대로 검증 → **발급(AS)↔검증(RP) 양끝이 모두 우리 코드**임을 e2e 로 입증, OIDC 전 구간(발급↔검증) 완결. 발급 하네스는 `OidcIdTokenIssuanceTest` 재사용, 검증만 AS측 `ResourceServerJwtVerifier`(`JwtException`)에서 **RP측 `IdTokenVerifier`(`BusinessException`)** 로 전환. **변경 2건**: `services/auth-server/build.gradle` 에 `testImplementation project(':framework:framework-oauth-client')`(서비스 간 의존 0·라이브러리만) + 신규 `e2e/OidcRpLinkageTest`(양성 2 + 음성 3 = **5테스트**). **받는 쪽에서 신규 5/5 + 회귀(id_token 2/2·라운드트립 4/4) + spotless 통과 확인(2026-06-04).** **바로 다음 = (devops) CI 게이트 + 멀티모듈 jacoco 집계** (또는 선택: B안 전체 흐름 e2e·게이트웨이 AS aud 검증·서명키 KMS/Vault 백엔드).
 
 ## 최종 갱신
-- 일자: 2026-06-04 · 갱신자: OIDC id_token 발급 + 진단 정정 세션 (섹션 종료)
+- 일자: 2026-06-04 · 갱신자: RP 연계(OIDC 풀루프) A안 완료 세션 (섹션 종료)
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)** / Nimbus(SAS 전이)
 
-## 직전에 한 것 (Done — ✅ 받는 쪽 2/2 통과)
-- **근본 원인 재조사(정정)**: GitHub `7.0.x` 브랜치의 `JwtGenerator`/`FactorGrantedAuthority`/`CoreJacksonModule` 정본 소스를 받아 직전 진단을 검증 → **SessionInformation 가설 반증**. Assert(`"authenticationTime cannot be null"`)는 `getAuthenticationTime(principal)` 안에 있고, 그 호출은 `if (sessionInformation != null)` 가드를 통과한 뒤라 → **SessionInformation 은 MockMvc 에서도 non-null**(SAS `oidc()` 기본 OIDC 세션 추적이 채움). auth_time 은 SAS 1.x 의 세션 기반이 아니라 **인증 팩터 기반**(SS7 7.0 변경점).
-- **수정 ① `FrameworkAuthenticationProvider`**: 반환 인증 토큰 authorities 에 `FactorGrantedAuthority.fromAuthority(PASSWORD_AUTHORITY)` 부착(principal=`User` 은 역할만 — 표준 form-login 과 동일). `issuedAt` 기본 = `Instant.now()` = auth_time. 직렬화는 SS core Jackson **3** `CoreJacksonModule`(`allowIfSubType`+mixin)이 지원.
-- **수정 ② `RoleClaimTokenCustomizer`**: `roles` 클레임 생성 시 `FactorGrantedAuthority` **필터 제외**(인증 팩터가 앱 역할/다운스트림 권한으로 누수 방지). 기존 테스트는 `.contains` 만 단언 → 영향 없음.
-- **신규 e2e** `services/auth-server/.../e2e/OidcIdTokenIssuanceTest`(@SpringBootTest RANDOM_PORT, profile local, MockMvc=webAppContextSetup+springSecurity() — 라운드트립 하네스 재사용):
-  - test1: formLogin demo/demo → authorize(scope=`openid profile`, nonce, PKCE S256) → 코드 교환 → **id_token+access_token 발급**. id_token 을 실 `/oauth2/jwks`(RS256)+`ResourceServerJwtVerifier`(`expectedAudience=demo-web` 활성)로 검증 + payload 디코드로 `iss`/`sub`/`auth_time`(non-null·양수)/`exp`/`nonce` 왕복/`sid` not-blank/`roles` 단언.
-  - test2: 검증기 `expectedAudience="some-other-client"` → 진짜 id_token 도 aud 불일치로 `JwtException`(음성).
-- **문서 정비**: `docs/NEXT_OIDC_ID_TOKEN.md`(착수 전 → **✅ 완료 + 정정 배너**로 재작성) · `HANDOFF.md` §6 함정 ②(✅🔧 정정 엔트리) + §7 dated 완료 엔트리 + 우선순위 OIDC 항목 ✅ · `docs/modules/AUTH_SERVER.md` §4(leg2 노트 정정 + ✅ 발급 완료). README/STACK/FRAMEWORK_MODULES 는 **AS-side id_token 미참조**(전부 RP-side `framework-oauth-client`) → 무변경.
+## 직전에 한 것 (Done — ✅ 받는 쪽 5/5 + 회귀 통과)
+- **A안(검증기 수준 풀루프)**: 직전 발급 e2e 의 id_token 을 **AS측이 아니라 RP측 `IdTokenVerifier`** 로 검증. 실 `JwksKeyResolver(RestClient, 5m)` → 임베디드 서버 `/oauth2/jwks`(RS256) 라이브 조회. 발급기와 검증기가 **서로 다른 우리 모듈**임에도 호환됨을 보장.
+- **수정 ① `services/auth-server/build.gradle`**: `testImplementation project(':framework:framework-oauth-client')` 추가(`===== 테스트 =====` 블록, 주석 동반). 서비스 간 의존 아님 — 라이브러리 의존만(라운드트립이 framework-security 검증기 쓰는 것과 동일 패턴). jjwt(0.12.6)/jjwt-jackson 은 이미 framework-security 경유 전이 → RP 검증기 jjwt 파싱이 auth-server test 스코프에서 동작(추가 불필요).
+- **신규 e2e** `services/auth-server/.../e2e/OidcRpLinkageTest`(@SpringBootTest RANDOM_PORT, profile local, MockMvc=webAppContextSetup+springSecurity, 발급 하네스 `OidcIdTokenIssuanceTest` 재사용):
+  - 양성1: formLogin demo/demo → authorize(`openid profile`, nonce, PKCE S256) → 코드 교환 → id_token → RP `IdTokenVerifier.verify` → `sub=demo`/`iss`(런타임 핀)/`roles ⊇ ROLE_USER`/`nonce` 왕복/`auth_time` non-null·양수.
+  - 양성2: 같은 id_token 2회 검증 → 두번째는 JWKS 캐시 히트(`JwksKeyResolver` TTL 캐시).
+  - 음성3: issuer 핀 불일치 · clientId(aud) 불일치 · nonce 불일치 → 전부 **`BusinessException(UNAUTHORIZED)`**(⚠️ AS측 `JwtException` 아님).
+- **문서 정비(5종)**: `docs/NEXT_RP_IDTOKEN_LINK.md`(✅ 완료 배너 + 수용 기준 [x]) · `HANDOFF.md` §6 함정 묶음(RP↔AS 연계 6항) + §7 dated 완료 엔트리 + 우선순위 RP 항목 ✅ · `docs/modules/AUTH_SERVER.md` §4(RP 연계 완료 노트) · `docs/modules/OIDC_HARDENING.md` §7(다음 섹션 → ✅ 완료로 재작성). README/STACK/FRAMEWORK_MODULES 무변경(테스트 전용·런타임/배포 영향 0).
 
-## 새로 확정/정정한 함정 (HANDOFF §6 등록)
-- **✅🔧 ② [정정] id_token `auth_time` ← `FactorGrantedAuthority`(SessionInformation 아님)**: SS7 7.0 `JwtGenerator.getAuthenticationTime` 은 principal 권한의 `FactorGrantedAuthority` 최신 `issuedAt` 으로 산출, 하나도 없으면 Assert. **SAS 와 함께 쓰는 커스텀 `AuthenticationProvider` 는 표준 provider 처럼 인증 팩터(`FACTOR_PASSWORD`)를 부착해야** OIDC auth_time 이 나온다. `auth_time`/`sid` 는 한 `if (sessionInformation != null)` 가드에서 동시 부여(둘 중 하나 나오면 같이). 인증 팩터는 인가 역할이 아니므로 `roles` 클레임에서 제외.
-- (작업 환경 — 유효) **Maven Central 차단**(`host_not_allowed`) → SB4/SS7 의존성 다운로드 불가 = 이 환경 빌드/테스트 불가(정적 리뷰만). GitHub raw 소스 대조는 가능 → 정본 `JwtGenerator` 확인에 활용.
-- (테스트 헬퍼 — 유효) JWT 서명 변조 음성테스트는 **중간 문자**를 바꿔야 함(마지막 base64url 문자는 trailing-bit 무효 가능).
+## 새로 확정한 함정 (HANDOFF §6 등록)
+- **RP↔AS 예외 타입 비대칭**: RP `IdTokenVerifier`/`JwksKeyResolver` = `BusinessException(UNAUTHORIZED)`, AS `ResourceServerJwtVerifier` = `io.jsonwebtoken.JwtException`. **같은 id_token 음성 단언인데 모듈마다 기대 예외가 다름** — 혼동 금지.
+- **AssertJ 와일드카드 캐스팅 컴파일 함정**: `assertThat((Collection<?>) roles).contains("ROLE_USER")` 는 와일드카드 캡처로 `contains` element 타입 추론이 막혀 **컴파일 에러**(IntelliJ 빨간 줄). → `assertThat(claims.get("roles")).asInstanceOf(InstanceOfAssertFactories.iterable(String.class)).contains("ROLE_USER")` 로 원소 타입을 좁혀 해소(instanceof+contains 한 체인, unchecked 경고 0).
+- **aud = client_id** → RP `Provider.clientId` 는 발급 client(`demo-web`)와 동일하게. **issuer 는 런타임 핀**(`authorizationServerSettings.getIssuer()`; `local.server.port` 는 Boot RANDOM_PORT 자동 주입).
+- (작업 환경 — 유효) **Maven Central 차단** → SB4/SS7 의존성 다운로드 불가 = 이 환경 빌드/테스트 불가(정적 리뷰만). GitHub clone/raw 대조는 가능.
 
-## 실행/검증 (✅ 받는 쪽 2/2 통과, 2026-06-04)
+## 실행/검증 (✅ 받는 쪽 통과, 2026-06-04)
 ```bash
-./gradlew :services:auth-server:test --tests "*OidcIdTokenIssuanceTest"   # 신규 2테스트
-./gradlew :services:auth-server:test --tests "*TokenIssuanceRoundTripTest" # 회귀(여전히 4/4 기대)
+./gradlew :services:auth-server:test --tests "*OidcRpLinkageTest"          # 신규 5테스트
+./gradlew :services:auth-server:test --tests "*OidcIdTokenIssuanceTest"    # 회귀 2/2
+./gradlew :services:auth-server:test --tests "*TokenIssuanceRoundTripTest" # 회귀 4/4
+./gradlew :services:auth-server:spotlessApply                              # Palantir 포맷 게이트
 ```
-> ✅ 받는 쪽에서 **신규 2테스트 + 라운드트립 회귀 4종 모두 통과 확인**(사용자, 2026-06-04). 변경 ②(roles 클레임 팩터 제외)는 라운드트립의 다운스트림 `.contains("ROLE_USER")` 통과로 정확성 입증. ✅ **`spotlessApply`(Palantir) 정상 적용 완료**(2026-06-04) — 포맷 게이트도 통과. 남은 건 commit/push 뿐.
+> ✅ 받는 쪽에서 **신규 5 + 회귀 2/2 + 4/4 + spotless 모두 통과 확인**(사용자, 2026-06-04). 남은 건 commit/push.
 
 ## 다음 (Next) 후보
-- **▶ RP 연계(OIDC 풀루프 마감) ← 다음 착수** — 착수 문서 **`docs/NEXT_RP_IDTOKEN_LINK.md`**(조사 완료). AS 발급 id_token 을 `framework-oauth-client` `IdTokenVerifier` 로 검증해 발급↔검증 양끝을 우리 코드로 닫는다.
-  - **A안(권장)**: auth-server 에 `testImplementation project(':framework:framework-oauth-client')` 추가 → 실 AS 발급(demo-web) id_token 을 실 `IdTokenVerifier`(실 JWKS)로 검증. 라이브러리 의존만, 서비스 간 의존 없음.
-  - **A안 단언**: `sub=demo`·`iss`·`roles(ROLE_USER)`·`nonce`·`auth_time`; 음성 3종(issuer/aud=clientId/nonce 불일치)은 **`BusinessException(UNAUTHORIZED)`**(⚠️ AS 측 `JwtException` 과 예외 타입 다름).
-  - **갭(B안=전체 흐름만)**: RP `OAuthClient.exchangeCodeForTokens` 는 client_secret 사용(PKCE 미지원)이라 AS `demo-web`(public+PKCE)과 불일치 → 전체 흐름 e2e 면 confidential `demo-rp`(client_secret_post, authorization_code, openid/profile) 등록 필요. 검증기 수준(A안)은 무관.
-  - clientId=demo-web(aud=client_id), issuer=`authorizationServerSettings.getIssuer()` 런타임 핀.
+- **▶ (devops) CI 게이트 ← 권장 다음 착수**: `:framework-archtest:test` + 전 모듈 `:test` PR 차단 게이트 · **멀티모듈 jacoco 집계 리포트**(루트 aggregate) · k8s 멀티서비스/observability(ServiceMonitor) 실배포.
+- (선택) **B안 전체 흐름 e2e**: confidential `demo-rp`(client_secret_post, authorization_code, openid/profile) 등록 → RP `OAuthLoginService.callback` 까지 충실 e2e. A안으로 연계 입증은 충분하므로 백로그.
 - (선택) 게이트웨이측 AS `aud` 검증 · introspection · 서명키 KMS/Vault 백엔드(`SigningKeyCipher` 교체).
-- (devops) **CI 게이트**(archtest + 전 모듈 test PR 차단) · 멀티모듈 jacoco 집계 · k8s 멀티서비스/observability 실배포.
 - (보류) SSO 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn).
 <!-- 갱신 끝 -->

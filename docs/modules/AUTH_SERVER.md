@@ -76,6 +76,13 @@ db/migration: V1(SAS 스키마) · V2(서명키) · V3(빈 RBAC) · V4(framework
 > `FactorGrantedAuthority.fromAuthority(PASSWORD_AUTHORITY)` 부착 + `RoleClaimTokenCustomizer` 가 roles 클레임에서 팩터 제외
 > (framework-security 무변경). 상세·정정 경위 = [`../NEXT_OIDC_ID_TOKEN.md`](../NEXT_OIDC_ID_TOKEN.md) · HANDOFF §6.
 >
+> **✅ RP 연계(OIDC 풀루프 마감) 완료(2026-06-04, A안)** — 발급한 id_token 을 **우리 RP 검증기**(`framework-oauth-client`
+> `IdTokenVerifier` + 실 `JwksKeyResolver` → 라이브 `/oauth2/jwks`)가 그대로 검증해 발급(AS)↔검증(RP) 양끝이 모두
+> 우리 코드임을 입증. `e2e/OidcRpLinkageTest`(양성 2 + 음성 3): `testImplementation project(':framework:framework-oauth-client')`
+> 만 추가(서비스 간 의존 0). ⚠️ RP 검증기는 실패를 `BusinessException(UNAUTHORIZED)` 로 던진다(AS 측 `ResourceServerJwtVerifier`
+> 의 `JwtException` 과 예외 타입 다름 — 음성 단언 주의). 상세 = [`../NEXT_RP_IDTOKEN_LINK.md`](../NEXT_RP_IDTOKEN_LINK.md) ·
+> [`OIDC_HARDENING.md`](OIDC_HARDENING.md) §7 · HANDOFF §6.
+>
 > 암호화 값(서명키 개인키 `enc:` · 설정 `ENC(...)`) 다루는 법은 [`../ENCRYPTION_GUIDE.md`](../ENCRYPTION_GUIDE.md).
 
 ## 5. 엔드포인트 (SAS 기본)

@@ -103,11 +103,19 @@ callback:   state 1회 소비(nonce 회수) → 토큰 교환(id_token 포함)
 - [ ] HS 서명 IdP 면 `client-secret` 길이 확인(HS256 ≥ 32 bytes)
 
 
-## 7. 사내 AS 와의 연계 검증 (다음 섹션)
+## 7. 사내 AS 와의 연계 검증 (✅ 완료, 2026-06-04)
 
 이 모듈의 `IdTokenVerifier` 는 외부 IdP 뿐 아니라 **우리 Authorization Server(`services/auth-server`)가 발급한
-id_token** 도 그대로 검증할 수 있다(JWKS RS256 · iss · aud⊇client-id · nonce · sub). 발급(AS)↔검증(RP) 양끝을 우리
-코드로 닫는 e2e 가 다음 착수 작업이다 — 설계/조사 완료된 착수 문서: [`../NEXT_RP_IDTOKEN_LINK.md`](../NEXT_RP_IDTOKEN_LINK.md).
+id_token** 도 그대로 검증한다(JWKS RS256 · iss · aud⊇client-id · nonce · sub). **발급(AS)↔검증(RP) 양끝을 우리
+코드로 닫는 e2e 완료(A안)**: `services/auth-server` 의 `e2e/OidcRpLinkageTest` 가 실 AS 발급 id_token 을 이 모듈의
+`IdTokenVerifier`(+ 실 `JwksKeyResolver` → 라이브 `/oauth2/jwks`)로 검증한다 — 양성(클레임 왕복 sub=demo·iss·
+roles(ROLE_USER)·nonce·auth_time + JWKS 캐시 히트) 2 + 음성(issuer/aud(clientId)/nonce 불일치) 3 = **5테스트**,
+받는 쪽 통과. 연계는 `testImplementation project(':framework:framework-oauth-client')` 라이브러리 의존만으로 성립
+(서비스 간 의존 0). 설계/경위: [`../NEXT_RP_IDTOKEN_LINK.md`](../NEXT_RP_IDTOKEN_LINK.md)(✅ 완료 배너).
 
-> 주의(전체 흐름 연계 시): RP 의 코드 교환은 `client_secret`(client_secret_post) 방식이라, AS 의 public+PKCE 클라이언트
-> (`demo-web`)가 아니라 **confidential authorization_code 클라이언트**가 필요하다. 검증기 수준 연계(권장)는 이 제약과 무관하다.
+> ⚠️ 예외 타입: 이 모듈의 `IdTokenVerifier`/`JwksKeyResolver` 는 검증 실패를 `BusinessException(ErrorCode.Common.UNAUTHORIZED)`
+> 로 던진다 — AS 측 `ResourceServerJwtVerifier` 의 `io.jsonwebtoken.JwtException` 과 다르므로 음성 테스트 단언에서 혼동 금지.
+
+> 주의(전체 흐름 연계 시 = B안, 백로그): RP 의 코드 교환은 `client_secret`(client_secret_post) 방식이라, AS 의 public+PKCE
+> 클라이언트(`demo-web`)가 아니라 **confidential authorization_code 클라이언트**(`demo-rp`)가 필요하다. 검증기 수준
+> 연계(A안, 위 완료분)는 id_token 이 클라이언트 인증방식과 무관하므로 이 제약과 무관하다.

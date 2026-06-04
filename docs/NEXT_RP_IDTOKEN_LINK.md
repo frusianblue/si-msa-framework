@@ -1,6 +1,21 @@
-# NEXT_RP_IDTOKEN_LINK.md — 다음 세션 착수: RP 연계(OIDC 풀루프 마감)
+# NEXT_RP_IDTOKEN_LINK.md — RP 연계(OIDC 풀루프 마감)
 
-> 상태: **착수 전(설계/조사 완료 — 바로 시작 가능)**.
+> ## ✅ 완료 (2026-06-04, A안) — 받는 쪽 통과 확인
+> **A안(검증기 수준 풀루프) 구현 완료.** 우리 AS(`services/auth-server`)가 발급한 id_token 을 우리 RP 검증기
+> (`framework-oauth-client` 의 `IdTokenVerifier` + 실 `JwksKeyResolver`)가 그대로 검증 → **발급(AS)↔검증(RP)
+> 양끝이 모두 우리 코드**임을 e2e 로 입증. OIDC 전 구간(발급↔검증) 완결.
+> - 변경 2건: `services/auth-server/build.gradle`(`testImplementation project(':framework:framework-oauth-client')`)
+>   + 신규 `services/auth-server/.../e2e/OidcRpLinkageTest`(양성 2 + 음성 3 = **5테스트**).
+> - **받는 쪽 통과 확인(2026-06-04)**: 신규 5 + 회귀(`OidcIdTokenIssuanceTest` 2/2 · `TokenIssuanceRoundTripTest` 4/4) + `spotlessApply`.
+> - 새 함정 2건(HANDOFF §6 등록): RP `BusinessException(UNAUTHORIZED)` ↔ AS `JwtException` **예외 타입 차이**(음성 단언) ·
+>   AssertJ `(Collection<?>)` 와일드카드 캐스팅 → `contains` element 추론 막힘(컴파일 에러) → `asInstanceOf(iterable(String.class))` 로 해소.
+> - B안(confidential `demo-rp` 전체 흐름 e2e)은 **백로그**로 보류(A안으로 연계 입증 충분).
+>
+> _아래는 착수 시점의 원본 설계/조사 기록(이력 보존)._
+
+---
+
+> 상태: ~~**착수 전(설계/조사 완료 — 바로 시작 가능)**~~ → **✅ 완료(A안)**.
 > 목표 = **우리 AS(`services/auth-server`)가 발급한 id_token 을, 우리 RP 스택(`framework-oauth-client` 의
 > `IdTokenVerifier`)이 그대로 검증**하는 경로를 e2e 로 닫는다. 발급(AS)·검증(RP) **양끝이 모두 우리 코드**임을
 > 입증해 OIDC 전 구간(발급↔검증)을 완결한다.
@@ -78,13 +93,13 @@ RP 가 실제 authorize→callback 으로 AS 와 통신하는 충실한 e2e. **A
 
 ---
 
-## 3. 수용 기준 (Acceptance)
-- [ ] `services/auth-server` 에 `testImplementation project(':framework:framework-oauth-client')` 추가, 컴파일 통과.
-- [ ] 실 AS 발급 id_token 이 **RP `IdTokenVerifier`** 로 검증되어 `sub=demo`·`iss`·`roles(ROLE_USER)`·`nonce` 확인.
-- [ ] 음성 3종(issuer/aud(clientId)/nonce 불일치)이 **`BusinessException(UNAUTHORIZED)`** 로 거부.
-- [ ] 기존 `OidcIdTokenIssuanceTest`·`TokenIssuanceRoundTripTest` 회귀 유지.
-- [ ] `spotlessApply` 적용(Palantir 포맷 게이트).
-- [ ] (선택/B안) confidential `demo-rp` 등록 + `OAuthLoginService` 전체 흐름 e2e.
+## 3. 수용 기준 (Acceptance) — ✅ 전부 충족(2026-06-04)
+- [x] `services/auth-server` 에 `testImplementation project(':framework:framework-oauth-client')` 추가, 컴파일 통과.
+- [x] 실 AS 발급 id_token 이 **RP `IdTokenVerifier`** 로 검증되어 `sub=demo`·`iss`·`roles(ROLE_USER)`·`nonce` 확인.
+- [x] 음성 3종(issuer/aud(clientId)/nonce 불일치)이 **`BusinessException(UNAUTHORIZED)`** 로 거부.
+- [x] 기존 `OidcIdTokenIssuanceTest`(2/2)·`TokenIssuanceRoundTripTest`(4/4) 회귀 유지.
+- [x] `spotlessApply` 적용(Palantir 포맷 게이트).
+- [ ] (선택/B안 — 백로그) confidential `demo-rp` 등록 + `OAuthLoginService` 전체 흐름 e2e.
 
 ---
 
