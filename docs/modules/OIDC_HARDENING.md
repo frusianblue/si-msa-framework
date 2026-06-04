@@ -101,3 +101,13 @@ callback:   state 1회 소비(nonce 회수) → 토큰 교환(id_token 포함)
 - [ ] IdP egress(Discovery/JWKS/Token) 네트워크 허용
 - [ ] 다중 파드면 `state.store.type=redis` (nonce 도 redis 에 함께 바인딩됨)
 - [ ] HS 서명 IdP 면 `client-secret` 길이 확인(HS256 ≥ 32 bytes)
+
+
+## 7. 사내 AS 와의 연계 검증 (다음 섹션)
+
+이 모듈의 `IdTokenVerifier` 는 외부 IdP 뿐 아니라 **우리 Authorization Server(`services/auth-server`)가 발급한
+id_token** 도 그대로 검증할 수 있다(JWKS RS256 · iss · aud⊇client-id · nonce · sub). 발급(AS)↔검증(RP) 양끝을 우리
+코드로 닫는 e2e 가 다음 착수 작업이다 — 설계/조사 완료된 착수 문서: [`../NEXT_RP_IDTOKEN_LINK.md`](../NEXT_RP_IDTOKEN_LINK.md).
+
+> 주의(전체 흐름 연계 시): RP 의 코드 교환은 `client_secret`(client_secret_post) 방식이라, AS 의 public+PKCE 클라이언트
+> (`demo-web`)가 아니라 **confidential authorization_code 클라이언트**가 필요하다. 검증기 수준 연계(권장)는 이 제약과 무관하다.

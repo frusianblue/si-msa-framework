@@ -6,7 +6,7 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**직전 = OIDC id_token 발급 완료 + 직전 진단 정정(2026-06-04).** 라운드트립 e2e 가 미룬 조각(`openid` scope 코드 교환 → id_token)을 마감했다. **직전 함정 ②(`auth_time` ← `SessionInformation` null)는 SS7 7.0 기준 오진**으로 판명 — GitHub `7.0.x` 정본 `JwtGenerator` 대조 결과, `auth_time`/`sid` 는 `if (sessionInformation != null)` 가드 **안에서** 부여되고(즉 null 이면 Assert 가 아니라 조용히 생략) `auth_time` 값은 principal 의 **`FactorGrantedAuthority` 최신 `issuedAt`** 에서 산출된다. 진짜 원인 = **커스텀 `FrameworkAuthenticationProvider` 가 인증 팩터를 안 붙인 것**(표준 provider 는 `FACTOR_PASSWORD` 자동 부착). **수정 2건(auth-server 내부, framework-security 무변경)** + 신규 `e2e/OidcIdTokenIssuanceTest`(2테스트). MockMvc 로 충분(WebTestClient/SessionRegistry 시드 불필요). **받는 쪽(로컬/CI)에서 2/2 통과 확인(2026-06-04).** **바로 다음 = (선택) RP `IdTokenVerifier` 연계로 OIDC 풀루프 마감 · 또는 devops CI 게이트.**
+**직전 = OIDC id_token 발급 완료 + 직전 진단 정정(2026-06-04).** 라운드트립 e2e 가 미룬 조각(`openid` scope 코드 교환 → id_token)을 마감했다. **직전 함정 ②(`auth_time` ← `SessionInformation` null)는 SS7 7.0 기준 오진**으로 판명 — GitHub `7.0.x` 정본 `JwtGenerator` 대조 결과, `auth_time`/`sid` 는 `if (sessionInformation != null)` 가드 **안에서** 부여되고(즉 null 이면 Assert 가 아니라 조용히 생략) `auth_time` 값은 principal 의 **`FactorGrantedAuthority` 최신 `issuedAt`** 에서 산출된다. 진짜 원인 = **커스텀 `FrameworkAuthenticationProvider` 가 인증 팩터를 안 붙인 것**(표준 provider 는 `FACTOR_PASSWORD` 자동 부착). **수정 2건(auth-server 내부, framework-security 무변경)** + 신규 `e2e/OidcIdTokenIssuanceTest`(2테스트). MockMvc 로 충분(WebTestClient/SessionRegistry 시드 불필요). **받는 쪽(로컬/CI)에서 2/2 통과 확인(2026-06-04).** **바로 다음 = RP 연계(OIDC 풀루프 마감) — 착수 문서 `docs/NEXT_RP_IDTOKEN_LINK.md` 준비 완료(조사 끝, 바로 시작).**
 
 ## 최종 갱신
 - 일자: 2026-06-04 · 갱신자: OIDC id_token 발급 + 진단 정정 세션 (섹션 종료)
@@ -34,7 +34,11 @@
 > ✅ 받는 쪽에서 **신규 2테스트 + 라운드트립 회귀 4종 모두 통과 확인**(사용자, 2026-06-04). 변경 ②(roles 클레임 팩터 제외)는 라운드트립의 다운스트림 `.contains("ROLE_USER")` 통과로 정확성 입증. ✅ **`spotlessApply`(Palantir) 정상 적용 완료**(2026-06-04) — 포맷 게이트도 통과. 남은 건 commit/push 뿐.
 
 ## 다음 (Next) 후보
-- **▶ (선택) RP `IdTokenVerifier` 연계** — AS 발급 id_token 을 `framework-oauth-client` `IdTokenVerifier` 가 그대로 검증하는 경로까지 e2e 로 닫으면 OIDC 전 구간(발급↔검증) 완결.
+- **▶ RP 연계(OIDC 풀루프 마감) ← 다음 착수** — 착수 문서 **`docs/NEXT_RP_IDTOKEN_LINK.md`**(조사 완료). AS 발급 id_token 을 `framework-oauth-client` `IdTokenVerifier` 로 검증해 발급↔검증 양끝을 우리 코드로 닫는다.
+  - **A안(권장)**: auth-server 에 `testImplementation project(':framework:framework-oauth-client')` 추가 → 실 AS 발급(demo-web) id_token 을 실 `IdTokenVerifier`(실 JWKS)로 검증. 라이브러리 의존만, 서비스 간 의존 없음.
+  - **A안 단언**: `sub=demo`·`iss`·`roles(ROLE_USER)`·`nonce`·`auth_time`; 음성 3종(issuer/aud=clientId/nonce 불일치)은 **`BusinessException(UNAUTHORIZED)`**(⚠️ AS 측 `JwtException` 과 예외 타입 다름).
+  - **갭(B안=전체 흐름만)**: RP `OAuthClient.exchangeCodeForTokens` 는 client_secret 사용(PKCE 미지원)이라 AS `demo-web`(public+PKCE)과 불일치 → 전체 흐름 e2e 면 confidential `demo-rp`(client_secret_post, authorization_code, openid/profile) 등록 필요. 검증기 수준(A안)은 무관.
+  - clientId=demo-web(aud=client_id), issuer=`authorizationServerSettings.getIssuer()` 런타임 핀.
 - (선택) 게이트웨이측 AS `aud` 검증 · introspection · 서명키 KMS/Vault 백엔드(`SigningKeyCipher` 교체).
 - (devops) **CI 게이트**(archtest + 전 모듈 test PR 차단) · 멀티모듈 jacoco 집계 · k8s 멀티서비스/observability 실배포.
 - (보류) SSO 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn).
