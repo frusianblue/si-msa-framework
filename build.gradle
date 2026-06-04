@@ -1,6 +1,7 @@
 // build.gradle (root)
 plugins {
     id 'java'
+    id 'jacoco-report-aggregation'             // 루트 집계: 전 모듈 커버리지를 단일 리포트로 합산
     alias(libs.plugins.spring.boot) apply false
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.owasp.dependencycheck)
@@ -45,6 +46,7 @@ allprojects {
         tikaVersion            = libs.versions.tika.get()
         openpdfVersion         = libs.versions.openpdf.get()
         sshdVersion            = libs.versions.sshd.get()
+        zxingVersion           = libs.versions.zxing.get()
     }
 }
 
@@ -216,3 +218,56 @@ sonar {
                 "${rootDir}/**/build/reports/jacoco/test/jacocoTestReport.xml"
     }
 }
+
+// ===== 멀티모듈 JaCoCo 통합(집계) 리포트 =====
+// 각 모듈은 자체 jacocoTestReport(XML→Sonar)를 내지만, 사람이 보는 "전체 합산 1장"이 필요하다
+// (전사 커버리지 추이·리뷰·배지). jacoco-report-aggregation 플러그인으로 설정캐시-안전하게 집계한다.
+//   실행:   ./gradlew testCodeCoverageReport
+//   산출물:  build/reports/jacoco/testCodeCoverageReport/  (HTML + XML)
+// Sonar 는 위 sonar 블록의 "모듈별 XML 글롭"으로 수집하므로 이 집계와 독립적이다(이중 합산 방지).
+// 모듈 추가 시 settings.gradle include 와 함께 아래 목록에도 한 줄 추가한다.
+dependencies {
+    jacocoAggregation project(':framework:framework-core')
+    jacocoAggregation project(':framework:framework-mybatis')
+    jacocoAggregation project(':framework:framework-security')
+    jacocoAggregation project(':framework:framework-openapi')
+    jacocoAggregation project(':framework:framework-redis')
+    jacocoAggregation project(':framework:framework-commoncode')
+    jacocoAggregation project(':framework:framework-file')
+    jacocoAggregation project(':framework:framework-file-s3')
+    jacocoAggregation project(':framework:framework-file-sftp')
+    jacocoAggregation project(':framework:framework-idempotency')
+    jacocoAggregation project(':framework:framework-i18n')
+    jacocoAggregation project(':framework:framework-idgen')
+    jacocoAggregation project(':framework:framework-client')
+    jacocoAggregation project(':framework:framework-audit')
+    jacocoAggregation project(':framework:framework-secure-web')
+    jacocoAggregation project(':framework:framework-datasource')
+    jacocoAggregation project(':framework:framework-messaging')
+    jacocoAggregation project(':framework:framework-saga')
+    jacocoAggregation project(':framework:framework-excel')
+    jacocoAggregation project(':framework:framework-batch')
+    jacocoAggregation project(':framework:framework-notification')
+    jacocoAggregation project(':framework:framework-mfa')
+    jacocoAggregation project(':framework:framework-observability')
+    jacocoAggregation project(':framework:framework-lock')
+    jacocoAggregation project(':framework:framework-pdf')
+    jacocoAggregation project(':framework:framework-cache-redis')
+    jacocoAggregation project(':framework:framework-log-masking')
+    jacocoAggregation project(':framework:framework-context')
+    jacocoAggregation project(':framework:framework-image')
+    jacocoAggregation project(':framework:framework-qr')
+    jacocoAggregation project(':framework:framework-archive')
+    jacocoAggregation project(':framework:framework-file-batch')
+    jacocoAggregation project(':framework:framework-archtest')
+    jacocoAggregation project(':framework:framework-oauth-client')
+    jacocoAggregation project(':framework:framework-saml-sp')
+    jacocoAggregation project(':services:gateway')
+    jacocoAggregation project(':services:user-service')
+    jacocoAggregation project(':services:admin-service')
+    jacocoAggregation project(':services:auth-server')
+}
+
+// testCodeCoverageReport 태스크는 jacoco-report-aggregation + java(기본 test 스위트) 조합에서
+// 자동 생성되며, 위 jacocoAggregation 의존 그래프를 기본 test 스위트 기준으로 집계한다.
+// (명시적 reports.testCodeCoverageReport 재선언은 "이미 존재" 오류를 내므로 두지 않는다.)

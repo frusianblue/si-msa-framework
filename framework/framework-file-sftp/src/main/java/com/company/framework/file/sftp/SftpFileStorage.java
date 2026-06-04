@@ -2,6 +2,9 @@ package com.company.framework.file.sftp;
 
 import com.company.framework.core.error.BusinessException;
 import com.company.framework.core.error.ErrorCode;
+import com.company.framework.file.sftp.cred.SftpCredentialProvider;
+import com.company.framework.file.sftp.cred.SftpCredentials;
+import com.company.framework.file.sftp.pool.BoundedObjectPool;
 import com.company.framework.file.storage.FileStorage;
 import com.company.framework.file.storage.RangeReadableStorage;
 import com.company.framework.file.storage.StoredFile;
@@ -16,6 +19,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.keyverifier.AcceptAllServerKeyVerifier;
@@ -23,8 +27,6 @@ import org.apache.sshd.client.keyverifier.KnownHostsServerKeyVerifier;
 import org.apache.sshd.client.keyverifier.RejectAllServerKeyVerifier;
 import org.apache.sshd.client.keyverifier.ServerKeyVerifier;
 import org.apache.sshd.client.session.ClientSession;
-import org.apache.sshd.common.config.keys.FilePasswordProvider;
-import org.apache.sshd.common.keyprovider.FileKeyPairProvider;
 import org.apache.sshd.sftp.client.SftpClient;
 import org.apache.sshd.sftp.client.SftpClientFactory;
 import org.apache.sshd.sftp.common.SftpConstants;
@@ -38,10 +40,18 @@ import org.slf4j.LoggerFactory;
  *
  * <p>키: {@code yyyy/MM/dd/{uuid}.{ext}} (저장 결과의 storedPath = baseDir 기준 상대 키, load/delete 시 baseDir 재결합).
  *
- * <p><b>연결 모델</b>: SSH 는 연결 지향·상태형이라 S3 의 무상태 HTTP 와 다르다. {@link SshClient} 는 1회 start 후
- * 재사용하고, <b>작업마다 세션을 새로 열고 닫는다</b>(풀링 없음 — 예측 가능·stale 연결 버그 회피; 고처리량이 필요하면
- * 후속으로 풀 옵트인). {@link #load}/{@link #loadRange} 가 돌려주는 스트림은 세션을 물고 있다가 스트림 close 시
- * 세션까지 함께 정리한다({@link SessionBoundInputStream}).
+ * <p><b>연결 모델</b>: SSH 는 연결 지향·상태형이라 S3 의 무상태 HTTP 와 다르다. {@link SshClient} 는 1회 start 후 재사용.
+ * 세션은 두 모드:
+ * <ul>
+ *   <li><b>풀 비활성(기본)</b>: 작업마다 세션을 새로 열고 닫는다(예측 가능·stale 회피).
+ *   <li><b>풀 활성(옵트인)</b>: 인증된 세션을 {@link BoundedObjectPool} 로 재사용한다 — 고처리량에서 SSH/TCP/인증
+ *       핸드셰이크 비용 절감. 대여 직전 {@code isOpen()} 검증, 유휴/수명 만료 시 교체. 수명(maxLifetime)은 키 회전
+ *       전파에 중요(옛 키로 인증된 장수 세션 강제 교체).
+ * </ul>
+ *
+ * <p><b>자격증명</b>: 매 세션 생성 시 {@link SftpCredentialProvider#current()} 로 해석한다 — 키 회전(파일 변경 감지
+ * 재로드) 시 <b>새 세션</b>부터 새 키로 인증된다. {@link #load}/{@link #loadRange} 가 돌려주는 스트림은 세션을 물고
+ * 있다가 스트림 close 시 세션을 풀에 반납(또는 닫음)한다({@link SessionBoundInputStream}).
  *
  * <p><b>호스트 키 검증</b>: 기본 strict — known_hosts 에 없는 서버는 거부(fail-closed). {@code strict-host-key-checking=false}
  * 로 끄면 모든 키 수용(개발 편의, 경고 로그). {@link RangeReadableStorage}(부분 다운로드) 구현 — SFTP 는 임의 오프셋 읽기를 지원한다.
@@ -51,28 +61,30 @@ public class SftpFileStorage implements FileStorage, RangeReadableStorage, AutoC
     private static final Logger log = LoggerFactory.getLogger(SftpFileStorage.class);
     private static final DateTimeFormatter DATE_PATH = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
+    /** 세션 풀 설정(옵트인). null 이면 풀 미사용 = 작업마다 세션 개폐(기존 동작). */
+    public record PoolSettings(int maxTotal, Duration maxWait, Duration maxIdle, Duration maxLifetime) {}
+
     private final SshClient client;
     private final String host;
     private final int port;
     private final String username;
-    private final String password; // nullable
-    private final List<KeyPair> keyPairs; // nullable/empty
+    private final SftpCredentialProvider credentialProvider;
     private final String baseDir;
     private final Duration connectTimeout;
     private final Duration authTimeout;
+    private final BoundedObjectPool<ClientSession> pool; // nullable
 
     public SftpFileStorage(
             String host,
             int port,
             String username,
-            String password,
-            String privateKeyPath,
-            String privateKeyPassphrase,
+            SftpCredentialProvider credentialProvider,
             String baseDir,
             boolean strictHostKeyChecking,
             String knownHostsPath,
             Duration connectTimeout,
-            Duration authTimeout) {
+            Duration authTimeout,
+            PoolSettings poolSettings) {
         if (host == null || host.isBlank()) {
             throw new IllegalStateException("framework.file.storage.sftp.host 는 필수입니다.");
         }
@@ -82,41 +94,31 @@ public class SftpFileStorage implements FileStorage, RangeReadableStorage, AutoC
         this.host = host;
         this.port = port <= 0 ? 22 : port;
         this.username = username;
-        this.password = password;
+        this.credentialProvider = Objects.requireNonNull(credentialProvider, "credentialProvider");
         this.baseDir = (baseDir == null) ? "" : baseDir.trim();
         this.connectTimeout = (connectTimeout == null) ? Duration.ofSeconds(10) : connectTimeout;
         this.authTimeout = (authTimeout == null) ? Duration.ofSeconds(10) : authTimeout;
-        this.keyPairs = loadKeyPairs(privateKeyPath, privateKeyPassphrase);
 
         SshClient c = SshClient.setUpDefaultClient();
         c.setServerKeyVerifier(buildVerifier(strictHostKeyChecking, knownHostsPath));
         c.start();
         this.client = c;
+
+        this.pool = (poolSettings == null)
+                ? null
+                : new BoundedObjectPool<>(
+                        poolSettings.maxTotal(),
+                        toNanos(poolSettings.maxWait()),
+                        toNanos(poolSettings.maxIdle()),
+                        toNanos(poolSettings.maxLifetime()),
+                        this::openSession, // creator: 연결 + 현재 자격증명으로 인증
+                        ClientSession::isOpen, // validate-on-borrow: 끊긴 세션 회피
+                        session -> closeQuietly(null, session), // destroyer
+                        System::nanoTime);
     }
 
-    private static List<KeyPair> loadKeyPairs(String privateKeyPath, String passphrase) {
-        if (privateKeyPath == null || privateKeyPath.isBlank()) {
-            return List.of();
-        }
-        try {
-            FileKeyPairProvider provider = new FileKeyPairProvider(Path.of(privateKeyPath));
-            if (passphrase != null && !passphrase.isBlank()) {
-                provider.setPasswordFinder(FilePasswordProvider.of(passphrase));
-            }
-            List<KeyPair> kps = new ArrayList<>();
-            for (KeyPair kp : provider.loadKeys(null)) {
-                kps.add(kp);
-            }
-            if (kps.isEmpty()) {
-                throw new IllegalStateException("SFTP 개인키를 읽었으나 키가 비어 있습니다: " + privateKeyPath);
-            }
-            return List.copyOf(kps);
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (Exception e) {
-            // 키 경로/암호 오류는 기동 단계에서 명확히 실패(메시지에 키/암호 평문 미포함)
-            throw new IllegalStateException("SFTP 개인키 로드 실패(경로/패스프레이즈 확인): " + privateKeyPath);
-        }
+    private static long toNanos(Duration d) {
+        return (d == null || d.isNegative()) ? 0L : d.toNanos();
     }
 
     private static ServerKeyVerifier buildVerifier(boolean strict, String knownHostsPath) {
@@ -154,17 +156,18 @@ public class SftpFileStorage implements FileStorage, RangeReadableStorage, AutoC
     @Override
     public InputStream load(String storedPath) {
         String remote = join(baseDir, storedPath);
-        ClientSession session = openSession();
+        ClientSession session = acquireSession();
         SftpClient sftp = null;
         try {
             sftp = SftpClientFactory.instance().createSftpClient(session);
             InputStream raw = sftp.read(remote, SftpClient.OpenMode.Read);
-            return new SessionBoundInputStream(raw, sftp, session);
+            return new SessionBoundInputStream(raw, sftp, session, this);
         } catch (SftpException e) {
-            closeQuietly(sftp, session);
+            // 파일 없음 등 프로토콜 오류 — 세션은 정상 → 재사용 가능(ok=true)
+            closeChannelRecycle(sftp, session, true);
             throw mapSftp(e);
         } catch (IOException e) {
-            closeQuietly(sftp, session);
+            closeChannelRecycle(sftp, session, false);
             throw wrap();
         }
     }
@@ -209,19 +212,19 @@ public class SftpFileStorage implements FileStorage, RangeReadableStorage, AutoC
     @Override
     public InputStream loadRange(String storedPath, long start, long endInclusive) {
         String remote = join(baseDir, storedPath);
-        ClientSession session = openSession();
+        ClientSession session = acquireSession();
         SftpClient sftp = null;
         try {
             sftp = SftpClientFactory.instance().createSftpClient(session);
             InputStream raw = sftp.read(remote, SftpClient.OpenMode.Read);
             skipFully(raw, start);
             long length = endInclusive - start + 1;
-            return new SessionBoundInputStream(new BoundedInputStream(raw, length), sftp, session);
+            return new SessionBoundInputStream(new BoundedInputStream(raw, length), sftp, session, this);
         } catch (SftpException e) {
-            closeQuietly(sftp, session);
+            closeChannelRecycle(sftp, session, true);
             throw mapSftp(e);
         } catch (IOException e) {
-            closeQuietly(sftp, session);
+            closeChannelRecycle(sftp, session, false);
             throw wrap();
         }
     }
@@ -234,26 +237,84 @@ public class SftpFileStorage implements FileStorage, RangeReadableStorage, AutoC
     }
 
     private <T> T withSftp(SftpFn<T> fn) {
-        try (ClientSession session = openSession();
-                SftpClient sftp = SftpClientFactory.instance().createSftpClient(session)) {
-            return fn.apply(sftp);
+        ClientSession session = acquireSession();
+        SftpClient sftp = null;
+        boolean sessionOk = false;
+        try {
+            sftp = SftpClientFactory.instance().createSftpClient(session);
+            T result = fn.apply(sftp);
+            sessionOk = true;
+            return result;
         } catch (SftpException e) {
+            sessionOk = true; // 프로토콜 오류 — 세션 자체는 정상
             throw mapSftp(e);
         } catch (IOException e) {
+            sessionOk = false; // 전송 오류 — 세션 의심
             throw wrap();
+        } finally {
+            if (sftp != null) {
+                try {
+                    sftp.close();
+                } catch (IOException ignore) {
+                    // best-effort
+                }
+            }
+            recycleSession(session, sessionOk);
         }
     }
 
+    /** 세션 확보: 풀이 있으면 대여, 없으면 새로 열고 인증. */
+    private ClientSession acquireSession() {
+        if (pool != null) {
+            try {
+                return pool.borrow();
+            } catch (BoundedObjectPool.PoolTimeoutException e) {
+                throw new BusinessException(ErrorCode.Common.INTERNAL_ERROR, "SFTP 연결 풀이 가득 찼습니다.");
+            }
+        }
+        return openSession();
+    }
+
+    /** 세션 정리: 풀이 있으면 반납(ok)/폐기(!ok), 없으면 닫는다. */
+    private void recycleSession(ClientSession session, boolean ok) {
+        if (session == null) {
+            return;
+        }
+        if (pool != null) {
+            if (ok) {
+                pool.release(session);
+            } else {
+                pool.invalidate(session);
+            }
+        } else {
+            closeQuietly(null, session);
+        }
+    }
+
+    /** SFTP 채널을 닫고 세션을 정리(스트림 열기 실패 경로·스트림 close 경로 공통). */
+    private void closeChannelRecycle(SftpClient sftp, ClientSession session, boolean ok) {
+        if (sftp != null) {
+            try {
+                sftp.close();
+            } catch (IOException ignore) {
+                // best-effort
+            }
+        }
+        recycleSession(session, ok);
+    }
+
+    /** 새 세션을 열고 현재 자격증명으로 인증한다(풀의 creator 이자 비풀 모드의 직접 경로). */
     private ClientSession openSession() {
         try {
             ClientSession session =
                     client.connect(username, host, port).verify(connectTimeout).getSession();
             boolean authed = false;
             try {
-                if (password != null && !password.isBlank()) {
-                    session.addPasswordIdentity(password);
+                SftpCredentials creds = credentialProvider.current();
+                if (creds.hasPassword()) {
+                    session.addPasswordIdentity(creds.password());
                 }
-                for (KeyPair kp : keyPairs) {
+                for (KeyPair kp : creds.keyPairs()) {
                     session.addPublicKeyIdentity(kp);
                 }
                 session.auth().verify(authTimeout);
@@ -319,6 +380,13 @@ public class SftpFileStorage implements FileStorage, RangeReadableStorage, AutoC
 
     @Override
     public void close() {
+        if (pool != null) {
+            try {
+                pool.close(); // 유휴 세션 일괄 정리
+            } catch (Exception ignore) {
+                // best-effort
+            }
+        }
         try {
             client.stop();
         } catch (Exception ignore) {
@@ -404,15 +472,17 @@ public class SftpFileStorage implements FileStorage, RangeReadableStorage, AutoC
         }
     }
 
-    /** 세션/SFTP 채널을 물고 있다가 스트림 close 시 함께 닫는 래퍼(load/loadRange 의 지연 스트리밍용). */
+    /** 세션/SFTP 채널을 물고 있다가 스트림 close 시 세션을 풀에 반납(또는 닫음)하는 래퍼(load/loadRange 지연 스트리밍용). */
     private static final class SessionBoundInputStream extends FilterInputStream {
         private final SftpClient sftp;
         private final ClientSession session;
+        private final SftpFileStorage owner;
 
-        SessionBoundInputStream(InputStream in, SftpClient sftp, ClientSession session) {
+        SessionBoundInputStream(InputStream in, SftpClient sftp, ClientSession session, SftpFileStorage owner) {
             super(in);
             this.sftp = sftp;
             this.session = session;
+            this.owner = owner;
         }
 
         @Override
@@ -420,7 +490,8 @@ public class SftpFileStorage implements FileStorage, RangeReadableStorage, AutoC
             try {
                 super.close();
             } finally {
-                closeQuietly(sftp, session);
+                // 스트림 정상 소비/조기 종료 모두 세션은 재사용 가능(다음 대여 시 isOpen 으로 재검증).
+                owner.closeChannelRecycle(sftp, session, true);
             }
         }
     }

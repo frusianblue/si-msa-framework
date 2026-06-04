@@ -1,0 +1,24 @@
+// 선택형 모듈: QR 코드 생성 — 문자열/URI(예: MFA otpauth://, 결제 링크, 전자문서 검증 URL)를 QR PNG 로 인코딩.
+//   - 인코딩 엔진은 ZXing core 필수(QR 의 Reed-Solomon 오류정정·마스킹은 손으로 짤 대상이 아님) → BOM 밖 의존성, 이 모듈에만 포함.
+//   - 단, 렌더링(BitMatrix → PNG)은 ZXing javase(MatrixToImageWriter) 대신 JDK 내장 ImageIO 로 직접 처리 → 의존성은 zxing-core 1개로 최소화.
+//     (framework-image 가 ImageIO 만 쓰는 것과 같은 결. zxing-javase 는 AWT 헬퍼/CLI 까지 끌어와 불필요.)
+//   - MFA 모듈은 의도적으로 zxing 을 회피하고 otpauth:// URI 만 돌려준다(클라이언트가 QR 생성). 서버측 QR 이 필요한 프로젝트만 이 모듈을 옵트인.
+//   - 순수 렌더/스펙 검증 로직은 Spring·ZXing 무의존 경계(PixelGrid seam)로 분리 → JDK 단독 단위검증 가능.
+//   - 3단 토글 컨벤션: framework.qr.enabled=false 기본. zxing-core 부재 시 @ConditionalOnClass 로 통째 백오프.
+// 루트 build.gradle 이 java-library/dependency-management/spotless/jacoco 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // 표준 예외/에러코드(BusinessException/ErrorCode). 인코딩 실패를 표준 예외로 던진다.
+    api project(':framework:framework-core')
+
+    // ZXing core: QR 인코딩(QRCodeWriter/BitMatrix). Boot BOM 미관리 → libs.versions.toml(zxing) + 루트 ext(zxingVersion) 로 고정.
+    //   엔진은 이 모듈 내부 구현 디테일이므로 implementation(전이 금지) — 소비 서비스는 프레임워크 타입(QrGenerator)만 의존.
+    implementation "com.google.zxing:core:${zxingVersion}"
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // 테스트: 인코딩→디코딩 왕복(만든 QR 을 ZXing 리더로 되읽어 payload 보존 확인)에 zxing-core 가 test 에서도 필요.
+    testImplementation "com.google.zxing:core:${zxingVersion}"
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

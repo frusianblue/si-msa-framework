@@ -28,7 +28,7 @@ deploy/
 ```
 > 위는 핵심 모듈만 표기한 단순도. 선택 모듈과 `services/admin-service`(8081)·`services/auth-server`(9000, OAuth2/OIDC OP — `docs/modules/AUTH_SERVER.md`)는 아래 상세 섹션 참고.
 > **각 서비스 기동 방법은 서비스별 README 참조**: [`services/gateway/README.md`](services/gateway/README.md)(:8000) · [`services/user-service/README.md`](services/user-service/README.md)(:8080) · [`services/admin-service/README.md`](services/admin-service/README.md)(:8081) · [`services/auth-server/README.md`](services/auth-server/README.md)(:9000). (새 서비스 추가 시 README 필수 — 포트·프로파일·`bootRun`·환경변수·엔드포인트.)
-> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거) · `framework-archive`(아카이빙/압축: ZIP+GZIP·zip-slip/폭탄 가드) · `framework-file-batch`(파일 일괄처리: 다건 동일작업 + 부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임) · `framework-file-sftp`(SFTP 원격 저장: MINA SSHD 위임·Range 지원, `storage.type=sftp`).
+> 선택 모듈 전체: `framework-openapi/redis/commoncode/file/file-s3`(기본) · `framework-idempotency/i18n/idgen/client`(토대) · `framework-audit/secure-web/log-masking`(보안완성) · `framework-datasource/messaging/saga`(데이터·연계) · `framework-excel/batch/notification/pdf`(업무 생산성) · `framework-observability/lock/cache-redis`(운영/관측) · `framework-context`(요청 컨텍스트/멀티테넌시) · `framework-image`(이미지 처리: 리사이즈/썸네일·EXIF 보정·메타 제거) · `framework-archive`(아카이빙/압축: ZIP+GZIP·zip-slip/폭탄 가드) · `framework-file-batch`(파일 일괄처리: 다건 동일작업 + 부분실패 격리·가상스레드 병렬·드라이런, image/archive 위임) · `framework-file-sftp`(SFTP 원격 저장: MINA SSHD 위임·Range 지원·연결 풀·키 회전 옵트인, `storage.type=sftp`) · `framework-qr`(QR 코드 생성: ZXing core 인코딩 + JDK ImageIO 렌더링, 의존성 1개).
 
 ## 핵심 설계
 - 각 서비스는 `framework-*` 의존성만 추가하면 표준 응답/예외/보안/MyBatis가 **자동 적용**된다
@@ -200,7 +200,8 @@ dependencies {
     implementation project(':framework:framework-image')       // 이미지 처리(리사이즈/썸네일·EXIF orientation 보정·민감 EXIF(GPS) 제거, ImageIO·의존성 0)
     implementation project(':framework:framework-archive')     // 아카이빙/압축(ZIP+GZIP, zip-slip·압축폭탄 가드, java.util.zip·의존성 0)
     implementation project(':framework:framework-file-batch')  // 파일 일괄처리(다건 동일작업 + 부분실패 격리·Java21 가상스레드 병렬·드라이런, image/archive 위임·의존성 0)
-    implementation project(':framework:framework-file-sftp')   // SFTP 원격 저장(MINA SSHD 위임·Range 지원, storage.type=sftp) — sshd-core/sshd-sftp 전이
+    implementation project(':framework:framework-file-sftp')   // SFTP 원격 저장(MINA SSHD 위임·Range 지원·연결 풀/키 회전 옵트인, storage.type=sftp) — sshd-core/sshd-sftp 전이
+    implementation project(':framework:framework-qr')           // QR 코드 생성(ZXing core 인코딩 + JDK ImageIO 렌더링, framework.qr.enabled) — zxing-core 전이(의존성 1개)
 }
 ```
 > 신규 모듈 폴더를 추가하면 **루트 `settings.gradle` 에 `include 'framework:framework-<X>'` 등록**도 잊지 말 것(누락 시 `project not found`).

@@ -40,6 +40,7 @@
 | `org.apache.tika:tika-core` | 3.1.0 | 업로드 콘텐츠 타입 매직넘버 검출 — **Boot BOM 미관리**(여기서 고정). file 에 `compileOnly`(선택 의존·가드된 인스턴스화) + test. 검출만이라 tika-core 단독(파서 모듈 불필요) | framework-file(선택, `validation.content-type-detection=true` 시) |
 | `com.github.librepdf:openpdf` | 2.0.2 | PDF 산출물 생성(거래내역서/통지서) — **Boot BOM 미관리**(여기서 고정), 모듈 내부 `implementation`. 라이선스 LGPL-2.1/MPL-2.0(iText 5+ AGPL 회피). **패키지 `com.lowagie.text`(2.x); 3.0+ 는 `org.openpdf` 로 리네임 → 의도적으로 2.x 고정.** 한글은 TTF IDENTITY_H 임베딩 | framework-pdf(선택) |
 | `org.apache.sshd:sshd-core` / `sshd-sftp` | 2.16.0 | SFTP(원격 SSH) 파일 저장 — 순수 JDK SSH 가 없어 필수. **Boot BOM 미관리**(여기서 고정), 모듈 내부 `implementation`(전이 금지). **3.0.0 은 마일스톤·2.x 와 API 비호환 → 안정 2.x 고정**. `sshd-common` 은 `sshd-core` 가 전이 | framework-file-sftp(선택, `storage.type=sftp` 시) |
+| `com.google.zxing:core` | 3.5.4 | QR 코드 인코딩(`BitMatrix` 생성) — **Boot BOM 미관리**(여기서 고정), 모듈 내부 `implementation`(전이 금지). **렌더링은 JDK ImageIO 직접 → `zxing-javase` 미사용**(의존성 1개로 최소화). Java 8+ 호환·전이 런타임 의존 0 | framework-qr(선택, `framework.qr.enabled=true` 시) |
 
 ### 3.2 BOM 관리(버전 미명시)
 | 라이브러리 | 용도 | 적용 위치 |

@@ -21,16 +21,28 @@ pipeline {
     }
 
     stages {
-        // 단위 + Testcontainers 통합테스트 + JaCoCo 리포트
+        // 아키텍처 규칙 게이트(ArchUnit) — 가장 먼저, 실패 시 즉시 차단(모듈 순환/Jackson2 패키지/
+        // AutoConfiguration·Properties 규약/필드주입 금지 등 프레임워크 규약 위반 검출).
+        stage('Architecture Rules') {
+            steps {
+                sh './gradlew :framework:framework-archtest:test --no-daemon'
+            }
+            post {
+                always { junit allowEmptyResults: true, testResults: 'framework/framework-archtest/build/test-results/test/*.xml' }
+            }
+        }
+
+        // 전 모듈 단위 + Testcontainers 통합테스트 + 멀티모듈 통합 JaCoCo 리포트
         stage('Build & Test') {
             steps {
-                sh './gradlew :${SERVICE}:build --no-daemon'
+                sh './gradlew test testCodeCoverageReport --no-daemon'
             }
             post {
                 always {
                     junit '**/build/test-results/test/*.xml'
-                    // JaCoCo 플러그인 설치 시:
-                    // recordCoverage(tools: [[parser: 'JACOCO', pattern: '**/build/reports/jacoco/test/jacocoTestReport.xml']])
+                    // JaCoCo 플러그인 설치 시(통합 리포트 단일 XML 기록):
+                    // recordCoverage(tools: [[parser: 'JACOCO', pattern: 'build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml']])
+                    archiveArtifacts artifacts: 'build/reports/jacoco/testCodeCoverageReport/**', allowEmptyArchive: true
                 }
             }
         }

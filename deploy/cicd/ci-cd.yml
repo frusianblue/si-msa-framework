@@ -11,7 +11,71 @@ env:
   IMAGE: si-msa/user-service
 
 jobs:
+  # ===== PR 차단 게이트 =====
+  # PR(→main) 과 push(main/develop) 모두에서 실행. 하나라도 실패하면 머지/배포가 막힌다.
+  #   - 포맷(spotlessCheck), 아키텍처 규칙(framework-archtest), 전 모듈 단위/통합 테스트,
+  #     멀티모듈 통합 커버리지, 의존성 취약점(OWASP), (push 한정) Sonar.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Sonar 의 정확한 blame/신규코드 산정을 위해 전체 히스토리
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      # 1) 코드 포맷 게이트(Palantir Java Format + yaml/sql/gradle 위생)
+      - name: Spotless check
+        run: ./gradlew spotlessCheck --no-daemon
+
+      # 2) 아키텍처 규칙 게이트(ArchUnit) — 모듈 순환/Jackson2 패키지/AutoConfiguration·Properties 규약/필드주입 금지 등
+      #    프레임워크 규약 위반을 머지 전에 차단하는 핵심 게이트.
+      - name: Architecture rules (ArchUnit)
+        run: ./gradlew :framework:framework-archtest:test --no-daemon
+
+      # 3) 전 모듈 단위 + (Testcontainers) 통합 테스트. 각 모듈 test 는 jacocoTestReport 로 마감된다.
+      - name: All-module tests
+        run: ./gradlew test --no-daemon
+
+      # 4) 멀티모듈 통합 커버리지 리포트(사람이 보는 단일 HTML/XML)
+      - name: Aggregate coverage report
+        run: ./gradlew testCodeCoverageReport --no-daemon
+
+      # 5) 의존성 취약점 스캔 — High/Critical CVE 발견 시 빌드 차단(failBuildOnCVSS=7.0)
+      - name: Dependency vulnerability scan (OWASP)
+        run: ./gradlew dependencyCheckAggregate --no-daemon
+
+      # 6) Sonar 분석 — push 에서만(PR 토큰 노출 회피). 모듈별 jacoco XML 을 위 test 산출물에서 읽는다.
+      - name: SonarQube analysis
+        if: github.event_name == 'push'
+        run: ./gradlew sonar --no-daemon
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Upload aggregate coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: build/reports/jacoco/testCodeCoverageReport/
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/'
+
+  # ===== 배포 아티팩트(런타임 이미지용 jar) =====
+  # 게이트 통과 후에만. 테스트는 verify 에서 이미 돌았으므로 여기서는 어셈블만(-x test).
   build:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,26 +87,8 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - name: Build & Test
-        run: ./gradlew :services:user-service:build --no-daemon
-
-      - name: Dependency Vulnerability Scan (OWASP)
-        run: ./gradlew dependencyCheckAggregate --no-daemon
-        continue-on-error: false   # High/Critical CVE 발견 시 빌드 차단
-
-      - name: SonarQube Analysis
-        if: github.event_name == 'push'
-        run: ./gradlew sonar --no-daemon
-        env:
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      - name: Upload test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report
-          path: services/user-service/build/reports/tests/
+      - name: Assemble bootJar
+        run: ./gradlew :services:user-service:bootJar -x test --no-daemon
 
   docker:
     needs: build

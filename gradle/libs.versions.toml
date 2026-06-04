@@ -18,6 +18,7 @@ poi                     = "5.5.1"        # Apache POI(Excel). Boot BOM 미관리
 tika                    = "3.1.0"        # Apache Tika(콘텐츠 타입 매직넘버 검출). Boot BOM 미관리 → 고정. 3.x = Java 11+
 openpdf                 = "2.0.2"        # OpenPDF(PDF 생성, iText4 LGPL/MPL fork). Boot BOM 미관리 → 고정. 2.x = 패키지 com.lowagie.text(3.0+ 는 org.openpdf 로 리네임 → 의도적으로 2.x 고정), Java 17+
 sshd                    = "2.16.0"       # Apache MINA SSHD(SFTP 원격 저장소). Boot BOM 미관리 → 고정. 안정 2.x(3.0.0 은 마일스톤·API 비호환). sshd-core+sshd-sftp 동일 버전
+zxing                   = "3.5.4"        # ZXing core(QR 인코딩/디코딩). Boot BOM 미관리 → 고정. 3.5.4 = Java 8+ 호환·전이 런타임 의존 0(JUnit 은 test 스코프). zxing-javase 는 미사용(ImageIO 직접 렌더링)
 testcontainers          = "1.20.6"       # Boot BOM 이 안 잡아줘서 명시 (testcontainers-bom 으로 중앙 관리)
 archunit                = "1.4.2"         # 레이어/네이밍/순환 규칙 강제(테스트 전용). 1.4.x = Java 21 OK
 wiremock                = "3.13.2"        # 서비스간 연동 테스트. standalone(shaded) 으로 Boot4 Jetty12.1 충돌 회피
@@ -45,6 +46,7 @@ openpdf                      = { module = "com.github.librepdf:openpdf",        
 testcontainers-bom           = { module = "org.testcontainers:testcontainers-bom",                version.ref = "testcontainers" }
 archunit-junit5              = { module = "com.tngtech.archunit:archunit-junit5",                 version.ref = "archunit" }
 wiremock-standalone          = { module = "org.wiremock:wiremock-standalone",                     version.ref = "wiremock" }
+zxing-core                   = { module = "com.google.zxing:core",                                version.ref = "zxing" }
 
 [plugins]
 spring-boot                  = { id = "org.springframework.boot",        version.ref = "springBoot" }

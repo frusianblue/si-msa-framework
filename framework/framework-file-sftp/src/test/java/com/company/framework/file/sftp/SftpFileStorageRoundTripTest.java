@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.company.framework.core.error.BusinessException;
+import com.company.framework.file.sftp.cred.SftpCredentialProvider;
+import com.company.framework.file.sftp.cred.SftpCredentials;
 import com.company.framework.file.storage.StoredFile;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -52,18 +54,18 @@ class SftpFileStorageRoundTripTest {
         port = server.getPort();
 
         // baseDir="" → 서버 홈(가상 루트=serverRoot) 상대로 키가 저장된다.
+        // 비밀번호 인증, 풀 미사용(poolSettings=null) = 기존 동작.
         storage = new SftpFileStorage(
                 "localhost",
                 port,
                 "tester",
-                "secret",
-                null,
-                null,
+                SftpCredentialProvider.fixed(SftpCredentials.password("secret")),
                 "",
                 false,
                 null,
                 Duration.ofSeconds(15),
-                Duration.ofSeconds(15));
+                Duration.ofSeconds(15),
+                null);
     }
 
     @AfterEach

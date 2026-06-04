@@ -46,6 +46,7 @@ dependencies {
     testImplementation project(':framework:framework-log-masking')
     testImplementation project(':framework:framework-context')
     testImplementation project(':framework:framework-image')
+    testImplementation project(':framework:framework-qr')
     testImplementation project(':framework:framework-archive')
     testImplementation project(':framework:framework-file-batch')
     testImplementation project(':framework:framework-oauth-client')

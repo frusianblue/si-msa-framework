@@ -248,6 +248,8 @@ public class FileStorageProperties {
         private String knownHostsPath; // 비우면 ~/.ssh/known_hosts
         private Duration connectTimeout = Duration.ofSeconds(10);
         private Duration authTimeout = Duration.ofSeconds(10);
+        private Pool pool = new Pool();
+        private KeyRotation keyRotation = new KeyRotation();
 
         public String getHost() {
             return host;
@@ -335,6 +337,101 @@ public class FileStorageProperties {
 
         public void setAuthTimeout(Duration authTimeout) {
             this.authTimeout = authTimeout;
+        }
+
+        public Pool getPool() {
+            return pool;
+        }
+
+        public void setPool(Pool pool) {
+            this.pool = pool;
+        }
+
+        public KeyRotation getKeyRotation() {
+            return keyRotation;
+        }
+
+        public void setKeyRotation(KeyRotation keyRotation) {
+            this.keyRotation = keyRotation;
+        }
+
+        /**
+         * SFTP 세션 풀(후속·옵트인). 기본 비활성 = 작업마다 세션 개폐(기존 동작). 켜면 인증된 세션을 재사용해
+         * 고처리량에서 SSH/TCP/인증 핸드셰이크 비용을 줄인다. {@code max-lifetime} 은 키 회전 전파에 중요 —
+         * 옛 키로 인증된 장수 세션을 강제 교체해 신규 세션이 현재 자격증명으로 재인증되게 한다.
+         */
+        public static class Pool {
+            private boolean enabled = false;
+            private int maxTotal = 8; // 동시 보유(대여+유휴) 상한
+            private Duration maxWait = Duration.ofSeconds(10); // 풀 고갈 시 대여 대기 상한(초과 시 실패)
+            private Duration maxIdle = Duration.ofMinutes(5); // 유휴 만료(누적 방지)
+            private Duration maxLifetime = Duration.ofMinutes(30); // 생성 후 수명(키 회전 전파)
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public int getMaxTotal() {
+                return maxTotal;
+            }
+
+            public void setMaxTotal(int maxTotal) {
+                this.maxTotal = maxTotal;
+            }
+
+            public Duration getMaxWait() {
+                return maxWait;
+            }
+
+            public void setMaxWait(Duration maxWait) {
+                this.maxWait = maxWait;
+            }
+
+            public Duration getMaxIdle() {
+                return maxIdle;
+            }
+
+            public void setMaxIdle(Duration maxIdle) {
+                this.maxIdle = maxIdle;
+            }
+
+            public Duration getMaxLifetime() {
+                return maxLifetime;
+            }
+
+            public void setMaxLifetime(Duration maxLifetime) {
+                this.maxLifetime = maxLifetime;
+            }
+        }
+
+        /**
+         * SFTP 키 회전(후속·옵트인). 기본 비활성 = 기동 시 1회 로드(기존 동작). 켜면 {@code private-key-path} 파일의
+         * 변경(mtime+size)을 {@code check-interval} 마다 감지해 자격증명을 다시 읽는다. 새 세션부터 새 키로 인증되며,
+         * 풀을 함께 쓰면 {@code pool.max-lifetime} 으로 기존 세션도 점진 교체된다. (재로드 실패 시 기존 키 유지·다음 주기 재시도.)
+         */
+        public static class KeyRotation {
+            private boolean enabled = false;
+            private Duration checkInterval = Duration.ofSeconds(60); // 파일 변경 확인 최소 간격
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public Duration getCheckInterval() {
+                return checkInterval;
+            }
+
+            public void setCheckInterval(Duration checkInterval) {
+                this.checkInterval = checkInterval;
+            }
         }
     }
 

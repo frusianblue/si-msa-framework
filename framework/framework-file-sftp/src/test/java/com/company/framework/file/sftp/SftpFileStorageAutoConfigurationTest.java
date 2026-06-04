@@ -84,6 +84,34 @@ class SftpFileStorageAutoConfigurationTest {
         assertThat(found).as(".imports 에 %s 등록", fqcn).isTrue();
     }
 
+    @Test
+    @DisplayName("pool.enabled=true 면 풀 활성 SftpFileStorage 빈이 뜬다")
+    void poolEnabledRegisters() {
+        runner.withPropertyValues(
+                        "framework.file.storage.type=sftp",
+                        "framework.file.storage.sftp.pool.enabled=true",
+                        "framework.file.storage.sftp.pool.max-total=4")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(FileStorage.class);
+                    assertThat(ctx.getBean(FileStorage.class)).isInstanceOf(SftpFileStorage.class);
+                });
+    }
+
+    @Test
+    @DisplayName("key-rotation.enabled=true + 키경로 — 키 로드는 지연되므로 빈 생성 시 파일을 읽지 않는다")
+    void keyRotationLazyLoad() {
+        // 존재하지 않는 키 경로라도 회전 공급자는 최초 사용 시점에 로드하므로 컨텍스트는 정상 기동한다.
+        runner.withPropertyValues(
+                        "framework.file.storage.type=sftp",
+                        "framework.file.storage.sftp.key-rotation.enabled=true",
+                        "framework.file.storage.sftp.private-key-path=/nonexistent/id_ed25519",
+                        "framework.file.storage.sftp.key-rotation.check-interval=30s")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(FileStorage.class);
+                    assertThat(ctx.getBean(FileStorage.class)).isInstanceOf(SftpFileStorage.class);
+                });
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(FileStorageProperties.class)
     static class PropsConfig {}
