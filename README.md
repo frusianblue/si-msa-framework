@@ -53,7 +53,7 @@ deploy/
 
 ## 처음 실행하기
 
-**사전 준비**: JDK 21 만 있으면 된다. 로컬은 H2 인메모리 + Flyway 자동 마이그레이션/시드라 **DB·Redis 등 외부 인프라가 불필요**하다(토큰/로그인 잠금도 로컬은 `memory`). Docker 는 통합테스트(Testcontainers-PostgreSQL)나 이미지 빌드 때만 필요하다.
+**사전 준비**: JDK 21 만 있으면 된다. 로컬은 H2 인메모리 + Flyway 자동 마이그레이션/시드라 **DB·Redis 등 외부 인프라가 불필요**하다(토큰/로그인 잠금도 로컬은 `memory`). Docker 는 통합테스트(Testcontainers-PostgreSQL)나 이미지 빌드 때만 필요하다. (Windows 전체 개발 툴체인 — JDK21·IntelliJ·Lombok 어노테이션 처리·Docker — 은 `docs/modules/DEV_ENV_WINDOWS.md`.)
 
 ```bash
 # 빌드 (gradlew 동봉 — 별도 gradle 설치 불필요)
@@ -95,14 +95,25 @@ curl -X POST localhost:8080/api/v1/users -H 'Content-Type: application/json' \
 
 ## 컨테이너 / 배포
 ```bash
-# 런타임 전용 Dockerfile: jar 는 CI(Jenkins)가 먼저 빌드 → JAR_FILE 로 주입(레이어 추출, JarLauncher 기동)
+# 런타임 전용 Dockerfile: jar 는 CI 가 먼저 빌드 → JAR_FILE 로 주입(레이어 추출, JarLauncher 기동)
 ./gradlew :services:user-service:bootJar
 docker build -f deploy/docker/Dockerfile \
-  --build-arg JAR_FILE=services/user-service/build/libs/*.jar -t user-service .
-kubectl apply -f deploy/k8s/
+  --build-arg JAR_FILE=services/user-service/build/libs/user-service-1.0.0.jar -t user-service .
+
+# k8s 배포는 Kustomize 오버레이로 (4개 서비스 일괄)
+kubectl apply -k deploy/k8s/overlays/dev      # 개발(약한 시크릿 동봉, 1 레플리카)
+kubectl apply -k deploy/k8s/overlays/prod     # 운영(HPA·외부 DB/시크릿 전제 — ESO/SealedSecrets)
+kubectl apply -k deploy/k8s/overlays/local    # 로컬 자기완결(kind: 인-클러스터 PG 동봉, SM 제외)
 ```
-> 실제 운영 흐름은 `deploy/cicd/Jenkinsfile` 한 곳에서 빌드·테스트·게이트·이미지·롤아웃을 수행한다.
-> **다중 인스턴스 주의**: k8s 매니페스트는 `replicas: 2` 다. 인스턴스가 둘 이상이면 로그인 잠금/토큰을 공유해야 하므로 운영 프로파일에서 `framework.security.login-attempt.type=redis` 와 `token-store.type=redis` 를 켠다(기본 `memory` 는 인스턴스별이라 잠금 우회 가능).
+> 실제 운영 흐름은 `deploy/cicd/{ci-cd.yml,Jenkinsfile}` 한 곳에서 빌드·테스트·게이트·이미지(4서비스 matrix)·`kubectl apply -k overlays/prod` 롤아웃을 수행한다.
+> **다중 인스턴스 주의**: 매니페스트는 `replicas: 2`(dev/local 은 1). 인스턴스가 둘 이상이면 로그인 잠금/토큰을 공유해야 하므로 운영 프로파일에서 `framework.security.login-attempt.type=redis` 와 `token-store.type=redis` 를 켠다(기본 `memory` 는 인스턴스별이라 잠금 우회 가능).
+
+**환경 구성·배포 문서**
+- 로컬 개발 툴체인(Windows): `docs/modules/DEV_ENV_WINDOWS.md` (JDK21·IntelliJ·Lombok·Docker)
+- k8s 클러스터 도구 설치(macOS/Windows/Linux): `docs/modules/LOCAL_K8S_ENV_SETUP.md` (Docker·kubectl·kind)
+- 클러스터 애드온(서비스 구동에 추가 설치): `docs/modules/K8S_ADDONS.md` (metrics-server·Prometheus·Ingress·시크릿 오퍼레이터)
+- 로컬 배포 절차(kind): `docs/modules/LOCAL_K8S_TEST.md`
+- Kustomize 레이아웃·CI matrix·env 계약: `docs/modules/K8S_CICD_MULTISERVICE.md`
 
 ## 확장 가이드
 - 새 업무 서비스: `services/` 아래 모듈 추가 → `settings.gradle`에 include → `framework-*` 의존.

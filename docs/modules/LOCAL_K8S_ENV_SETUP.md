@@ -5,6 +5,8 @@
 Docker 컨테이너로 띄우므로 **Docker(또는 Podman) 데몬이 떠 있는 것이 절대 전제**다.
 
 설치가 끝나면 다음 단계는 `docs/modules/LOCAL_K8S_TEST.md`(클러스터 생성 → 이미지 적재 → `kubectl apply -k overlays/local`).
+서비스 구동에 클러스터로 **추가 설치**해야 하는 애드온(metrics-server·Prometheus·Ingress·시크릿 오퍼레이터)은 `docs/modules/K8S_ADDONS.md` 참고.
+소스 빌드/실행용 Windows 개발 툴체인(JDK21·IntelliJ·Git 등)은 `docs/modules/DEV_ENV_WINDOWS.md`.
 
 ---
 
