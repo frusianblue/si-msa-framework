@@ -31,16 +31,21 @@ services/auth-server
 ├─ config/AuthorizationServerConfig  # AS 체인 2개 + Jdbc 저장소 3종 + JWKSource + issuer + tokenCustomizer + PasswordEncoder
 ├─ config/AuthServerProperties       # issuer · jwkCacheTtl
 ├─ config/LocalDemo (@Profile local) # demo 인증기 + demo 클라이언트 2종(데모 전용)
-├─ jose/JdbcRotatingJwkSource        # DB 공유 + 회전 오버랩 JWKS (서명=최신 ACTIVE, 검증=ACTIVE+RETIRED)
-├─ jose/SigningKey(Mapper)           # 서명키 저장(MyBatis)
+├─ jose/JdbcRotatingJwkSource        # DB 공유 + 회전 오버랩 JWKS (서명=최신 ACTIVE, 검증=ACTIVE+RETIRED) · cipher.reveal 로 개인키 복호
+├─ jose/SigningKey(Mapper)           # 서명키 저장(MyBatis) · retireAllActive/deleteRetiredOlderThan 추가
+├─ jose/SigningKeyCipher / AesSigningKeyCipher  # 개인키 컬럼 보호 추상 + AES-GCM 구현(마커 enc:) — framework-core 재사용
+├─ jose/SigningKeyGenerator / RsaSigningKeyGenerator  # 새 ACTIVE 생성(generateRsaKey + cipher.protect)
+├─ jose/SigningKeyRotationService    # 회전 오케스트레이션(@Transactional · RETIRE→INSERT→grace정리 · 멱등가드)
+├─ jose/SigningKeyRotationScheduler  # @Scheduled + @SchedulerLock(리더선출) thin wrapper → Service 위임
+├─ config/SigningKeyProperties       # auth-server.signing-key.{rotation,encryption}.*
 ├─ user/FrameworkAuthenticationProvider  # 폼 로그인 → framework-security Authenticator
 └─ user/RoleClaimTokenCustomizer     # 발급 토큰에 roles 클레임
-db/migration: V1(SAS 스키마) · V2(서명키)
+db/migration: V1(SAS 스키마) · V2(서명키) · V3(빈 RBAC) · V4(framework_lock) · V5(auth_signing_key.retired_at)
 ```
 
 - **사용자 소스 재사용**: `framework.security.enabled=true` 로 `Authenticator`/`LoginService` 빈 재사용. framework-security 기본 체인은 `@ConditionalOnMissingBean(SecurityFilterChain)` 이라 우리 AS 체인 정의 시 자동 백오프(충돌 없음). RBAC 메뉴는 `framework.security.menu=false`. 단 `SecurityMetadataService` 는 enabled=true 면 무조건 생성+생성자 eager 로딩이라, RBAC 테이블(resources/roles/role_resources)을 빈 채로 마련(Flyway V3)해 기동 WARN 을 없앤다(enabled=false 는 AuthAutoConfiguration→LoginService 의존 누락으로 기동 실패).
-- **서명키 회전**: 읽기 측 + 부트스트랩만 구현. 주기적 회전(새 ACTIVE 발급 + 오래된 키 RETIRE)은 **`framework-lock` 의 `@SchedulerLock`(리더 선출)**로 단일 파드만 수행하는 스케줄러로 확장(다중 파드 중복 회전 방지). [확장점]
-- ⚠️ **서명키 개인키**: `auth_signing_key.jwk_json` 은 RSA 개인키 원문 포함 → 운영은 **반드시 암호화 저장**(컬럼 암호화/KMS/Vault). 골격은 평문(데모 한정). [TODO]
+- **서명키 회전**: ✅ **구현 완료(2026-06-04)**. `SigningKeyRotationScheduler`(`@Scheduled` cron + `@SchedulerLock` 리더 선출)가 단일 파드만 회전을 수행 → `SigningKeyRotationService.rotateOnce()`(한 트랜잭션: 직전 ACTIVE 전부 RETIRE → 새 ACTIVE INSERT → grace 지난 RETIRED 정리). 기본 **off**(`auth-server.signing-key.rotation.enabled=false`), `SIGNING_KEY_ROTATION_ENABLED=true` 로 활성. 멱등 가드(`min-interval` 내 ACTIVE 면 스킵)는 락 실패/수동 중복 트리거 2차 안전망.
+- **서명키 개인키**: ✅ **암호화 저장 구현(2026-06-04)**. `SigningKeyCipher`/`AesSigningKeyCipher`(framework-core `AesCryptoService` AES-GCM 재사용) 가 `jwk_json` 을 `enc:` 마커 + Base64(IV||ct+tag) 로 보호. 쓰기(부트스트랩/회전)·읽기(JWKS 로드) 양쪽 경유. 기본 **on**(`encryption.enabled=true`). 읽기는 토글 무관 항상 마커 인지 → 평문(레거시/데모)↔암호문 혼재·롤백 안전. 운영 마스터키=`AES_SECRET`(framework-core `AesMasterKeySafetyGuard` 가 prod 약한키 부팅 차단). KMS/Vault 는 `SigningKeyCipher` 교체로 후속.
 
 ## 4. 리소스 서버 정합 (이중 발급기 — 결정 ③)
 
@@ -87,11 +92,18 @@ db/migration: V1(SAS 스키마) · V2(서명키)
 
 > 작성 환경은 Maven Central 차단으로 SAS 본체 컴파일/기동 불가 → 받는 쪽 `bootRun` 로그가 최종 검증(상기 완료).
 
+**서명키 회전(2026-06-04 추가)**: 작성 환경(JRE only·Central 차단)에서 Gradle 빌드 불가라, cipher 보호/해제 + 회전 오케스트레이션(RETIRE→INSERT 순서·멱등 가드·grace=retired_at 정리·0-ACTIVE 불변식)을 **순수 JDK standalone 으로 재현 검증 = 23/23 통과**. JUnit 테스트 2종(`SigningKeyRotationServiceTest`·`AesSigningKeyCipherTest`) 작성 완료. **받는 쪽 검증(필수)**:
+```bash
+export SIGNING_KEY_ROTATION_ENABLED=true LOCK_TYPE=jdbc AES_SECRET="<32+자 강한키>"
+./gradlew :services:auth-server:compileJava :services:auth-server:test :services:auth-server:bootRun
+# 회전 트리거 후 /.well-known/openid-configuration 의 jwks 에 새 kid 등장 + 직전 kid 가 grace 동안 잔존(오버랩)
+```
+
 ## 8. 다음 (후속)
 
 - ~~**리소스 서버 이중 issuer 정합(게이트웨이)**~~ **✅ 완료(2026-06-04)**: `services/gateway` 가 토큰 `iss` 로 분기 —
   AS issuer 면 `{issuer}/oauth2/jwks` 로 RS256 검증(`GatewayJwksTokenVerifier`), 내부면 자체 JWT(HMAC). 프레임워크 무변경.
   상세 [`GATEWAY_EDGE_AUTH.md`](./GATEWAY_EDGE_AUTH.md) "이중 발급기".
 - ~~**(선택) 다운스트림 servlet zero-trust 재검증**~~ **✅ 완료(2026-06-04)**: `framework-security` 가 `edge-trust.mode=zero-trust` + `resource-server.enabled=true` 에서 `Authorization` Bearer 를 자체 JWT(HMAC) + AS 토큰(RS256/JWKS)으로 **직접 재검증**. 신규 `ResourceServerJwtVerifier`/`DownstreamTokenAuthenticator`/`TokenIssuerKind`, `JwtAuthenticationFilter` 가 모드 분기. 배치 환경별(K8s=gateway-headers / VM=zero-trust) 분기는 env(`EDGE_TRUST_MODE`). 상세 [`../TOKEN_VERIFICATION_GUIDE.md`](../TOKEN_VERIFICATION_GUIDE.md) §6.4/§7.3.
-- **▶ 서명키 회전 스케줄러 (다음 착수)**: `framework-lock @SchedulerLock`(리더 선출)로 **단일 파드만** 새 ACTIVE 발급 + 직전 키 RETIRE + grace 지난 키 정리. DB 개인키는 `framework-core` `AesCryptoService`(AES-GCM)로 **컬럼 암호화**(KMS/Vault 는 후속). 회전 골격(읽기/부트스트랩/오버랩/상태전이 매퍼)은 이미 있으므로 **스케줄러 + 개인키 암호화 + 정리 매퍼 + 락 테이블 V4** 만 추가. **착수 설계 = [`../NEXT_SIGNING_KEY_ROTATION.md`](../NEXT_SIGNING_KEY_ROTATION.md)**(구현 항목·결정·프로퍼티·함정·체크리스트 정리됨).
-- **토큰 발급 라운드트립 통합테스트**: demo-web authorization_code+PKCE, demo-service client_credentials.
+- ~~**▶ 서명키 회전 스케줄러**~~ **✅ 완료(2026-06-04)**: `framework-lock @SchedulerLock`(리더 선출)로 **단일 파드만** 새 ACTIVE 발급 + 직전 키 RETIRE + grace 지난 키 정리(한 트랜잭션, RETIRE→INSERT 순서로 0-ACTIVE 불변식 보장). DB 개인키는 `framework-core` `AesCryptoService`(AES-GCM)로 **컬럼 암호화**(`enc:` 마커, KMS/Vault 는 `SigningKeyCipher` 교체로 후속). 신규 `SigningKeyCipher`/`AesSigningKeyCipher`/`SigningKeyGenerator`/`RsaSigningKeyGenerator`/`SigningKeyRotationService`/`SigningKeyRotationScheduler`/`SigningKeyProperties`, 매퍼 `retireAllActive`/`deleteRetiredOlderThan`, 마이그레이션 V4(framework_lock)/V5(retired_at). 설계 정본 [`../NEXT_SIGNING_KEY_ROTATION.md`](../NEXT_SIGNING_KEY_ROTATION.md)(편차 2건 = grace 기준 retired_at·회전 순서 retire-then-insert 반영). 순수 JDK 로직 검증 23/23 통과(받는 쪽 Gradle 빌드/`bootRun` 은 별도 — §7).
+- **▶ 토큰 발급 라운드트립 통합테스트 (다음 착수)**: demo-web authorization_code+PKCE, demo-service client_credentials → 게이트웨이 → user-service zero-trust 재검증.

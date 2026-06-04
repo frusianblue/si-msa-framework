@@ -31,16 +31,19 @@ import org.slf4j.LoggerFactory;
  *   <li><b>검증 오버랩</b>: JWKS 셋에는 ACTIVE + RETIRED 를 모두 노출 → 회전 직후에도 이전 키로 서명된 토큰 검증 가능.
  *   <li><b>캐시</b>: DB 조회 결과를 TTL 동안 캐시(회전 전파 지연 = 최대 TTL).
  *   <li><b>부트스트랩</b>: 키가 하나도 없으면 RSA 2048 1개 생성·삽입(최초 1회).
+ *   <li><b>개인키 보호</b>: 저장(부트스트랩)은 {@link SigningKeyCipher#protect}, 읽기는 {@link SigningKeyCipher#reveal}.
+ *       읽기는 마커 인지라 평문/암호문 혼재여도 안전(데모→운영 전환·롤백).
  * </ul>
  *
- * <p>⚠️ 회전 자체(주기적 새 ACTIVE 발급 + 오래된 키 RETIRE)는 별도 스케줄 작업의 책임이다. 다중 파드에서 중복 회전을 막으려면
- * {@code framework-lock} 의 {@code @SchedulerLock}(리더 선출)으로 단일 파드만 회전하게 한다. 본 골격은 읽기 측 + 부트스트랩만 구현(회전 스케줄러는 확장점).
+ * <p>회전 자체(주기적 새 ACTIVE 발급 + 직전 키 RETIRE + grace 정리)는 {@link SigningKeyRotationService} 가 담당하고,
+ * 다중 파드 중복 회전은 {@code framework-lock} 의 {@code @SchedulerLock}(리더 선출, {@link SigningKeyRotationScheduler})으로 막는다.
  */
 public final class JdbcRotatingJwkSource implements JWKSource<SecurityContext> {
 
     private static final Logger log = LoggerFactory.getLogger(JdbcRotatingJwkSource.class);
 
     private final SigningKeyMapper mapper;
+    private final SigningKeyCipher cipher;
     private final Duration cacheTtl;
     private final Object lock = new Object();
     private volatile Snapshot snapshot;
@@ -51,8 +54,9 @@ public final class JdbcRotatingJwkSource implements JWKSource<SecurityContext> {
         }
     }
 
-    public JdbcRotatingJwkSource(SigningKeyMapper mapper, Duration cacheTtl) {
+    public JdbcRotatingJwkSource(SigningKeyMapper mapper, SigningKeyCipher cipher, Duration cacheTtl) {
         this.mapper = mapper;
+        this.cipher = cipher;
         this.cacheTtl =
                 (cacheTtl == null || cacheTtl.isZero() || cacheTtl.isNegative()) ? Duration.ofMinutes(5) : cacheTtl;
         ensureBootstrapKey();
@@ -79,20 +83,20 @@ public final class JdbcRotatingJwkSource implements JWKSource<SecurityContext> {
         return s.jwkSet();
     }
 
-    /** ACTIVE + RETIRED 전부 → JWKSet(최신순). 서명 후보(ACTIVE)가 앞에 오도록 정렬은 매퍼 쿼리(created desc)에 위임. */
+    /** ACTIVE + RETIRED 전부 → JWKSet(최신순). 저장형은 cipher.reveal 로 평문 JWK 복원 후 파싱. */
     private JWKSet loadFromDb() {
         List<SigningKey> rows = mapper.findAllUsable();
         List<JWK> jwks = new ArrayList<>(rows.size());
         for (SigningKey row : rows) {
             try {
-                jwks.add(RSAKey.parse(row.jwkJson()));
-            } catch (ParseException e) {
-                // 깨진 키 1건이 전체 JWKS 를 무너뜨리지 않게 격리(kid 만 로깅, 키 본문 미로깅).
-                log.warn("서명키 파싱 실패 — 건너뜀. kid={}", row.kid());
+                jwks.add(RSAKey.parse(cipher.reveal(row.jwkJson())));
+            } catch (ParseException | RuntimeException e) {
+                // 깨진/복호화 실패 키 1건이 전체 JWKS 를 무너뜨리지 않게 격리(kid 만 로깅, 키 본문 미로깅).
+                log.warn("서명키 파싱/복호화 실패 — 건너뜀. kid={}", row.kid());
             }
         }
         if (jwks.isEmpty()) {
-            throw new IllegalStateException("사용 가능한 서명키가 없습니다(부트스트랩 실패 가능).");
+            throw new IllegalStateException("사용 가능한 서명키가 없습니다(부트스트랩/복호화 실패 가능).");
         }
         return new JWKSet(jwks);
     }
@@ -107,15 +111,14 @@ public final class JdbcRotatingJwkSource implements JWKSource<SecurityContext> {
                 return;
             }
             RSAKey generated = generateRsaKey();
-            mapper.insert(
-                    new SigningKey(generated.getKeyID(), generated.toJSONString(), SigningKey.ACTIVE, Instant.now()));
+            // 부트스트랩도 회전 경로와 동일하게 개인키 보호(평문/암호문 혼재 방지).
+            String stored = cipher.protect(generated.toJSONString());
+            mapper.insert(SigningKey.active(generated.getKeyID(), stored, Instant.now()));
             log.info("최초 서명키 부트스트랩 완료. kid={}", generated.getKeyID());
-            // TODO(운영): jwkJson 평문 저장 금지 — 컬럼 암호화/KMS/Vault 로 개인키 보호.
-            // TODO(운영): 부트스트랩은 데모 편의. 운영은 회전 스케줄러(framework-lock 리더 선출)에서 관리 권장.
         }
     }
 
-    /** RS256 RSA 2048 키 생성(개인키 포함). 순수 JDK + Nimbus. */
+    /** RS256 RSA 2048 키 생성(개인키 포함). 순수 JDK + Nimbus. 회전 스케줄러가 같은 패키지에서 재사용(가시성 승격 불필요). */
     static RSAKey generateRsaKey() {
         try {
             KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");

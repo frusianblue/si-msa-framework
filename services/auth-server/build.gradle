@@ -28,6 +28,8 @@ dependencies {
     implementation project(':framework:framework-core')        // BusinessException/ErrorCode/ApiResponse
     implementation project(':framework:framework-security')    // ★ 사용자 소스: Authenticator/AuthenticatedUser + RBAC
     implementation project(':framework:framework-mybatis')     // 서명키 저장(SigningKeyMapper)
+    implementation project(':framework:framework-lock')        // ★ 서명키 회전 단일 실행(@SchedulerLock 리더 선출)
+    // 개인키 컬럼 암호화(AesCryptoService)는 framework-core 가 이미 제공(CryptoAutoConfiguration) → 추가 의존 없음.
 
     // ===== Spring Authorization Server (SS7 흡수, 버전=BOM) =====
     // 전이로 spring-security-oauth2-jose(Nimbus JOSE), spring-security-web 를 끌어온다.

@@ -36,6 +36,15 @@ auth-server:
   issuer: ${AUTH_SERVER_ISSUER:http://localhost:9000}
   # JWKS 캐시 TTL = 다중 파드 키 회전 전파 최대 지연.
   jwk-cache-ttl: 5m
+  # ===== 서명키 회전/암호화 =====
+  signing-key:
+    rotation:
+      enabled: ${SIGNING_KEY_ROTATION_ENABLED:false}        # 회전 스케줄러(기본 off — 운영에서 의도적 on)
+      cron: ${SIGNING_KEY_ROTATION_CRON:0 0 4 1 * *}         # 매월 1일 04:00
+      retire-grace: ${SIGNING_KEY_RETIRE_GRACE:14d}          # RETIRED 보존(폐기 후) — ≥ access수명+JWKS캐시TTL+여유
+      min-interval: ${SIGNING_KEY_ROTATION_MIN_INTERVAL:1h}  # 멱등 가드: 최근 ACTIVE 이내면 스킵
+    encryption:
+      enabled: ${SIGNING_KEY_ENCRYPTION_ENABLED:true}        # 개인키 컬럼 암호화(쓰기) — 기본 on(안전)
 
 framework:
   security:
@@ -46,3 +55,14 @@ framework:
       secret: ${FRAMEWORK_JWT_SECRET:change-this-to-a-very-long-secret-key-at-least-32-bytes!!}
     token-store:
       type: memory
+  # ===== 분산 락(서명키 회전 단일 실행 = 리더 선출) =====
+  #  ⚠️ 회전(@SchedulerLock)이 동작하려면 enabled=true 가 필수. 끄면 애스펙트가 없어 모든 파드가 회전(경합).
+  #     다중 파드 = jdbc(SAS DB 공유, 추가 인프라 0) | redis. memory 는 단일 JVM 전용(파드 간 상호배제 불가).
+  lock:
+    enabled: true
+    type: ${LOCK_TYPE:jdbc}
+  # ===== AES 암호화(개인키 컬럼 보호 마스터키) =====
+  #  운영: AES_SECRET 을 16바이트 이상 강한 키로 주입(prod 가드가 기본키/약한키를 부팅 차단). 로컬은 기본 placeholder 허용.
+  crypto:
+    enabled: true
+    aes-secret: ${AES_SECRET:change-me-please-set-framework-crypto-aes-secret}

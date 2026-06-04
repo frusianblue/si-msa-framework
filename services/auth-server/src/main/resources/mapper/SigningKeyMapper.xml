@@ -9,19 +9,20 @@
             <arg    column="jwk_json"   javaType="java.lang.String"/>
             <arg    column="status"     javaType="java.lang.String"/>
             <arg    column="created_at" javaType="java.time.Instant"/>
+            <arg    column="retired_at" javaType="java.time.Instant"/>
         </constructor>
     </resultMap>
 
     <!-- 검증용 전체(ACTIVE+RETIRED). 최신순 → 서명 시 최신 키가 먼저 선택되도록. -->
     <select id="findAllUsable" resultMap="signingKey">
-        SELECT kid, jwk_json, status, created_at
+        SELECT kid, jwk_json, status, created_at, retired_at
         FROM auth_signing_key
         ORDER BY created_at DESC
     </select>
 
     <!-- 현재 서명 후보(최신 ACTIVE 1건). -->
     <select id="findNewestActive" resultMap="signingKey">
-        SELECT kid, jwk_json, status, created_at
+        SELECT kid, jwk_json, status, created_at, retired_at
         FROM auth_signing_key
         WHERE status = 'ACTIVE'
         ORDER BY created_at DESC
@@ -30,14 +31,29 @@
 
     <!-- kid 는 UUID 라 충돌이 사실상 없음 + 부트스트랩 중복은 앱 레벨 가드(synchronized + findNewestActive)로 차단.
          H2 는 PostgreSQL 의 ON CONFLICT 구문을 파싱 못 하므로 이식성 위해 평문 INSERT 사용.
-         (다중 파드 동시 cold-start 의 정식 해법은 framework-lock 리더 선출 — 회전 스케줄러 확장점.) -->
+         (다중 파드 동시 cold-start / 회전 단일실행의 정식 해법은 framework-lock 리더 선출.) -->
     <insert id="insert">
-        INSERT INTO auth_signing_key (kid, jwk_json, status, created_at)
-        VALUES (#{kid}, #{jwkJson}, #{status}, #{createdAt})
+        INSERT INTO auth_signing_key (kid, jwk_json, status, created_at, retired_at)
+        VALUES (#{kid}, #{jwkJson}, #{status}, #{createdAt}, #{retiredAt})
     </insert>
 
     <update id="updateStatus">
         UPDATE auth_signing_key SET status = #{status} WHERE kid = #{kid}
     </update>
+
+    <!-- 회전: 직전 ACTIVE 전부 RETIRE + 폐기 시각 기록. grace 정리 기준이 retired_at 이므로 반드시 같이 세팅. -->
+    <update id="retireAllActive">
+        UPDATE auth_signing_key
+        SET status = 'RETIRED', retired_at = #{retiredAt}
+        WHERE status = 'ACTIVE'
+    </update>
+
+    <!-- 회전 정리: RETIRE 된 지 grace 가 지난 키 삭제(retired_at 기준 — created_at 아님). -->
+    <delete id="deleteRetiredOlderThan">
+        DELETE FROM auth_signing_key
+        WHERE status = 'RETIRED'
+          AND retired_at IS NOT NULL
+          AND retired_at &lt; #{cutoff}
+    </delete>
 
 </mapper>

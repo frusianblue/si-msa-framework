@@ -1,13 +1,21 @@
 package com.company.authserver.config;
 
+import com.company.authserver.jose.AesSigningKeyCipher;
 import com.company.authserver.jose.JdbcRotatingJwkSource;
+import com.company.authserver.jose.RsaSigningKeyGenerator;
+import com.company.authserver.jose.SigningKeyCipher;
+import com.company.authserver.jose.SigningKeyGenerator;
 import com.company.authserver.jose.SigningKeyMapper;
+import com.company.authserver.jose.SigningKeyRotationScheduler;
+import com.company.authserver.jose.SigningKeyRotationService;
 import com.company.authserver.user.FrameworkAuthenticationProvider;
 import com.company.authserver.user.RoleClaimTokenCustomizer;
+import com.company.framework.core.crypto.AesCryptoService;
 import com.company.framework.security.auth.Authenticator;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -47,8 +55,13 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
  *   <li>{@link RegisteredClientRepository} = JDBC(클라이언트 등록/시크릿 해시/redirect-uri 화이트리스트)
  *   <li>{@link OAuth2AuthorizationService} = JDBC(인가/토큰 상태)
  *   <li>{@link OAuth2AuthorizationConsentService} = JDBC(동의)
- *   <li>{@link JWKSource} = {@link JdbcRotatingJwkSource}(DB 공유 + 회전 오버랩)
+ *   <li>{@link JWKSource} = {@link JdbcRotatingJwkSource}(DB 공유 + 회전 오버랩 + 개인키 암호화)
  * </ul>
+ *
+ * <p><b>서명키 회전</b>: 키 생성/오버랩/부트스트랩은 {@link JdbcRotatingJwkSource}, 주기 회전은 {@link SigningKeyRotationScheduler}
+ * (+{@link SigningKeyRotationService}) 가 담당하며 {@code @SchedulerLock}(framework-lock 리더 선출)으로 다중 파드 단일 실행을 보장한다.
+ * 개인키는 {@link AesSigningKeyCipher}(framework-core {@link AesCryptoService}) 로 컬럼 암호화 저장한다. 회전 빈은
+ * {@code auth-server.signing-key.rotation.enabled=true} 일 때만 등록(기본 off).
  *
  * <p>⚠️ <b>Jackson 3</b>: SS7 의 {@code spring-security-oauth2-authorization-server} 는 기본적으로 Jackson 3(tools.jackson.*)을 쓴다.
  * {@code JdbcOAuth2AuthorizationService} 기본 매퍼가 이미 Jackson 3 + {@code OAuth2AuthorizationServerJacksonModule} 로 구성되므로
@@ -63,7 +76,7 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
  * {@code http.securityMatcher(getEndpointsMatcher()).with(...)} DSL 로 적용한다(standalone 1.x 와 다름).
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(AuthServerProperties.class)
+@EnableConfigurationProperties({AuthServerProperties.class, SigningKeyProperties.class})
 public class AuthorizationServerConfig {
 
     /** (1) AS 프로토콜 엔드포인트 전용 체인: /oauth2/authorize, /oauth2/token, /oauth2/jwks, /.well-known/*, /userinfo, /oauth2/revoke, /oauth2/introspect. */
@@ -117,10 +130,21 @@ public class AuthorizationServerConfig {
         return new JdbcOAuth2AuthorizationConsentService(jdbcTemplate, registeredClientRepository);
     }
 
-    /** DB 공유 + 회전 오버랩 JWKS. */
+    /**
+     * 서명키 개인키 보호. framework-core {@link AesCryptoService}(마스터키 = framework.crypto.aes-secret) 재사용. 쓰기 암호화는
+     * {@code encryption.enabled}(기본 on) 토글, 읽기 복호화는 항상 마커 인지(혼재/롤백 안전). KMS/Vault 는 이 빈만 교체.
+     */
     @Bean
-    JWKSource<SecurityContext> jwkSource(SigningKeyMapper signingKeyMapper, AuthServerProperties props) {
-        return new JdbcRotatingJwkSource(signingKeyMapper, props.jwkCacheTtl());
+    @ConditionalOnMissingBean(SigningKeyCipher.class)
+    SigningKeyCipher signingKeyCipher(AesCryptoService aesCryptoService, SigningKeyProperties props) {
+        return new AesSigningKeyCipher(aesCryptoService, props.encryption().enabled());
+    }
+
+    /** DB 공유 + 회전 오버랩 + 개인키 암호화 JWKS. */
+    @Bean
+    JWKSource<SecurityContext> jwkSource(
+            SigningKeyMapper signingKeyMapper, SigningKeyCipher signingKeyCipher, AuthServerProperties props) {
+        return new JdbcRotatingJwkSource(signingKeyMapper, signingKeyCipher, props.jwkCacheTtl());
     }
 
     @Bean
@@ -145,5 +169,38 @@ public class AuthorizationServerConfig {
     @ConditionalOnMissingBean(PasswordEncoder.class)
     PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    }
+
+    /**
+     * 서명키 회전 빈(스케줄러 + 작업 서비스 + 키 생성기). {@code auth-server.signing-key.rotation.enabled=true} 일 때만 등록.
+     * 비활성(기본)이면 {@code @Scheduled} 메서드가 아예 없어 아무것도 돌지 않는다(@EnableScheduling 만으로는 무동작).
+     *
+     * <p>⚠️ 다중 파드에서 단일 실행을 보장하려면 {@code framework.lock.enabled=true} + {@code type=jdbc|redis} 필요(미설정 시
+     * {@code @SchedulerLock} 애스펙트가 없어 모든 파드가 회전 → 경합).
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "auth-server.signing-key.rotation", name = "enabled", havingValue = "true")
+    static class SigningKeyRotationConfig {
+
+        @Bean
+        @ConditionalOnMissingBean(SigningKeyGenerator.class)
+        SigningKeyGenerator signingKeyGenerator(SigningKeyCipher signingKeyCipher) {
+            return new RsaSigningKeyGenerator(signingKeyCipher);
+        }
+
+        @Bean
+        SigningKeyRotationService signingKeyRotationService(
+                SigningKeyMapper mapper, SigningKeyGenerator generator, SigningKeyProperties props) {
+            return new SigningKeyRotationService(
+                    mapper,
+                    generator,
+                    props.rotation().retireGrace(),
+                    props.rotation().minInterval());
+        }
+
+        @Bean
+        SigningKeyRotationScheduler signingKeyRotationScheduler(SigningKeyRotationService service) {
+            return new SigningKeyRotationScheduler(service);
+        }
     }
 }
