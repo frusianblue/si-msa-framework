@@ -1,0 +1,13 @@
+# admin-service-config — 비밀 아님. (DB 계정/JWT/AES 는 Secret)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: admin-service-config
+  labels:
+    app.kubernetes.io/part-of: si-msa
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  DB_URL: "jdbc:postgresql://postgres:5432/sidb"
+  TRACE_SAMPLING: "0.1"

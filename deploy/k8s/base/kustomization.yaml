@@ -1,0 +1,24 @@
+# deploy/k8s/base/kustomization.yaml
+# 멀티서비스 base — 4개 서비스 + 인-클러스터 Redis + 단일 ServiceMonitor 를 묶고,
+# 공통 보안/프로브/리소스를 label(siframework.io/hardened=true) 타깃 패치로 일괄 적용한다.
+#   ⚠️ base 단독 배포 불가(Secret 미포함 = 의도). 반드시 overlays/{dev,prod} 를 통해 배포한다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: si-msa
+
+resources:
+  - namespace.yaml
+  - redis
+  - gateway
+  - auth-server
+  - user-service
+  - admin-service
+  - common/servicemonitor.yaml
+
+# 공통 패치: hardened=true 인 Deployment(=4개 서비스, redis 제외) 전부에 보안컨텍스트/프로브/리소스/tmp 주입.
+patches:
+  - path: common/deployment-hardening.yaml
+    target:
+      kind: Deployment
+      labelSelector: "siframework.io/hardened=true"

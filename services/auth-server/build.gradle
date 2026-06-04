@@ -31,6 +31,9 @@ dependencies {
     implementation project(':framework:framework-lock')        // ★ 서명키 회전 단일 실행(@SchedulerLock 리더 선출)
     // 개인키 컬럼 암호화(AesCryptoService)는 framework-core 가 이미 제공(CryptoAutoConfiguration) → 추가 의존 없음.
 
+    // 관측: Prometheus 스크레이프(/actuator/prometheus) — ServiceMonitor 수집 대상. 버전=Boot BOM.
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
     // ===== Spring Authorization Server (SS7 흡수, 버전=BOM) =====
     // 전이로 spring-security-oauth2-jose(Nimbus JOSE), spring-security-web 를 끌어온다.
     implementation 'org.springframework.security:spring-security-oauth2-authorization-server'

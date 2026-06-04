@@ -6,40 +6,49 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**직전 = 그릇 정비 \"게이트웨이 런타임 점검\" 처리(2026-06-04).** 라우팅/CORS/레이트리밋/서킷브레이커/프로브가 실제 기동 시 의도대로 도는지 점검 → **결함 2건 보강 + 검증 공백 3건 메움**. ① **서킷브레이커 폴백 404→503**: `application.yml` 의 `fallbackUri: forward:/fallback/user` 를 받는 핸들러가 없어 회로 개방 시 404 가 샜음 → `web/FallbackController` 신설(`/fallback/{service}`+`/fallback`, 모든 메서드, ApiResponse.fail 형식 **503**, 서비스명 영숫자/`-_` 정화). ② **레이트리밋 선행 콤마 XFF 누출**: `principalKeyResolver.clientIp` 의 `comma > 0` 가드가 `", 1.2.3.4"` 같은 기형/위조 XFF 에서 원문 통째를 키로 누출(`ip:, 1.2.3.4`) → `comma >= 0` 으로 보강(remote 폴백, 정상 케이스 전부 동일). ③ 오해 소지 주석 정정(`default-filters`=`X-Gateway`, X-Trace-Id 오기; 트레이스는 micrometer-tracing). **신규 테스트 3종** — `PrincipalKeyResolverTest`(키 우선순위, Redis 불요)·`FallbackControllerTest`(503/정화, 컨텍스트 불요)·`GatewayCorsPreflightTest`(`@SpringBootTest` RANDOM_PORT+WebTestClient: 허용 origin echo/미허용 차단/비라우트 경로/methods/max-age). **순수 로직 JDK 단독 하네스 12+8 통과.** **새 외부 의존성 0.** **✅ 받는 쪽 `:services:gateway:test` + `spotlessApply` 통과 확인(2026-06-04). 바로 다음 = commit/push.**
+**그릇 정비 종료 — k8s/CI-CD 멀티서비스화(2026-06-04).** 배포 자산을 user-service 단일 → **4개 서비스 일괄**로 확장하고 **Kustomize base+overlay** 로 재구성(중복 제거). 선택 = **Redis 인-클러스터 + DB 외부 Secret**. 핵심: 서비스별 `deployment.yaml` 은 차이값(이미지/포트/envFrom)만, 공통 하드닝(비루트·readOnlyRootFS·프로브·리소스)은 **단일 패치**로 `hardened=true` Deployment 에 일괄 적용(**규약: 컨테이너 `app`·포트 `http`**). **단일 ServiceMonitor**(앱 4종, redis 제외). dev=1레플리카+약한시크릿 동봉, prod=HPA+외부 DB/issuer+Secret 미포함(ESO/SealedSecrets). CI=GH Actions verify(1회)→build matrix(4서비스)→deploy(`kubectl apply -k overlays/prod`+set image SHA), Jenkinsfile=게이트→Flyway(authdb/sidb)→Build matrix→Deploy. **멀티서비스가 실제 기동/관측되도록 서비스 소스 최소 보강 3건**: auth-server `application-prod.yml` 신설(prod datasource 공백→기동실패 해소)·auth-server management 블록(probes/prometheus)·4서비스 `micrometer-registry-prometheus`(runtimeOnly). **Python pyyaml 정적 Kustomize 에뮬레이션 검증기 56 checks 통과.** 받는 쪽 = `kubectl kustomize`/`apply -k --dry-run=server` + `:services:<svc>:bootJar`·`spotlessApply`.
 
 ## 최종 갱신
-- 일자: 2026-06-04 · 갱신자: 게이트웨이 런타임 점검 세션
-- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / Jackson 3(tools.jackson.*) / Spring Cloud Gateway(WebFlux) · jjwt 0.12.6
+- 일자: 2026-06-04 · 갱신자: k8s/CI-CD 멀티서비스화 세션
+- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / Jackson 3(tools.jackson.*) · Kustomize · 4 services(gateway 8000 / auth-server 9000 / user 8080 / admin 8081)
 
-## 직전에 한 것 (Done — 정적 리뷰 + 순수 로직 하네스 통과 / Spring 경로는 받는 쪽 대기)
-- **① `web/FallbackController` 신설**: `@RestController`, `@RequestMapping("/fallback/{service}")`(+`/fallback`), 모든 HTTP 메서드(원 요청 메서드 보존 포워딩). 응답 = `{"success":false,"code":"E0503","message":"<service> 서비스가 일시적으로 응답하지 않습니다...","timestamp":...}` **503**(401 필터 응답과 동일 고정 JSON — 게이트웨이는 framework-core 미의존). 서비스명 `sanitize`(영숫자/`-_` 외 제거·빈값=upstream)로 JSON 주입 방지(permit-all 이라 외부 직접 호출 가능).
-- **② `config/RateLimitConfiguration.clientIp` 보강**: XFF 첫 홉 추출을 `comma > 0` → `comma >= 0`. 선행 콤마 XFF 는 첫 토큰이 빈 문자열이 되어 remote addr 로 폴백(원문 누출 차단). 단일/다중 홉·콤마 없음·공백·trim 등 정상 케이스 전부 동일 동작.
-- **③ `application.yml` 주석 정정**: `default-filters` 는 `X-Gateway: si-msa-gateway` 만 붙인다(주석은 X-Trace-Id 오기였음). 분산 추적 헤더 전파는 micrometer-tracing 자동 처리 → 주석 현실화.
-- **신규 테스트 3종**: `config/PrincipalKeyResolverTest`(검증 userId→Principal→XFF 첫 홉→remote→unknown 우선순위·선행 콤마 폴백·deny-empty-key 안전, MockServerWebExchange, **Redis 불요**) · `web/FallbackControllerTest`(503/형식/서비스명 보간/정화/빈값, **컨텍스트 불요**) · `GatewayCorsPreflightTest`(**`@SpringBootTest` RANDOM_PORT + WebTestClient**: 허용 origin echo·credentials·max-age·methods, 미허용 origin 차단, `add-to-simple-url-handler-mapping` 비라우트 경로 처리; 인증 off·Redis 불요 — preflight 는 라우팅/레이트리밋보다 앞에서 단락).
-- **검증(작성환경, JRE→JDK 설치 후 standalone 하네스 — clientIp/키산출 알고리즘 1:1 복제 실행)**: 키 산출 우선순위/XFF/폴백/deny-empty-key **12/12**, `>= 0` 수정안의 정상 케이스 보존 + 선행 콤마 폴백 + 현재 결함 재현 **8/8**. CORS preflight·서킷브레이커 실포워딩은 Spring 기동 필요 → 받는 쪽.
-- **문서**: `docs/modules/GATEWAY_RUNTIME_CHECK.md` **신설**(발견→보강·런타임 거동 요약·검증 체크리스트·gotcha) · `services/gateway/README.md` §2(테스트 3종 추가)·§5(폴백 503·CORS preflight·429 Redis 확인) · `HANDOFF.md`(§6 함정 묶음·§7 완료 항목·우선순위 마킹) · `HANDOFF_SUMMARY.md`(이 문서).
+## 직전에 한 것 (Done — 정적 검증 통과 / gradle·kubectl 은 받는 쪽 대기)
+- **Kustomize 트리 신설** `deploy/k8s/` — 기존 flat 4파일(user-service/configmap/hpa/observability) 삭제, `base/{namespace, common/{deployment-hardening, servicemonitor}, redis, gateway, auth-server, user-service, admin-service}` + `overlays/{dev, prod}`. base 통합 kustomization 이 공통 패치를 `labelSelector: siframework.io/hardened=true` 로 적용.
+- **공통 하드닝 패치**(`base/common/deployment-hardening.yaml`): pod securityContext(runAsNonRoot/uid1001/fsGroup1001/seccomp) + 컨테이너 `app`(allowPrivilegeEscalation=false·readOnlyRootFilesystem+/tmp emptyDir·capabilities drop ALL·resources req250m/512Mi lim1/1Gi·startup `/actuator/health` fail30·liveness/readiness `port: http`). redis 는 `component: cache`(라벨 없음)로 패치 제외.
+- **인-클러스터 Redis**(`base/redis`): redis:7-alpine 비영속(`--save "" --appendonly no`)·비루트(uid999). 운영은 매니지드 권장(overlay 에서 REDIS_HOST 치환).
+- **서비스별 base**(4종): deployment(차이값만)·service(port http·labels name/part-of/**component=service**)·configmap(SPRING_PROFILES_ACTIVE=prod·DB_URL·REDIS·issuer 등)·kustomization. Secret 은 base 미포함(의도).
+- **overlays**: dev(replicas 1·images :dev·`secrets-dev.yaml` 약한 placeholder·DB_URL→dev 호스트 JSON6902) · prod(`hpa.yaml` 4종 CPU70%·images :latest(CI 가 SHA)·issuer→https://auth.example.com·DB_URL→prod 호스트·**Secret 미포함**, `secrets-prod.example.yaml` 양식만).
+- **단일 ServiceMonitor**: selector `part-of=si-msa` AND `component=service`, endpoint `port: http` path `/actuator/prometheus` interval 15s, label `release: kube-prometheus-stack`.
+- **CI 멀티서비스화**: `deploy/cicd/ci-cd.yml`(verify 1회 → build-and-push 4서비스 matrix, bootJar+docker 동일 잡, `JAR_FILE=services/<svc>/build/libs/<svc>-1.0.0.jar` → deploy `kubectl apply -k overlays/prod` + `set image app=<sha>` 루프) · `Jenkinsfile`(게이트 → Flyway Validate authdb/sidb 병렬 → Build&Push `SERVICE` matrix → Deploy kustomize, matrix 밖).
+- **서비스 소스 보강 3건**: `services/auth-server/.../application-prod.yml` 신설(postgres datasource via env·flyway clean-disabled·health show-details never) · auth-server `application.yml` management 블록(probes.enabled + exposure health,info,prometheus,metrics) · `gateway/auth-server/user-service/admin-service` build.gradle 에 `runtimeOnly micrometer-registry-prometheus`.
+- **문서**: `docs/modules/K8S_CICD_MULTISERVICE.md` 신설(레이아웃·env 계약표·redis/DB 전제·ServiceMonitor·갭 3건·CI matrix·시크릿 주입·검증 체크리스트) · 4개 서비스 README §8 에 Kustomize 배포 포인터 · `HANDOFF.md`(§6 함정 묶음·§7 완료+우선순위 마킹) · 이 문서.
 
 ## 새로 확정한 함정 (HANDOFF §6 등록)
-- **서킷브레이커 `forward:/fallback/{service}` 는 받는 핸들러 필수**: `fallbackUri` 만 적고 핸들러 없으면 회로 개방 시 graceful 503 이 아니라 **404**(없는 경로)가 나간다. `FallbackController` 가 503 으로 받음. 서비스명 정화(외부 직접 호출 가능=permit-all → JSON 주입 방지).
-- **레이트리밋 XFF 첫 홉은 `comma >= 0`**: `> 0` 가드는 선행 콤마(`", 1.2.3.4"`)에서 실패해 원문이 키로 샌다(`ip:, 1.2.3.4`). `>= 0` 으로 선행 콤마 → 빈 첫 토큰 → remote 폴백.
-- **CORS preflight 는 인증/레이트리밋 앞에서 단락**: `add-to-simple-url-handler-mapping: true` 라 비라우트 경로 OPTIONS 도 처리, 인증 off 여도 동작(다운스트림 X). `allowCredentials=true` → `allowedOrigins:"*"` 불가, `allowedOriginPatterns` 사용(origin echo).
-- **레이트리밋 429 실측엔 reactive Redis 필요**: 키 산출은 단위 테스트(Redis 불요)로, 토큰버킷 429 자체는 SCG 상위 구현 책임. 통합 429 자동화가 필요하면 Testcontainers Redis 별도 도입(미도입).
+- **컨테이너 이름 `app` + 포트 이름 `http` 규약** — 공통 하드닝 패치(전략적머지)와 CI `set image deployment/<svc> app=…` 가 이 이름에 의존. 서비스별 deployment 는 차이값만.
+- **redis 에 `hardened` 라벨 금지** — 패치가 컨테이너 `app` 을 머지하므로 redis 에 붙으면 엉뚱한 컨테이너 추가. `component: cache` 로 패치·SM 둘 다 제외.
+- **auth-server prod 프로파일 부재 → datasource 공백 기동실패** — base 에 datasource 없음(profile 오버레이에서만) → `application-prod.yml` 신설(필수 env).
+- **auth-server management 블록 부재 → probes/prometheus 노출 X → liveness/readiness 404** → base `application.yml` 보강.
+- **prometheus 레지스트리 미보유 → /actuator/prometheus 404 → SM 빈 스크레이프** → 4서비스 runtimeOnly 추가(framework-core 는 actuator 만 api 전이).
+- **base/prod 오버레이 Secret 미포함**(base=단독배포불가 의도, prod=ESO/SealedSecrets 사전주입). **Dockerfile=`JAR_FILE` build-arg**(기존 ci-cd 가 미사용 SERVICE 넘겨 깨져 있었음)·plain jar 비활성 안 됨→경로 명시·bootJar+docker 동일 잡.
+- **작성환경**: dash 는 brace expansion 미지원(명시 경로) · GitHub 릴리스 바이너리 CDN(objects.githubusercontent.com) 차단 403 → kustomize/kubectl 설치 불가 → Python 정적 검증.
 
-## 실행/검증 (받는 쪽 — gradle 가능 환경)
+## 실행/검증 (받는 쪽 — kubectl/kustomize·gradle 가능 환경)
 ```bash
-./gradlew :services:gateway:test --tests "*PrincipalKeyResolverTest"   # 키 산출 우선순위/XFF/폴백 (Redis 불요)
-./gradlew :services:gateway:test --tests "*FallbackControllerTest"     # 서킷브레이커 503 (컨텍스트 불요)
-./gradlew :services:gateway:test --tests "*GatewayCorsPreflightTest"   # CORS preflight (게이트웨이 기동, Redis 불요)
-./gradlew :services:gateway:test                                       # 전체(기존 DualIssuer/AuthGlobalFilter/TokenVerifier 회귀 포함)
-./gradlew :services:gateway:spotlessApply
-# (수동 기동) README §4~5: 헬스 /actuator/health · CORS preflight · 429(Redis) · 폴백 503
+kubectl kustomize deploy/k8s/overlays/dev          # 렌더링 확인
+kubectl kustomize deploy/k8s/overlays/prod
+kubectl apply -k deploy/k8s/overlays/dev  --dry-run=server   # 스키마/어드미션
+kubectl apply -k deploy/k8s/overlays/prod --dry-run=server
+kubectl apply -k deploy/k8s/overlays/dev           # 실제 배포(dev)
+kubectl -n si-msa get deploy,po,svc,hpa,servicemonitor
+# 프로브/메트릭: port-forward 후 /actuator/health/{liveness,readiness}·/actuator/prometheus
+./gradlew :services:auth-server:bootJar            # build/libs/auth-server-1.0.0.jar
+./gradlew spotlessApply
 ```
-> 작성환경은 Maven Central 차단으로 gradle 실행 불가 → 위 명령은 받는 쪽에서 실행. 순수 키 산출 로직은 JDK 단독 하네스 12+8 통과(2026-06-04). **✅ 받는 쪽 `:services:gateway:test`(신규 3종 + 기존 회귀) + `spotlessApply` 통과 확인 완료(2026-06-04).** 남은 건 commit/push.
+> 작성환경은 Maven Central + 릴리스 CDN 차단으로 gradle/kustomize/kubectl 실행 불가 → 위는 받는 쪽. 작성환경에서는 **Python pyyaml 정적 Kustomize 에뮬레이션 검증기 56 checks 통과**(파일 참조·패치 타깃·컨테이너 `app`/포트 `http` 규약·SM 셀렉터 일치·image repo 일치).
 
 ## 다음 (Next) 후보
-- **▶ commit/push** (받는 쪽 `:services:gateway:test` + `spotlessApply` 통과 확인 완료 2026-06-04. 이번 산출물 = FallbackController 신규 + RateLimitConfiguration 보강 + 테스트 3종 + 문서).
-- **그릇 정비 잔여**(권장 다음): k8s redis/secret/멀티서비스 + observability ServiceMonitor 실배포 · CI-CD 멀티서비스화(현재 user-service 단일 → gateway/admin/auth-server 확장) · 게이트웨이 **레이트리밋 429 Testcontainers Redis 통합테스트**(선택).
-- (선택 백로그) 아카이빙 tar/tar.gz(commons-compress 옵트인) · RetryUtils · 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · 암호화 파일 키 회전 · S3 멀티파트 병렬 업로드(TransferManager).
-- (보류) SSO 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn) · OIDC B안 전체 흐름 e2e(confidential demo-rp) · 게이트웨이 AS aud 검증.
+- **▶ commit/push** (이번 산출물 = `deploy/k8s/` Kustomize 트리 + `deploy/cicd/{ci-cd.yml,Jenkinsfile}` matrix + auth-server `application-prod.yml`/management + 4서비스 build.gradle prometheus + 문서). 받는 쪽 `kubectl kustomize`/`--dry-run=server` + `:services:<svc>:bootJar`·`spotlessApply` 확인 후.
+- (devops 후속) gateway 외부 노출(Ingress/LoadBalancer + TLS)·NetworkPolicy(백엔드 인그레스 제한)·prod redis 매니지드 전환·PodDisruptionBudget·레이트리밋 429 Testcontainers Redis 통합테스트.
+- (보류) OIDC B안 전체 흐름 e2e(confidential demo-rp) · 게이트웨이 AS aud 검증 · 서명키 KMS/Vault 백엔드 · SAML 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn).
+- (선택 백로그) 아카이빙 tar/tar.gz(commons-compress) · RetryUtils · 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · S3 멀티파트 병렬 업로드(TransferManager).
 <!-- 갱신 끝 -->

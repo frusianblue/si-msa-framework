@@ -1,0 +1,43 @@
+# deploy/k8s/overlays/dev/kustomization.yaml
+# DEV: 단일 레플리카, 이미지 :dev 태그, 약한 시크릿 동봉, 외부(개발) DB 호스트.
+#   배포:  kubectl apply -k deploy/k8s/overlays/dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: si-msa
+
+resources:
+  - ../../base
+  - secrets-dev.yaml
+
+# 비용 절감: dev 는 서비스당 1 레플리카
+replicas:
+  - { name: gateway,       count: 1 }
+  - { name: auth-server,   count: 1 }
+  - { name: user-service,  count: 1 }
+  - { name: admin-service, count: 1 }
+
+# 이미지 태그(dev). CI 가 갱신하려면: kustomize edit set image registry.example.com/si-msa/<svc>=...:<sha>
+images:
+  - { name: registry.example.com/si-msa/gateway,       newTag: dev }
+  - { name: registry.example.com/si-msa/auth-server,   newTag: dev }
+  - { name: registry.example.com/si-msa/user-service,  newTag: dev }
+  - { name: registry.example.com/si-msa/admin-service, newTag: dev }
+
+# 외부(개발) DB 호스트로 DB_URL 치환. Redis 는 인-클러스터(base) 그대로.
+patches:
+  - target: { kind: ConfigMap, name: auth-server-config }
+    patch: |-
+      - op: replace
+        path: /data/DB_URL
+        value: jdbc:postgresql://dev-postgres.internal:5432/authdb
+  - target: { kind: ConfigMap, name: user-service-config }
+    patch: |-
+      - op: replace
+        path: /data/DB_URL
+        value: jdbc:postgresql://dev-postgres.internal:5432/sidb
+  - target: { kind: ConfigMap, name: admin-service-config }
+    patch: |-
+      - op: replace
+        path: /data/DB_URL
+        value: jdbc:postgresql://dev-postgres.internal:5432/sidb

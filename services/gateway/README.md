@@ -148,6 +148,13 @@ gateway:
 ```
 K8s 배포가 정석(`lb://` 라우팅·클러스터 Redis·NetworkPolicy 로 백엔드 인그레스 제한). `JWT_SECRET`/`AES_SECRET` 등은 k8s Secret 으로 주입.
 
+**Kustomize 멀티서비스 배포** (4개 서비스 + 인-클러스터 Redis 일괄):
+```bash
+kubectl apply -k deploy/k8s/overlays/dev     # 개발(약한 시크릿 동봉, 1 레플리카)
+kubectl apply -k deploy/k8s/overlays/prod    # 운영(HPA·외부 DB/시크릿 전제 — ESO/SealedSecrets)
+```
+레이아웃·서비스별 env 계약·시크릿 주입·ServiceMonitor 는 `docs/modules/K8S_CICD_MULTISERVICE.md` 참고.
+
 ---
 
 ## 참고 문서

@@ -1,0 +1,32 @@
+# deploy/k8s/base/user-service/deployment.yaml — DB(sidb) + Redis(토큰스토어/캐시) 필요.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  labels:
+    app.kubernetes.io/name: user-service
+    app.kubernetes.io/part-of: si-msa
+    app.kubernetes.io/component: service
+    siframework.io/hardened: "true"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: user-service
+        app.kubernetes.io/part-of: si-msa
+        app.kubernetes.io/component: service
+        siframework.io/hardened: "true"
+    spec:
+      containers:
+        - name: app
+          image: registry.example.com/si-msa/user-service:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef: { name: user-service-config }
+            - secretRef:    { name: user-service-secret }

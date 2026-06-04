@@ -1,0 +1,17 @@
+# gateway-config — 비밀 아님. (JWT_SECRET 은 Secret 으로 별도 주입)
+#   AUTH_SERVER_ISSUER 는 토큰 iss(외부 공개 URL) 와 일치해야 검증 통과 → overlay 에서 공개 URL 로 치환.
+#   JWKS 조회는 클러스터 내부로 단축(in-cluster service) 가능.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  labels:
+    app.kubernetes.io/part-of: si-msa
+data:
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  GATEWAY_AUTH_ENABLED: "true"
+  GATEWAY_AS_ENABLED: "false"
+  GATEWAY_BLACKLIST_CHECK_ENABLED: "false"   # 중앙 로그아웃 켜면 true(reactive Redis 사용)
+  AUTH_SERVER_ISSUER: "http://auth-server:9000"
+  AUTH_SERVER_JWKS_URI: "http://auth-server:9000/oauth2/jwks"

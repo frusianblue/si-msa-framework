@@ -1,0 +1,52 @@
+# deploy/k8s/overlays/prod/kustomization.yaml
+# PROD: HPA, 외부(운영) DB 호스트, 외부 공개 issuer. 시크릿은 미포함(ESO/SealedSecrets 로 사전 주입).
+#   배포:  kubectl apply -k deploy/k8s/overlays/prod
+#   ⚠️ 이미지 태그는 CI 가 커밋 SHA 로 설정: kustomize edit set image registry.example.com/si-msa/<svc>=...:<sha>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: si-msa
+
+resources:
+  - ../../base
+  - hpa.yaml
+
+# 초기 레플리카(이후 HPA 가 조정). base 의 2 를 유지하므로 별도 replicas 미지정.
+
+images:
+  - { name: registry.example.com/si-msa/gateway,       newTag: latest }
+  - { name: registry.example.com/si-msa/auth-server,   newTag: latest }
+  - { name: registry.example.com/si-msa/user-service,  newTag: latest }
+  - { name: registry.example.com/si-msa/admin-service, newTag: latest }
+
+patches:
+  # 외부 공개 issuer(토큰 iss). gateway 검증 issuer 와 auth-server 발급 issuer 를 동일 공개 URL 로.
+  - target: { kind: ConfigMap, name: auth-server-config }
+    patch: |-
+      - op: replace
+        path: /data/AUTH_SERVER_ISSUER
+        value: https://auth.example.com
+      - op: replace
+        path: /data/DB_URL
+        value: jdbc:postgresql://prod-postgres.internal:5432/authdb
+  - target: { kind: ConfigMap, name: gateway-config }
+    patch: |-
+      - op: replace
+        path: /data/AUTH_SERVER_ISSUER
+        value: https://auth.example.com
+      - op: replace
+        path: /data/AUTH_SERVER_JWKS_URI
+        value: http://auth-server:9000/oauth2/jwks
+  - target: { kind: ConfigMap, name: user-service-config }
+    patch: |-
+      - op: replace
+        path: /data/AUTH_SERVER_ISSUER
+        value: https://auth.example.com
+      - op: replace
+        path: /data/DB_URL
+        value: jdbc:postgresql://prod-postgres.internal:5432/sidb
+  - target: { kind: ConfigMap, name: admin-service-config }
+    patch: |-
+      - op: replace
+        path: /data/DB_URL
+        value: jdbc:postgresql://prod-postgres.internal:5432/sidb

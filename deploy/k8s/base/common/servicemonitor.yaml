@@ -1,0 +1,24 @@
+# deploy/k8s/base/common/servicemonitor.yaml
+# 멀티서비스 단일 ServiceMonitor — part-of=si-msa 인 모든 Service 를 한 번에 스크레이프.
+#   전제: ① Prometheus Operator(kube-prometheus-stack) 설치 → CRD 존재
+#         ② 각 서비스가 micrometer-registry-prometheus 를 runtimeOnly 로 물어 /actuator/prometheus 노출
+#         ③ Operator 의 serviceMonitorSelector 가 아래 release 라벨을 고름(설치값에 맞게 조정)
+# 포트는 숫자가 아니라 Service 의 포트 '이름'(http) 으로 지정 → 서비스별 포트번호(8000/8080/8081/9000) 무관.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: si-msa-services
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: ["si-msa"]
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: si-msa
+      app.kubernetes.io/component: service   # redis(component=cache) 제외 — 앱 4종만 스크레이프
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
+      scrapeTimeout: 10s

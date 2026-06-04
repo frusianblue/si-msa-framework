@@ -1,0 +1,46 @@
+# deploy/k8s/base/common/deployment-hardening.yaml
+# 전 서비스 Deployment 공통 패치 — 중복 제거의 핵심.
+#   적용 대상: label `siframework.io/hardened: "true"` 인 Deployment (base/kustomization 의 patches.target).
+#   전제 규약: 메인 컨테이너 이름은 항상 `app`, HTTP 포트 이름은 항상 `http`.
+#             → 서비스별 deployment.yaml 은 "차이값(이미지/포트번호/envFrom)"만 선언하고
+#               보안 컨텍스트·프로브·리소스·tmp 볼륨은 여기서 단일 정의한다.
+# 금융권 기준 하드닝: 비루트 / 권한상승 차단 / 루트FS 읽기전용(+ /tmp emptyDir) / 전 capability drop / seccomp.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hardening-placeholder   # labelSelector 매칭이라 name 은 무시됨(스키마상 필요)
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001          # Dockerfile 의 appuser(uid 1001)와 일치
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+          startupProbe:
+            httpGet: { path: /actuator/health, port: http }
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

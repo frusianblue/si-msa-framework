@@ -1,0 +1,49 @@
+# deploy/k8s/overlays/prod/hpa.yaml — 서비스별 HPA(운영 전용). CPU 70% 타깃.
+#   HPA 가 레플리카를 관리하므로 Deployment.replicas 는 초기값일 뿐(이후 HPA 가 min~max 로 조정).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway-hpa
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: gateway }
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auth-server-hpa
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: auth-server }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-service-hpa
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: user-service }
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: admin-service-hpa
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: admin-service }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }

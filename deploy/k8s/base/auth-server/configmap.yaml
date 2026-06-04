@@ -1,0 +1,16 @@
+# auth-server-config — 비밀 아님. (DB 계정/JWT/AES 는 Secret)
+#   AUTH_SERVER_ISSUER = 토큰/discovery 에 박히는 외부 공개 안정 URL → overlay 에서 공개 URL 로 치환.
+#   서명키 회전은 운영에서 의도적 on(다중 파드 → jdbc 락 리더 선출로 단일 실행).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-server-config
+  labels:
+    app.kubernetes.io/part-of: si-msa
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  AUTH_SERVER_ISSUER: "http://auth-server:9000"
+  DB_URL: "jdbc:postgresql://postgres:5432/authdb"
+  LOCK_TYPE: "jdbc"
+  SIGNING_KEY_ROTATION_ENABLED: "true"
+  SIGNING_KEY_ENCRYPTION_ENABLED: "true"

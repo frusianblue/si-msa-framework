@@ -66,3 +66,20 @@ framework:
   crypto:
     enabled: true
     aes-secret: ${AES_SECRET:change-me-please-set-framework-crypto-aes-secret}
+
+# ===== 액추에이터/관측 (K8s 프로브 + Prometheus 스크레이프) =====
+#  추가 배경: 멀티서비스 k8s 배포에서 liveness/readiness 프로브와 ServiceMonitor 스크레이프를 위해
+#  user-service/admin-service 와 동일 규약으로 노출한다(probes 그룹 = /actuator/health/{liveness,readiness}).
+#  /actuator/prometheus 는 micrometer-registry-prometheus(runtimeOnly)가 있어야 실제로 노출된다.
+management:
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING:1.0}     # 운영은 prod 프로파일에서 0.1 로 축소
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true                        # K8s liveness/readiness 프로브 그룹 생성

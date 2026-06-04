@@ -8,13 +8,14 @@ on:
 
 env:
   REGISTRY: registry.example.com
-  IMAGE: si-msa/user-service
+  VERSION: "1.0.0"        # 루트 build.gradle 의 version 과 일치(bootJar 산출물 이름)
 
 jobs:
-  # ===== PR 차단 게이트 =====
+  # ===== PR 차단 게이트(전 레포 1회) =====
   # PR(→main) 과 push(main/develop) 모두에서 실행. 하나라도 실패하면 머지/배포가 막힌다.
-  #   - 포맷(spotlessCheck), 아키텍처 규칙(framework-archtest), 전 모듈 단위/통합 테스트,
-  #     멀티모듈 통합 커버리지, 의존성 취약점(OWASP), (push 한정) Sonar.
+  #   포맷(spotlessCheck) · 아키텍처 규칙(framework-archtest) · 전 모듈 테스트 ·
+  #   멀티모듈 통합 커버리지 · 의존성 취약점(OWASP) · (push 한정) Sonar.
+  #   ⚠️ 서비스 단위가 아니라 레포 전체에 1회만 — 멀티서비스라고 게이트를 N배 돌리지 않는다.
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -29,28 +30,21 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      # 1) 코드 포맷 게이트(Palantir Java Format + yaml/sql/gradle 위생)
       - name: Spotless check
         run: ./gradlew spotlessCheck --no-daemon
 
-      # 2) 아키텍처 규칙 게이트(ArchUnit) — 모듈 순환/Jackson2 패키지/AutoConfiguration·Properties 규약/필드주입 금지 등
-      #    프레임워크 규약 위반을 머지 전에 차단하는 핵심 게이트.
       - name: Architecture rules (ArchUnit)
         run: ./gradlew :framework:framework-archtest:test --no-daemon
 
-      # 3) 전 모듈 단위 + (Testcontainers) 통합 테스트. 각 모듈 test 는 jacocoTestReport 로 마감된다.
       - name: All-module tests
         run: ./gradlew test --no-daemon
 
-      # 4) 멀티모듈 통합 커버리지 리포트(사람이 보는 단일 HTML/XML)
       - name: Aggregate coverage report
         run: ./gradlew testCodeCoverageReport --no-daemon
 
-      # 5) 의존성 취약점 스캔 — High/Critical CVE 발견 시 빌드 차단(failBuildOnCVSS=7.0)
       - name: Dependency vulnerability scan (OWASP)
         run: ./gradlew dependencyCheckAggregate --no-daemon
 
-      # 6) Sonar 분석 — push 에서만(PR 토큰 노출 회피). 모듈별 jacoco XML 을 위 test 산출물에서 읽는다.
       - name: SonarQube analysis
         if: github.event_name == 'push'
         run: ./gradlew sonar --no-daemon
@@ -72,11 +66,17 @@ jobs:
           name: test-reports
           path: '**/build/reports/tests/'
 
-  # ===== 배포 아티팩트(런타임 이미지용 jar) =====
-  # 게이트 통과 후에만. 테스트는 verify 에서 이미 돌았으므로 여기서는 어셈블만(-x test).
-  build:
+  # ===== 서비스별 이미지 빌드 + 푸시(매트릭스, main 한정) =====
+  # 게이트 통과 후에만. 4개 서비스를 병렬로 — bootJar 와 docker build 를 같은 잡에서 수행해야
+  # jar 산출물이 docker 빌드 컨텍스트에 존재한다(별도 잡으로 쪼개면 jar 가 유실됨).
+  build-and-push:
     needs: verify
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ gateway, auth-server, user-service, admin-service ]
     steps:
       - uses: actions/checkout@v4
 
@@ -87,15 +87,9 @@ jobs:
           java-version: '21'
           cache: gradle
 
+      # 테스트는 verify 에서 이미 끝났으므로 어셈블만(-x test).
       - name: Assemble bootJar
-        run: ./gradlew :services:user-service:bootJar -x test --no-daemon
-
-  docker:
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+        run: ./gradlew :services:${{ matrix.service }}:bootJar -x test --no-daemon
 
       - name: Log in to registry
         uses: docker/login-action@v3
@@ -109,14 +103,20 @@ jobs:
         with:
           context: .
           file: deploy/docker/Dockerfile
-          build-args: SERVICE=services:user-service
+          # Dockerfile 은 JAR_FILE build-arg 를 받는다(plain jar 비활성 안 했으므로 boot jar 경로를 명시).
+          build-args: |
+            JAR_FILE=services/${{ matrix.service }}/build/libs/${{ matrix.service }}-${{ env.VERSION }}.jar
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:latest
+            ${{ env.REGISTRY }}/si-msa/${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/si-msa/${{ matrix.service }}:latest
 
+  # ===== 배포(Kustomize prod 오버레이, main 한정) =====
+  # 4개 서비스 이미지가 모두 푸시된 뒤 1회. kustomize 로 prod 매니페스트를 적용하고
+  # 각 Deployment 의 'app' 컨테이너 이미지를 이번 커밋 SHA 로 고정한다(불변 태그 배포).
+  #   ⚠️ Secret 은 매니페스트에 없다 — ESO/SealedSecrets 로 si-msa 네임스페이스에 사전 주입돼 있어야 한다.
   deploy:
-    needs: docker
+    needs: build-and-push
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -125,13 +125,17 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
-      - name: Deploy to K8s
+      - name: Deploy to K8s (kustomize prod overlay)
         env:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
         run: |
           echo "$KUBECONFIG_DATA" | base64 -d > kubeconfig
           export KUBECONFIG=kubeconfig
-          kubectl apply -f deploy/k8s/
-          kubectl -n si-msa set image deployment/user-service \
-            user-service=${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.sha }}
-          kubectl -n si-msa rollout status deployment/user-service --timeout=120s
+          # 1) prod 오버레이 적용(네임스페이스/ConfigMap/Service/Deployment/HPA/ServiceMonitor)
+          kubectl apply -k deploy/k8s/overlays/prod
+          # 2) 서비스별 이미지를 커밋 SHA 로 고정 후 롤아웃 대기(컨테이너 이름은 전 서비스 공통 'app')
+          for svc in gateway auth-server user-service admin-service; do
+            kubectl -n si-msa set image deployment/$svc \
+              app=${REGISTRY}/si-msa/$svc:${{ github.sha }}
+            kubectl -n si-msa rollout status deployment/$svc --timeout=180s
+          done

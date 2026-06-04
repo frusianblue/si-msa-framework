@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  labels:
+    app.kubernetes.io/name: user-service
+    app.kubernetes.io/part-of: si-msa
+    app.kubernetes.io/component: service
+spec:
+  selector:
+    app.kubernetes.io/name: user-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

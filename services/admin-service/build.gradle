@@ -24,6 +24,9 @@ dependencies {
     implementation project(':framework:framework-file')
     // implementation project(':framework:framework-file-s3')   // S3 쓸 때 + storage.type=s3
 
+    // 관측: Prometheus 스크레이프(/actuator/prometheus) — ServiceMonitor 수집 대상. 버전=Boot BOM.
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
     // ===== DB / 마이그레이션 =====
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'   // 버전은 Boot BOM 관리

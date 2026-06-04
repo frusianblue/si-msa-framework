@@ -1,0 +1,17 @@
+# user-service-config — 비밀 아님. (DB 계정/JWT/AES 는 Secret)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  labels:
+    app.kubernetes.io/part-of: si-msa
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  DB_URL: "jdbc:postgresql://postgres:5432/sidb"
+  AUTH_SERVER_ISSUER: "http://auth-server:9000"
+  AUTH_SERVER_JWKS_URI: "http://auth-server:9000/oauth2/jwks"
+  RESOURCE_SERVER_ENABLED: "false"
+  FILE_STORAGE_TYPE: "s3"
+  TRACE_SAMPLING: "0.1"

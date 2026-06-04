@@ -1,6 +1,7 @@
-// Jenkinsfile  (선언형 파이프라인)
-// 전제: 빌드 노드에 JDK 21, Docker 데몬, kubectl, (Sonar/Coverage/JUnit) Jenkins 플러그인 설치.
-// Testcontainers 통합테스트가 Docker 데몬을 사용하므로 빌드 노드에 Docker 필요.
+// Jenkinsfile  (선언형 파이프라인 — 멀티서비스)
+// 전제: 빌드 노드에 JDK 21, Docker 데몬, kubectl(내장 kustomize), (Sonar/Coverage/JUnit) 플러그인.
+//       Testcontainers 통합테스트가 Docker 데몬을 사용하므로 빌드 노드에 Docker 필요.
+// 구조: 게이트(아키텍처/테스트/품질)는 전 레포 1회 → 이미지 빌드는 서비스 매트릭스 → 배포는 kustomize 1회.
 pipeline {
     agent any
 
@@ -12,17 +13,16 @@ pipeline {
 
     environment {
         REGISTRY   = 'registry.example.com'
-        IMAGE      = 'si-msa/user-service'
-        SERVICE    = 'services:user-service'
-        JAR        = 'services/user-service/build/libs/user-service-1.0.0.jar'
+        VERSION    = '1.0.0'                 // 루트 build.gradle version 과 일치(bootJar 산출물 이름)
         IMAGE_TAG  = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(12) : env.BUILD_NUMBER}"
-        // 비밀이 아닌 접속 URL (DB 계정/비번은 credentials 로 주입)
-        FLYWAY_URL = 'jdbc:postgresql://db.prod.internal:5432/sidb'
+        // 비밀이 아닌 접속 URL (DB 계정/비번은 credentials 로 주입). 서비스별 DB 분리: authdb / sidb.
+        FLYWAY_URL_AUTH = 'jdbc:postgresql://prod-postgres.internal:5432/authdb'
+        FLYWAY_URL_SI   = 'jdbc:postgresql://prod-postgres.internal:5432/sidb'
     }
 
     stages {
-        // 아키텍처 규칙 게이트(ArchUnit) — 가장 먼저, 실패 시 즉시 차단(모듈 순환/Jackson2 패키지/
-        // AutoConfiguration·Properties 규약/필드주입 금지 등 프레임워크 규약 위반 검출).
+        // ===== 게이트(전 레포 1회) =====
+        // 아키텍처 규칙(ArchUnit) — 가장 먼저, 실패 시 즉시 차단.
         stage('Architecture Rules') {
             steps {
                 sh './gradlew :framework:framework-archtest:test --no-daemon'
@@ -40,8 +40,6 @@ pipeline {
             post {
                 always {
                     junit '**/build/test-results/test/*.xml'
-                    // JaCoCo 플러그인 설치 시(통합 리포트 단일 XML 기록):
-                    // recordCoverage(tools: [[parser: 'JACOCO', pattern: 'build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml']])
                     archiveArtifacts artifacts: 'build/reports/jacoco/testCodeCoverageReport/**', allowEmptyArchive: true
                 }
             }
@@ -54,7 +52,6 @@ pipeline {
                     steps { sh './gradlew spotlessCheck --no-daemon' }
                 }
                 stage('OWASP') {
-                    // High/Critical CVE 발견 시 빌드 실패 (failBuildOnCVSS=7.0)
                     steps { sh './gradlew dependencyCheckAggregate --no-daemon' }
                 }
                 stage('SonarQube') {
@@ -68,50 +65,81 @@ pipeline {
             }
         }
 
-        // ===== 배포 게이트: 운영 DB 마이그레이션 정합성 검증 =====
-        // flywayValidate: 적용된 마이그레이션의 체크섬이 스크립트와 일치하는지 확인
-        //  → 누군가 과거 마이그레이션을 수정했거나 DB 드리프트가 있으면 여기서 실패.
-        //    (신규 미적용 마이그레이션은 통과 — 배포 후 앱 기동 시 적용됨)
+        // ===== 배포 게이트: 운영 DB 마이그레이션 정합성 검증(DB별) =====
+        // flywayValidate: 적용된 마이그레이션 체크섬이 스크립트와 일치하는지 확인(드리프트/과거수정 검출).
+        //   auth-server → authdb, user-service/admin-service → sidb. gateway 는 DB 없음.
         stage('Flyway Validate (deploy gate)') {
             when { branch 'main' }
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'db-prod',
-                        usernameVariable: 'DB_USER', passwordVariable: 'DB_PASS')]) {
-                    sh '''./gradlew :${SERVICE}:flywayValidate --no-daemon \
-                          -Pflyway.url=${FLYWAY_URL} \
-                          -Pflyway.user=${DB_USER} \
-                          -Pflyway.password=${DB_PASS}'''
+            parallel {
+                stage('authdb') {
+                    steps {
+                        withCredentials([usernamePassword(credentialsId: 'db-auth-prod',
+                                usernameVariable: 'DB_USER', passwordVariable: 'DB_PASS')]) {
+                            sh '''./gradlew :services:auth-server:flywayValidate --no-daemon \
+                                  -Pflyway.url=${FLYWAY_URL_AUTH} \
+                                  -Pflyway.user=${DB_USER} \
+                                  -Pflyway.password=${DB_PASS}'''
+                        }
+                    }
+                }
+                stage('sidb') {
+                    steps {
+                        withCredentials([usernamePassword(credentialsId: 'db-si-prod',
+                                usernameVariable: 'DB_USER', passwordVariable: 'DB_PASS')]) {
+                            sh '''./gradlew :services:user-service:flywayValidate --no-daemon \
+                                  -Pflyway.url=${FLYWAY_URL_SI} \
+                                  -Pflyway.user=${DB_USER} \
+                                  -Pflyway.password=${DB_PASS}'''
+                        }
+                    }
                 }
             }
         }
 
-        // ===== 이미지 빌드 & 푸시 (jar 는 위에서 빌드됨, Docker 는 런타임 이미지만) =====
-        stage('Docker Build & Push') {
+        // ===== 이미지 빌드 & 푸시 (서비스 매트릭스, main 한정) =====
+        // 4개 서비스를 병렬 셀로. 각 셀에서 bootJar → docker build(JAR_FILE 명시) → push.
+        //   Dockerfile 은 JAR_FILE build-arg 를 받는다(plain jar 비활성 안 했으므로 boot jar 경로 명시).
+        stage('Build & Push Images') {
             when { branch 'main' }
-            steps {
-                sh './gradlew :${SERVICE}:bootJar --no-daemon'
-                sh '''docker build -f deploy/docker/Dockerfile \
-                      --build-arg JAR_FILE=${JAR} \
-                      -t ${REGISTRY}/${IMAGE}:${IMAGE_TAG} \
-                      -t ${REGISTRY}/${IMAGE}:latest .'''
-                withCredentials([usernamePassword(credentialsId: 'registry',
-                        usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
-                    sh 'echo ${REG_PASS} | docker login ${REGISTRY} -u ${REG_USER} --password-stdin'
-                    sh 'docker push ${REGISTRY}/${IMAGE}:${IMAGE_TAG}'
-                    sh 'docker push ${REGISTRY}/${IMAGE}:latest'
+            matrix {
+                axes {
+                    axis {
+                        name 'SERVICE'
+                        values 'gateway', 'auth-server', 'user-service', 'admin-service'
+                    }
+                }
+                stages {
+                    stage('bootJar & docker') {
+                        steps {
+                            sh './gradlew :services:${SERVICE}:bootJar --no-daemon'
+                            sh '''docker build -f deploy/docker/Dockerfile \
+                                  --build-arg JAR_FILE=services/${SERVICE}/build/libs/${SERVICE}-${VERSION}.jar \
+                                  -t ${REGISTRY}/si-msa/${SERVICE}:${IMAGE_TAG} \
+                                  -t ${REGISTRY}/si-msa/${SERVICE}:latest .'''
+                            withCredentials([usernamePassword(credentialsId: 'registry',
+                                    usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
+                                sh 'echo ${REG_PASS} | docker login ${REGISTRY} -u ${REG_USER} --password-stdin'
+                                sh 'docker push ${REGISTRY}/si-msa/${SERVICE}:${IMAGE_TAG}'
+                                sh 'docker push ${REGISTRY}/si-msa/${SERVICE}:latest'
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // ===== K8s 롤아웃 =====
+        // ===== K8s 롤아웃 (kustomize prod 오버레이, 매트릭스 밖 1회) =====
+        //   ⚠️ Secret 은 매니페스트에 없다 — ESO/SealedSecrets 로 si-msa 네임스페이스에 사전 주입돼 있어야 한다.
+        //   컨테이너 이름은 전 서비스 공통 'app' → set image 가 동일 키로 동작.
         stage('Deploy to K8s') {
             when { branch 'main' }
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''kubectl apply -f deploy/k8s/
-                          kubectl -n si-msa set image deployment/user-service \
-                            user-service=${REGISTRY}/${IMAGE}:${IMAGE_TAG}
-                          kubectl -n si-msa rollout status deployment/user-service --timeout=120s'''
+                    sh '''kubectl apply -k deploy/k8s/overlays/prod
+                          for svc in gateway auth-server user-service admin-service; do
+                            kubectl -n si-msa set image deployment/$svc app=${REGISTRY}/si-msa/$svc:${IMAGE_TAG}
+                            kubectl -n si-msa rollout status deployment/$svc --timeout=180s
+                          done'''
                 }
             }
         }

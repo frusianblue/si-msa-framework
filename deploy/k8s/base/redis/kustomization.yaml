@@ -1,0 +1,5 @@
+# deploy/k8s/base/redis/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - redis.yaml

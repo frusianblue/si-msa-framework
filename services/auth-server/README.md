@@ -160,6 +160,13 @@ curl -s -u demo-service:demo-secret \
 ```
 운영은 `AES_SECRET`/`FRAMEWORK_JWT_SECRET`/`DB_URL` 등을 **k8s Secret** 으로 주입(셸 export 금지). `AES_SECRET` 은 절대 교체하지 않는다.
 
+**Kustomize 멀티서비스 배포** (4개 서비스 + 인-클러스터 Redis 일괄):
+```bash
+kubectl apply -k deploy/k8s/overlays/dev     # 개발(약한 시크릿 동봉, 1 레플리카)
+kubectl apply -k deploy/k8s/overlays/prod    # 운영(HPA·외부 DB/시크릿 전제 — ESO/SealedSecrets)
+```
+레이아웃·서비스별 env 계약·시크릿 주입·ServiceMonitor 는 `docs/modules/K8S_CICD_MULTISERVICE.md` 참고.
+
 ---
 
 ## 참고 문서
