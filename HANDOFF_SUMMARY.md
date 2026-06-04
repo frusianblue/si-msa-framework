@@ -6,7 +6,7 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**직전 = 백로그 3건 마감(2026-06-04): QR 생성 모듈 + SFTP 후속(연결 풀·키 회전) + (devops) CI 게이트/멀티모듈 jacoco 집계.** ① **framework-qr** 신설 — `QrGenerator` SPI + `ZxingQrGenerator`(ZXing `core` 인코딩만, **렌더링은 JDK ImageIO 직접** → `zxing-javase` 불필요·외부 의존성 **1개**), PNG 전용·ECC L/M/Q/H, mfa 의 `otpauth://` URI 를 서버측 QR PNG 로 보완. ② **framework-file-sftp 후속**(둘 다 옵트인·기본 off) — 순수 JDK `BoundedObjectPool<ClientSession>`(connection pool) + `ReloadingSftpCredentialProvider`(key rotation), `SftpFileStorage` 를 자격증명 공급자+`PoolSettings(nullable)` 로 리팩터링. ③ **CI** — 루트 `jacoco-report-aggregation` + 전 39모듈 집계(`testCodeCoverageReport`), GitHub Actions **PR 차단 `verify` 잡** + Jenkinsfile Architecture Rules 스테이지. **순수 로직 검증: QR 22/22 · SFTP 풀+회전 33/33 (JDK 단독 하네스).** **바로 다음 = 받는 쪽에서 gradle 빌드/테스트 실행 확인(아래 명령) 후 commit/push.** 이후 후보 = 그릇 정비(k8s 멀티서비스·게이트웨이 런타임 점검) 또는 잔여 백로그(tar/tar.gz·규제특화).
+**직전 = 백로그 3건 마감(2026-06-04): QR 생성 모듈 + SFTP 후속(연결 풀·키 회전) + (devops) CI 게이트/멀티모듈 jacoco 집계.** ① **framework-qr** 신설 — `QrGenerator` SPI + `ZxingQrGenerator`(ZXing `core` 인코딩만, **렌더링은 JDK ImageIO 직접** → `zxing-javase` 불필요·외부 의존성 **1개**), PNG 전용·ECC L/M/Q/H, mfa 의 `otpauth://` URI 를 서버측 QR PNG 로 보완. ② **framework-file-sftp 후속**(둘 다 옵트인·기본 off) — 순수 JDK `BoundedObjectPool<ClientSession>`(connection pool) + `ReloadingSftpCredentialProvider`(key rotation), `SftpFileStorage` 를 자격증명 공급자+`PoolSettings(nullable)` 로 리팩터링. ③ **CI** — 루트 `jacoco-report-aggregation` + 전 39모듈 집계(`testCodeCoverageReport`), GitHub Actions **PR 차단 `verify` 잡** + Jenkinsfile Architecture Rules 스테이지. **순수 로직 검증: QR 22/22 · SFTP 풀+회전 33/33 (JDK 단독 하네스).** **받는 쪽 gradle 전 항목 통과 확인 완료(2026-06-04): `:framework-qr:test`·`:framework-file-sftp:test`·`:framework-archtest:test`·`testCodeCoverageReport`·spotless 모두 ✅.** **바로 다음 = commit/push.** 이후 후보 = 그릇 정비(k8s 멀티서비스·게이트웨이 런타임 점검) 또는 잔여 백로그(tar/tar.gz·규제특화).
 
 ## 최종 갱신
 - 일자: 2026-06-04 · 갱신자: QR + SFTP 후속 + CI 게이트/jacoco 집계 세션
@@ -26,6 +26,7 @@
 - **키 회전은 "새 세션부터"**: `openSession()` 이 세션마다 `current()` 해석 → 풀에 살아있는 세션은 옛 키. 즉시 전파 필요 시 `maxLifetime` < 회전 주기. 재로드 실패 시 기존 자격증명 유지+다음 주기 재시도(fail-safe).
 - **`SftpFileStorage` 생성자 시그니처 변경** → 기존 테스트 `new SftpFileStorage(...)` 깨짐(RoundTrip/Pooled 는 `SftpCredentialProvider.fixed(SftpCredentials.password(...))`+`PoolSettings(nullable)` 로 갱신). 풀 null=도입 전 경로 보존.
 - **jacoco 집계 ≠ Sonar 수집**: `testCodeCoverageReport`(사람용 통합 1장)와 Sonar 의 모듈별 XML 글롭은 **독립**(집계를 Sonar 에 먹이면 이중 합산). 새 모듈은 settings include + 루트 `jacocoAggregation` 한 줄 함께 추가.
+- **⚠️ jacoco 집계는 루트에도 BOM import 필요(첫 실행이 잡음)**: `aggregateCodeCoverageReportResults` 는 루트에서 해소되는데 `io.spring.dependency-management` 의 BOM 이 소비자(루트)로 전이 안 돼, gateway 의 버전 없는 spring-cloud 스타터를 못 찾아 `Could not find ...:.`(빈 버전)+config-cache 직렬화 실패. **해법=루트 build.gradle 에 `dependencyManagement { imports { mavenBom boot/cloud/testcontainers } }` 추가**(적용 완료). 모듈 단위 `:X:test` 는 통과하므로 집계 첫 실행 전까지 잠복.
 - (작업 환경 — 유효) **Maven Central 차단** → SB4/SS7/zxing/sshd 다운로드 불가 = 이 환경 gradle 빌드/테스트 불가(정적 리뷰 + JDK 단독 하네스로 순수 로직만 검증). GitHub clone/raw 대조 가능.
 
 ## 실행/검증 (받는 쪽 — gradle 가능 환경)
@@ -36,7 +37,7 @@
 ./gradlew testCodeCoverageReport                             # 멀티모듈 통합 커버리지(build/reports/jacoco/testCodeCoverageReport/)
 ./gradlew :framework:framework-qr:spotlessApply :framework:framework-file-sftp:spotlessApply
 ```
-> 작성환경은 Maven Central 차단으로 gradle 실행 불가 → 위 명령은 받는 쪽에서 실행 확인 필요. 순수 로직은 JDK 단독 하네스로 QR 22/22·SFTP 33/33 통과(2026-06-04).
+> 작성환경은 Maven Central 차단으로 gradle 실행 불가 → 위 명령은 받는 쪽에서 실행 확인 필요. 순수 로직은 JDK 단독 하네스로 QR 22/22·SFTP 33/33 통과(2026-06-04). **받는 쪽 최종 확인(2026-06-04, 전부 ✅)**: `:framework-qr:test`·`:framework-file-sftp:test`·`:framework-archtest:test`·spotless·`testCodeCoverageReport` 모두 통과. (`testCodeCoverageReport` 는 루트 BOM 미import 로 1차 실패 → 루트 build.gradle 에 BOM import 추가 후 통과.) 남은 건 commit/push.
 
 ## 다음 (Next) 후보
 - **▶ 받는 쪽 빌드/테스트 통과 확인 후 commit/push** (이번 세션 산출물 = framework-qr 신규 + framework-file-sftp 후속 + CI/jacoco + 문서).

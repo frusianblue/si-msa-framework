@@ -219,6 +219,23 @@ sonar {
     }
 }
 
+// ===== 루트 의존성 관리(집계 리포트 해소 전용) =====
+// jacoco-report-aggregation 의 aggregateCodeCoverageReportResults 구성은 **루트**에서 해소된다.
+// 그런데 io.spring.dependency-management 의 BOM 제약은 "그 플러그인이 적용된 프로젝트의 구성"에만
+// 걸리고 소비자(=루트 집계)로 전이되지 않으며, 모듈의 outgoing variant 도 버전 없는 의존성을 그대로
+// 노출한다. 루트는 subprojects 가 아니라 BOM 이 없어, gateway 등이 BOM 에 기대 선언한 버전 없는
+// 의존성(예: spring-cloud-starter-gateway-server-webflux)을 집계 구성이 해소하지 못해
+// "Could not find ...:."(빈 버전)로 실패한다(이어서 config-cache 직렬화도 연쇄 실패).
+// → subprojects 와 동일한 BOM 을 루트에도 import 해 집계 구성이 버전을 공급받게 한다.
+//   (BOM import 는 제약만 추가하고 실제 의존성을 더하지 않으므로 부작용 없음.)
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+        mavenBom "org.testcontainers:testcontainers-bom:${libs.versions.testcontainers.get()}"
+    }
+}
+
 // ===== 멀티모듈 JaCoCo 통합(집계) 리포트 =====
 // 각 모듈은 자체 jacocoTestReport(XML→Sonar)를 내지만, 사람이 보는 "전체 합산 1장"이 필요하다
 // (전사 커버리지 추이·리뷰·배지). jacoco-report-aggregation 플러그인으로 설정캐시-안전하게 집계한다.
