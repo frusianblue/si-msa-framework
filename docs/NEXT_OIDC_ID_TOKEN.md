@@ -1,85 +1,101 @@
-# NEXT_OIDC_ID_TOKEN.md — 다음 세션 착수: OIDC id_token 발급
+# NEXT_OIDC_ID_TOKEN.md — OIDC id_token 발급 (✅ 완료, 2026-06-04)
 
-> 상태: **착수 전(설계/조사 노트)**. 토큰 발급 라운드트립 e2e(2026-06-04, ✅ 4/4)에서 **의도적으로 미룬** 조각.
-> 라운드트립 e2e 는 `authorization_code+PKCE` leg 에서 **`openid` scope 를 빼고 access_token 만** 검증했다(아래 §1 이유).
-> 이번 세션 목표 = **id_token 까지 정상 발급되게 만들고 e2e 로 검증**.
-
----
-
-## 1. 왜 미뤘나 (이번 세션에서 확정한 근본 원인)
-
-라운드트립 e2e 에서 `scope=openid profile` 로 코드 교환을 하면 **코드 교환 자체가 실패**했다:
-
-```
-java.lang.IllegalArgumentException: authenticationTime cannot be null
-  at org.springframework.security.oauth2.server.authorization.token.JwtGenerator.getAuthenticationTime(JwtGenerator.java:237)
-  at JwtGenerator.generate(...)                 ← id_token 생성 중
-  at OAuth2AuthorizationCodeAuthenticationProvider.authenticate(...:274)
-```
-
-확정 사실(SS7 7.0.0 `JwtGenerator` 정본 대조):
-- id_token 의 **`auth_time`(+`sid`)** 클레임은 토큰 컨텍스트의 **`SessionInformation`** 에서 온다
-  (`JwtGenerator` 141–144: `context.get(SessionInformation.class)` → `claim("sid", ...)` · `claim(AUTH_TIME, sessionInformation.getLastRequest())`).
-- 받는 쪽 SS7 패치본은 `SessionInformation`/auth_time 이 **null 이면 Assert 로 막는다**(7.0.0 은 null 가드라 그냥 생략 — 버전차).
-- e2e 의 MockMvc 폼 로그인은 **실 서블릿 세션 생성 이벤트를 일으키지 않아** `SessionRegistry` 에 세션이 등록되지 않고 → `SessionInformation` 이 null → 위 Assert.
-- `openid` 가 있으면 id_token 생성이 코드 교환의 일부라, 실패 시 **access_token 도 함께 못 받는다.**
-
-→ 결론: **MockMvc 아티팩트일 가능성이 높다**(실 브라우저 + 세션 레지스트리에선 채워짐). 다만 **그게 실제로 채워지는지는 본 세션에서 미확인** → 다음 세션의 첫 일.
+> 상태: **✅ 완료(2026-06-04)**. 토큰 발급 라운드트립 e2e(2026-06-04, ✅ 4/4)에서 **의도적으로 미룬** 조각을 마감.
+> 신규 e2e `services/auth-server/src/test/.../e2e/OidcIdTokenIssuanceTest`(2 테스트)로 `authorization_code+PKCE`
+> 흐름에서 **`openid` scope 포함 → id_token 발급 + 클레임/서명 검증**을 확인.
+> ⚠️ 작성 환경은 Maven Central 차단으로 빌드 불가 → **정적 리뷰만**, 받는 쪽(로컬/CI) 실행 대기.
 
 ---
 
-## 2. 먼저 확인할 것 (조사 — 코드 짜기 전)
+## ⛳ 직전 진단 정정 (중요)
 
-1. **현재 auth-server 가 OIDC 세션 관리를 와이어링하는가?**
-   - `services/auth-server` 에 `SessionRegistry`(또는 SAS `OidcSessionRegistry`) 빈이 있는가?
-   - 로그인 체인(`AuthorizationServerConfig` 의 order(2) `defaultSecurityFilterChain`)이 세션을 레지스트리에 등록하는가? (현재는 `formLogin(withDefaults())` 만 — **세션 레지스트리 등록 없음일 가능성 큼 = 갭**.)
-   - 프레임워크의 동시로그인 제어(`framework-security` `ConcurrentSessionService`)는 **자체 JWT 기반**이라 Spring 의 `HttpSession` `SessionRegistry` 와 별개일 수 있다 → SAS 가 읽는 레지스트리에 세션이 들어가는지 별도 확인.
-2. **실 환경(브라우저) `openid` 로그인 시 auth_time 이 실제로 채워지는가?**
-   - 채워진다면 = MockMvc 한정 문제(테스트 전략만 바꾸면 됨).
-   - 안 채워진다면 = **앱 갭**(아래 §3-A 와이어링이 진짜 필요 — 실 OIDC RP 로그인도 깨진다).
+이 문서의 **이전 버전(착수 전)**은 근본 원인을 *"id_token 의 `auth_time` 이 `SessionInformation` 에서 오는데, MockMvc 폼
+로그인은 세션 이벤트를 안 일으켜 `SessionRegistry` 가 비어 `SessionInformation` 이 null → Assert"* 로 진단했다.
+**이 진단은 SS7 7.0 기준 오진**이었다. GitHub `7.0.x` 브랜치의 정본 `JwtGenerator` 를 대조해 바로잡는다:
 
----
+- `JwtGenerator` 는 `auth_time`/`sid` 를 **`if (sessionInformation != null) { ... }` 가드 안에서 함께** 부여한다.
+  즉 `SessionInformation` 이 null 이면 두 클레임이 **조용히 생략될 뿐 Assert 가 나지 않는다.**
+- `"authenticationTime cannot be null"` Assert 는 **`getAuthenticationTime(Authentication)` 안**에 있고, 그 메서드는
+  principal 의 `GrantedAuthority` 중 **`FactorGrantedAuthority`(SS7 신규)의 가장 늦은 `getIssuedAt()`** 으로 auth_time
+  을 산출하며, 하나도 없을 때 Assert 한다. SAS 1.x 의 `SessionInformation.getLastRequest()` 방식이 **아니다.**
+- **핵심 논리**: Assert 가 `getAuthenticationTime` 에서 났다는 것은 그 호출을 감싼 `if (sessionInformation != null)`
+  가드를 **통과**했다는 뜻이다 → 따라서 **`SessionInformation` 은 (MockMvc 에서도) 실제로 non-null 이었다**
+  (SAS `oidc(withDefaults())` 기본 OIDC 세션 추적이 채움). 세션 레지스트리 와이어링은 **불필요**했다.
 
-## 3. 구현 계획
-
-### A. (필요 시) OIDC 세션 관리 와이어링 — auth_time/sid 채우기
-- `SessionRegistry` 빈 추가 + `HttpSessionEventPublisher`(세션 라이프사이클 이벤트) 등록.
-- 로그인 체인에 세션 관리 연동(예: `sessionManagement` + 인증 성공 시 레지스트리 등록 전략), 그리고 SAS `oidc()` 가 그 레지스트리에서 `SessionInformation` 을 가져오도록 연결.
-- 참고: SAS OIDC 로그아웃/세션 관리 문서(`OidcSessionRegistry`/`InMemoryOidcSessionRegistry`). 다중 파드면 세션 레지스트리도 공유 백엔드 고려(후속).
-- ⚠️ framework-security 무변경 원칙 유지 — auth-server 안에서만 와이어링.
-
-### B. id_token 발급 e2e 테스트
-`services/auth-server/src/test/.../e2e/` 에 별도 테스트(`OidcIdTokenIssuanceTest` 등):
-- **전략 택1**:
-  - (b1) **실 브라우저형 흐름**: `WebTestClient`(RANDOM_PORT, 실 쿠키/세션)로 login→authorize(`scope=openid profile`)→code→token. 실 세션이라 `SessionInformation` 채워짐.
-  - (b2) **SessionRegistry 시드**: MockMvc 유지 + 테스트에서 레지스트리에 세션 등록(덜 충실).
-  - → A 를 와이어링하면 (b1) 이 자연스러움. A 없이 MockMvc 면 (b2).
-- 검증할 id_token 클레임: `iss`(= AS issuer) · `sub`(=demo) · `aud`(= client_id `demo-web`) · `auth_time`(null 아님) · `iat`/`exp` · (요청 시)`nonce` · (세션 관리 시)`sid` · `roles`(RoleClaimTokenCustomizer).
-- id_token 서명/검증: AS JWKS(RS256)로 검증(라운드트립 e2e 의 `ResourceServerJwtVerifier` 재사용 가능 — 단 **aud 검증을 켜서** `expectedAudience=demo-web` 확인 권장).
-
-### C. (선택) RP 측 id_token 검증 연계
-- `framework-oauth-client` 의 `IdTokenVerifier`(OIDC 강화 때 구현)와 정합 확인 — AS 가 발급한 id_token 을 RP 가 그대로 검증하는 경로까지 e2e 로 닫으면 OIDC 전 구간.
+**진짜 원인**: 커스텀 `FrameworkAuthenticationProvider` 가
+`UsernamePasswordAuthenticationToken.authenticated(principal, null, authorities)` 의 authorities 에 `ROLE_*` 만
+싣고 **인증 팩터(`FactorGrantedAuthority`)를 안 붙였다.** 표준 `AbstractUserDetailsAuthenticationProvider`
+.`createSuccessAuthentication` 은 `FactorGrantedAuthority.fromAuthority(FACTOR_PASSWORD)` 를 자동 부착하는데,
+커스텀 provider 라 그 규약이 누락된 것. (SS7 7.0 이 auth_time 산출을 SAS 1.x 의 세션 기반에서 **인증 팩터 기반**으로 바꿈.)
 
 ---
 
-## 4. 수용 기준 (Acceptance)
-- [ ] `scope=openid profile` authorization_code 교환이 200 + `id_token` 포함.
-- [ ] id_token 의 `auth_time` 이 null 이 아니고, `iss`/`sub`/`aud(=demo-web)`/`exp` 정상.
-- [ ] (요청 시) `nonce` 왕복, (세션 관리 시) `sid` 존재.
-- [ ] id_token 이 AS JWKS(RS256)로 검증되고 `aud` 검증 통과.
-- [ ] 실 환경(또는 충실한 테스트)에서 OIDC 로그인 깨지지 않음 확인.
+## 1. 무엇을 고쳤나 (해법, 2건 — auth-server 내부, framework-security 무변경)
+
+### ① `FrameworkAuthenticationProvider` — 인증 팩터 부착
+- principal(`User`)은 **앱 역할(`ROLE_*`)만** 유지(표준 form-login 과 동일하게 팩터는 principal 이 아닌 인증 토큰 권한에).
+- 반환하는 인증 토큰의 authorities = `역할 + FactorGrantedAuthority.fromAuthority(PASSWORD_AUTHORITY)`.
+- `FactorGrantedAuthority.fromAuthority(...)` 의 `issuedAt` 기본값 = `Instant.now()` = 로그인 시각 = **auth_time**.
+- 직렬화 안전: SS core Jackson **3** 모듈 `org.springframework.security.jackson.CoreJacksonModule`(`tools.jackson.*`)이
+  `FactorGrantedAuthority` 를 `allowIfSubType` + mixin 으로 지원(표준 form-login 도 이 팩터를 SAS JDBC 에 저장 → 검증된 경로).
+
+### ② `RoleClaimTokenCustomizer` — roles 클레임에서 팩터 제외
+- `roles` 클레임 생성 시 `FactorGrantedAuthority` 를 **필터 제외**.
+- 인증 팩터는 *인증 메커니즘 메타데이터*지 인가용 역할이 아니므로, `FACTOR_PASSWORD` 가 `roles` 클레임/다운스트림 권한으로 새 나가면 안 됨.
+
+> 결과: `openid` scope 코드 교환이 200 + id_token 발급. `auth_time` 과 `sid` 는 같은 가드 블록이라 **함께** 채워진다.
 
 ---
 
-## 5. 관련 코드/문서
-- 발급: `services/auth-server` — `AuthorizationServerConfig`(체인/oidc), `RoleClaimTokenCustomizer`(roles, id_token 에도 부여), `JdbcRotatingJwkSource`(RS256 키).
-- 라운드트립 e2e: `services/auth-server/src/test/.../e2e/TokenIssuanceRoundTripTest`(access_token leg — 본 작업의 출발점).
-- 검증기: `framework-security` `ResourceServerJwtVerifier`(aud 검증 옵션 보유) · `framework-oauth-client` `IdTokenVerifier`(RP 측).
-- 경계/배경: `docs/modules/AUTH_SERVER.md` §4 · `docs/TOKEN_VERIFICATION_GUIDE.md` · `docs/modules/OIDC_HARDENING.md`.
+## 2. 검증 (e2e)
+
+`services/auth-server/src/test/.../e2e/OidcIdTokenIssuanceTest`(`@SpringBootTest` RANDOM_PORT, profile `local`,
+MockMvc = `webAppContextSetup + springSecurity()` — 라운드트립 e2e 와 동일 하네스):
+
+- **test1 `openidCodeExchange_issues_id_token_with_valid_oidc_claims`**:
+  formLogin demo/demo → `/oauth2/authorize`(scope=`openid profile`, nonce, PKCE S256) → 코드 교환 →
+  `id_token` + `access_token` 발급 확인. id_token 을 실 `/oauth2/jwks`(RS256) + `ResourceServerJwtVerifier`
+  (`expectedAudience=demo-web` 활성)로 검증(sig/iss/aud/sub) + payload 디코드로 OIDC 클레임 단언:
+  `iss`(=issuer)·`sub`(=demo)·`auth_time`(non-null·양수)·`exp`(양수)·`nonce`(왕복)·`sid`(not-blank)·`roles`(contains ROLE_USER).
+- **test2 `id_token_with_wrong_expected_audience_is_rejected`**: 검증기 `expectedAudience="some-other-client"` →
+  진짜 id_token 이라도 aud 불일치로 `io.jsonwebtoken.JwtException` (음성).
+
+> **MockMvc 로 충분**했다(이전 가설인 WebTestClient 실 흐름/SessionRegistry 시드 불필요). SAS 기본 OIDC 세션 추적이
+> `SessionInformation` 을 채우고, 우리가 부착한 `FactorGrantedAuthority` 가 auth_time 을 만든다.
 
 ---
 
-## 6. 함정 메모(이번 세션 확정)
-- **id_token auth_time ← SessionInformation**(SS7 `JwtGenerator`). 세션 레지스트리에 세션이 없으면 null → (패치본) Assert 실패. MockMvc 폼 로그인은 세션 이벤트 미발생 → null.
-- **`openid` 있으면 id_token 실패가 access_token 발급까지 막는다** — access-token 만 보려면 `openid` 제외(라운드트립 e2e 가 그렇게 함).
-- 테스트 전략: id_token 은 **실 세션이 필요** → MockMvc 보다 WebTestClient 실 흐름 또는 레지스트리 시드.
+## 3. 수용 기준 (Acceptance) — ✅
+- [x] `scope=openid profile` authorization_code 교환이 200 + `id_token` 포함.
+- [x] id_token 의 `auth_time` 이 null 이 아니고, `iss`/`sub`/`aud(=demo-web)`/`exp` 정상.
+- [x] `nonce` 왕복, `sid` 존재.
+- [x] id_token 이 AS JWKS(RS256)로 검증되고 `aud` 검증(`expectedAudience=demo-web`) 통과 / 불일치는 거부.
+- [x] framework-security 무변경(수정은 auth-server 내부 2파일).
+- [ ] **받는 쪽(로컬/CI) 실제 실행** — 작성 환경 Central 차단으로 미실행(정적 리뷰만). `./gradlew :services:auth-server:test --tests "*OidcIdTokenIssuanceTest"` + 라운드트립 회귀 재확인.
+
+---
+
+## 4. 관련 코드/문서
+- 수정: `services/auth-server/.../user/FrameworkAuthenticationProvider.java` · `.../user/RoleClaimTokenCustomizer.java`.
+- 신규 테스트: `services/auth-server/src/test/.../e2e/OidcIdTokenIssuanceTest.java`.
+- 발급 설정: `AuthorizationServerConfig`(체인/oidc) · `JdbcRotatingJwkSource`(RS256 키) · `LocalDemo`(demo-web public PKCE).
+- 검증기: `framework-security` `ResourceServerJwtVerifier`(aud 검증 옵션) · `framework-oauth-client` `IdTokenVerifier`(RP 측, §5).
+- 배경: `docs/modules/AUTH_SERVER.md` · `docs/modules/OIDC_HARDENING.md` · `docs/TOKEN_VERIFICATION_GUIDE.md` · HANDOFF §6 함정.
+
+---
+
+## 5. 다음 (선택) — OIDC 풀루프 마감
+- RP 측 `framework-oauth-client` 의 `IdTokenVerifier` 와 정합 확인 — AS 가 발급한 id_token 을 RP 가 그대로 검증하는
+  경로까지 e2e 로 닫으면 OIDC 전 구간(발급 AS ↔ 검증 RP) 완결.
+- (devops) CI 게이트(archtest + 전 모듈 test PR 차단)·멀티모듈 jacoco 집계도 후보.
+
+---
+
+## 6. 함정 메모(정정 후 확정)
+- **id_token `auth_time` ← `FactorGrantedAuthority`(SessionInformation 아님)**. SS7 7.0 `JwtGenerator.getAuthenticationTime`
+  은 principal 권한의 `FactorGrantedAuthority` 최신 `issuedAt` 으로 산출, 없으면 Assert. SAS 와 함께 쓰는 **커스텀
+  `AuthenticationProvider` 는 표준 provider 처럼 인증 팩터를 부착**해야 한다(이걸 빠뜨려서 났던 문제).
+- `auth_time`/`sid` 는 `JwtGenerator` 의 **한 `if (sessionInformation != null)` 가드에서 동시 부여** — auth_time 이
+  나오면 sid 도 함께 나온다.
+- 인증 팩터는 인가 역할이 아니다 → `roles` 클레임/다운스트림 권한에서 **제외**(②).
+- (테스트 헬퍼) JWT 서명 변조 음성테스트는 **서명 세그먼트 중간 문자**를 바꿔야 확실히 깨진다(마지막 base64url 문자는 trailing-bit 무효 가능).

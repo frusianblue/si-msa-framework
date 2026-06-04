@@ -3,6 +3,7 @@ package com.company.authserver.user;
 import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.FactorGrantedAuthority;
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
@@ -24,7 +25,11 @@ public final class RoleClaimTokenCustomizer implements OAuth2TokenCustomizer<Jwt
             return;
         }
         Authentication principal = context.getPrincipal();
+        // 앱 역할만 roles 로 — 인증 팩터(FactorGrantedAuthority, 예: FACTOR_PASSWORD)는 제외한다.
+        // SS7 form-login 인증은 권한에 인증 팩터를 함께 싣는데(id_token auth_time 산출용), 이는 인증 메커니즘
+        // 메타데이터지 인가용 역할이 아니므로 roles 클레임/다운스트림 권한으로 새 나가면 안 된다.
         List<String> roles = principal.getAuthorities().stream()
+                .filter(authority -> !(authority instanceof FactorGrantedAuthority))
                 .map(GrantedAuthority::getAuthority)
                 .toList();
         context.getClaims().claim("roles", roles);

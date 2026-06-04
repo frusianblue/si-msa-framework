@@ -172,8 +172,7 @@ class TokenIssuanceRoundTripTest {
 
     /** demo-service 로 client_credentials 발급 → access_token(RS256 JWT) 반환. */
     private String issueClientCredentialsToken() throws Exception {
-        String basic = Base64.getEncoder()
-                .encodeToString("demo-service:demo-secret".getBytes(StandardCharsets.UTF_8));
+        String basic = Base64.getEncoder().encodeToString("demo-service:demo-secret".getBytes(StandardCharsets.UTF_8));
         MvcResult result = mockMvc.perform(post("/oauth2/token")
                         .header(HttpHeaders.AUTHORIZATION, "Basic " + basic)
                         .param("grant_type", "client_credentials")

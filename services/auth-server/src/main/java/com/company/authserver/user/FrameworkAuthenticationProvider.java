@@ -3,6 +3,7 @@ package com.company.authserver.user;
 import com.company.framework.security.auth.AuthenticatedUser;
 import com.company.framework.security.auth.Authenticator;
 import com.company.framework.security.auth.LoginCommand;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -10,6 +11,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.FactorGrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 
@@ -37,10 +39,23 @@ public final class FrameworkAuthenticationProvider implements AuthenticationProv
         String password = String.valueOf(authentication.getCredentials());
         try {
             AuthenticatedUser au = authenticator.authenticate(new LoginCommand(loginId, password, Map.of()));
-            List<GrantedAuthority> authorities = toAuthorities(au.roles());
+            List<GrantedAuthority> roleAuthorities = toAuthorities(au.roles());
+
+            // ⚠️ SS7(7.0) OIDC id_token auth_time 의 필수 전제: 인증 결과에 인증 팩터가 있어야 한다.
+            // SAS 의 JwtGenerator.getAuthenticationTime(principal) 은 principal 의 GrantedAuthority 중
+            // FactorGrantedAuthority 의 issuedAt 으로 id_token 의 auth_time 을 산출하고, 하나도 없으면
+            // "authenticationTime cannot be null" 로 Assert 실패한다(→ openid scope 코드 교환 전체가 실패).
+            // 표준 AbstractUserDetailsAuthenticationProvider.createSuccessAuthentication 도 FACTOR_PASSWORD 를
+            // 동일하게 부착한다 — 커스텀 provider 라 누락됐던 것을 동일 규약으로 맞춘다. (SAS 1.x 는 auth_time 을
+            // SessionInformation.getLastRequest() 에서 가져왔으나 7.0 에서 인증 팩터 기반으로 바뀜.)
+            // issuedAt 기본값 = Instant.now() = 로그인 시각 = auth_time. 직렬화는 SS core Jackson(3) 모듈이 지원.
+            List<GrantedAuthority> tokenAuthorities = new ArrayList<>(roleAuthorities);
+            tokenAuthorities.add(FactorGrantedAuthority.fromAuthority(FactorGrantedAuthority.PASSWORD_AUTHORITY));
+
             // username = 우리 userId. 토큰 sub 로 이어지고, 클레임 매핑의 기준이 된다.
-            User principal = new User(au.userId(), "", authorities);
-            return UsernamePasswordAuthenticationToken.authenticated(principal, null, authorities);
+            // principal(UserDetails) 은 앱 역할만 — 팩터는 인증 토큰 권한에만 둔다(표준 form-login 과 동일).
+            User principal = new User(au.userId(), "", roleAuthorities);
+            return UsernamePasswordAuthenticationToken.authenticated(principal, null, tokenAuthorities);
         } catch (RuntimeException e) {
             // 인증 실패는 표준 스프링 예외로 변환(SAS 폼 로그인 흐름이 처리).
             throw new BadCredentialsException("인증에 실패했습니다.", e);

@@ -45,10 +45,7 @@ public class SigningKeyRotationService {
 
         SigningKey newest = mapper.findNewestActive();
         if (newest != null && newest.createdAt() != null && newest.createdAt().isAfter(now.minus(minInterval))) {
-            log.info(
-                    "[signing-key] 회전 스킵 — 최근({}) 내 ACTIVE 존재. kid={}",
-                    minInterval,
-                    newest.kid());
+            log.info("[signing-key] 회전 스킵 — 최근({}) 내 ACTIVE 존재. kid={}", minInterval, newest.kid());
             return Outcome.skipped(newest.kid());
         }
 

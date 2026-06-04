@@ -131,7 +131,9 @@ class SigningKeyRotationServiceTest {
     void rotate_purgesOnlyKeysRetiredBeyondGrace() {
         // 20일 전 폐기된 RETIRED(grace 14d 초과 → 정리 대상).
         mapper.insert(new SigningKey(
-                "veryOld", "{}", SigningKey.RETIRED,
+                "veryOld",
+                "{}",
+                SigningKey.RETIRED,
                 Instant.now().minus(Duration.ofDays(60)),
                 Instant.now().minus(Duration.ofDays(20))));
         // 직전 ACTIVE(40일 전 생성) — 이번 회전에서 RETIRE 되며 retired_at=now → 유지돼야 함.

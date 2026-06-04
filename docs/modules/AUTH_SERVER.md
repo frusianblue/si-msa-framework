@@ -66,9 +66,15 @@ db/migration: V1(SAS 스키마) · V2(서명키) · V3(빈 RBAC) · V4(framework
 > **✅ 토큰 발급 라운드트립 e2e 통과(2026-06-04)** — `services/auth-server` `e2e/TokenIssuanceRoundTripTest`: 실 기동 AS 가
 > 두 그랜트(client_credentials·authorization_code+PKCE)로 발급한 RS256 access token 을 실 `/oauth2/jwks` + 논리 issuer 로
 > 다운스트림 zero-trust 검증기(`ResourceServerJwtVerifier`/`DownstreamTokenAuthenticator`)가 재검증(음성 2종 포함). 4/4 통과.
-> **단 leg2 는 `openid` 제외(id_token 미발급)** — id_token 의 `auth_time` 이 `SessionInformation`(세션 레지스트리) 의존인데
-> MockMvc 폼 로그인이 세션 이벤트를 안 일으켜 null → 코드 교환 실패. **OIDC id_token 발급/검증은 후속**:
-> [`../NEXT_OIDC_ID_TOKEN.md`](../NEXT_OIDC_ID_TOKEN.md).
+> **단 그 leg2 는 `openid` 제외(access_token 만)** — 당시 id_token 코드 교환이 `"authenticationTime cannot be null"`
+> 로 실패했기 때문. (당초 `SessionInformation` 의존으로 진단했으나 **오진**이었다 — 아래 ✅ 참고.)
+>
+> **✅ OIDC id_token 발급 완료(2026-06-04)** — `e2e/OidcIdTokenIssuanceTest`: `authorization_code+PKCE` 에 `openid`
+> 포함 → id_token 발급 + 실 JWKS(RS256)/클레임 검증(iss·sub·aud=demo-web·auth_time·exp·nonce·sid·roles, aud 불일치 음성).
+> **진짜 원인 = 커스텀 `FrameworkAuthenticationProvider` 가 인증 팩터를 안 붙인 것**(SS7 7.0 `JwtGenerator` 는 auth_time
+> 을 `SessionInformation` 이 아니라 principal 의 `FactorGrantedAuthority#issuedAt` 에서 산출). 수정 = provider 가
+> `FactorGrantedAuthority.fromAuthority(PASSWORD_AUTHORITY)` 부착 + `RoleClaimTokenCustomizer` 가 roles 클레임에서 팩터 제외
+> (framework-security 무변경). 상세·정정 경위 = [`../NEXT_OIDC_ID_TOKEN.md`](../NEXT_OIDC_ID_TOKEN.md) · HANDOFF §6.
 >
 > 암호화 값(서명키 개인키 `enc:` · 설정 `ENC(...)`) 다루는 법은 [`../ENCRYPTION_GUIDE.md`](../ENCRYPTION_GUIDE.md).
 
