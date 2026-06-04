@@ -25,7 +25,9 @@
 - 문서: `NEXT_SIGNING_KEY_ROTATION.md`(완료/편차 배너)·`modules/AUTH_SERVER.md` §3/§7/§8·`HANDOFF.md`(§3·§6 함정 묶음 a~g·§7).
 
 ## 새로 밟은/확정한 함정 (HANDOFF §6 등록)
-- **grace=`retired_at` 앵커**(created_at 기준이면 grace<주기 시 오버랩 붕괴) · **회전 순서 retire-then-insert**(insert-then-retire 는 0-ACTIVE) · **`@SchedulerLock` 없으면 모든 파드 회전**(memory 락은 파드 간 무력 → 운영은 jdbc|redis 필수, 멱등 가드는 2차 안전망일 뿐) · **`@EnableScheduling` 누락 시 조용히 무동작** · **개인키 평문↔암호문 분기 = `enc:` 마커**(읽기는 토글 무관 항상 인지 → 혼재/롤백 안전, 설정 암호화 `ENC()` 와 다른 표기) · **`generateRsaKey()` package-private** → 회전 신규 클래스를 `jose` 패키지에 · **스케줄러=thin wrapper / 서비스=@Transactional 분리**(AOP 어드바이저 충돌·자기호출 프록시 우회 회피).
+- **🔧 framework-lock 런타임 버그 수정 (auth-server jdbc-only 소비자에서 노출)**: `LockAutoConfiguration` 최상위에 `redisDistributedLock(StringRedisTemplate)` 빈이 있고 형제 `schedulerLockAspect` 가 타입 미지정 `@ConditionalOnMissingBean` 이라, 빈 타입 추론이 클래스 introspect(`getDeclaredMethods()`) 를 트리거 → redis 없는 런타임에서 `NoClassDefFoundError: StringRedisTemplate` → 기동 불가. **해법 = redis/jdbc 빈을 `@ConditionalOnClass` 가드 중첩 `@Configuration`(`RedisLockConfiguration`/`JdbcLockConfiguration`)으로 격리 + 애스펙트 `@ConditionalOnMissingBean(SchedulerLockAspect.class)` 타입 명시.** 일반 교훈: autoconfig 최상위 @Configuration 은 런타임 보장 타입만, compileOnly/optional 타입은 중첩 @ConditionalOnClass 로 격리. 테스트(클래스패스에 redis 있음)는 무영향 → 그래서 잠복했었음.
+- **🔧 `@MapperScan` 매퍼 오인 충돌 수정 (auth-server 기동)**: `@MapperScan("...jose")` 가 필터 없이 걸려 SPI 인터페이스 `SigningKeyCipher`/`SigningKeyGenerator` 까지 매퍼로 등록 → 동명 `@Bean` 과 `ConflictingBeanDefinitionException`. **해법 = `@MapperScan(annotationClass = Mapper.class)`** 로 `@Mapper` 인터페이스만 스캔. 일반 교훈: 명시적 `@MapperScan` 대상 패키지에 매퍼 외 인터페이스를 두려면 `annotationClass`/`markerInterface` 필터 필수(자동스캔은 기본 안전, 명시 스캔은 기본 무필터).
+- 회전 함정: **grace=`retired_at` 앵커** · **회전 순서 retire-then-insert**(0-ACTIVE 방지) · **`@SchedulerLock` 없으면 모든 파드 회전** · **`@EnableScheduling` 누락 시 조용히 무동작** · **개인키 `enc:` 마커 분기**(읽기는 토글 무관 인지) · **스케줄러=thin wrapper / 서비스=@Transactional 분리**.
 
 ## 실행/검증 (받는 쪽 — 다음 세션 필수)
 ```bash
