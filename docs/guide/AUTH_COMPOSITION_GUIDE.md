@@ -1,7 +1,7 @@
 # 인증·아이덴티티 구성 가이드 (Composition Decisions)
 
 > **누가 보나**: 프레임워크를 조립하는 **오너**. [`FRAMEWORK_MODULES.md`](../FRAMEWORK_MODULES.md) 가 "무엇이 있나"(카탈로그)라면, 이 문서는 **"무엇을 골라 어떻게 조합하나"**(결정·레시피)다.
-> 사업유형 일괄 프리셋은 [`USAGE_BY_PROJECT_TYPE.md`](USAGE_BY_PROJECT_TYPE.md), 모듈 의존/토글은 [`MODULE_COMPOSITION.md`](MODULE_COMPOSITION.md).
+> 사업유형 일괄 프리셋은 [`USAGE_BY_PROJECT_TYPE.md`](USAGE_BY_PROJECT_TYPE.md), 모듈 의존/토글은 [`MODULE_COMPOSITION.md`](MODULE_COMPOSITION.md). 구현하며 막혔던 함정·확장은 [`JWT_STATELESS_PITFALLS.md`](JWT_STATELESS_PITFALLS.md).
 
 **구현 상태 표기** — ✅ 구현됨(바로 켬) · 🟡 기존 모듈 설정으로 가능 · ⬜ 미구현(필요 시 추가). 같은 방식으로 추후 다른 영역(데이터/연계 등)도 확장 가능.
 

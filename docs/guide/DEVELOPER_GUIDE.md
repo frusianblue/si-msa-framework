@@ -224,4 +224,4 @@ spring:
 - ❌ 사용자 입력을 ORDER BY/파일경로에 직접 사용 — `SecureUtils`/`toSafeOrderBy` 경유.
 - ❌ 감사필드(`created_by` 등) 수동 set, HTTP 상태 직접 생성(예외로 위임).
 
-위반 시 `./gradlew :framework:framework-archtest:test` 에서 실패한다. 규약 배경은 [`../reference/CHANGES_AND_DEPRECATIONS.md`](../reference/CHANGES_AND_DEPRECATIONS.md).
+위반 시 `./gradlew :framework:framework-archtest:test` 에서 실패한다. 규약 배경은 [`../reference/CHANGES_AND_DEPRECATIONS.md`](../reference/CHANGES_AND_DEPRECATIONS.md), 실제 겪은 함정 모음은 [`PITFALLS.md`](PITFALLS.md).

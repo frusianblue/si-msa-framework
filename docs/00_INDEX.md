@@ -17,9 +17,11 @@
 ### ⓑ 프레임워크를 **조립·확장·유지보수하는** 사람 (오너)
 1. [`FRAMEWORK_MODULES.md`](FRAMEWORK_MODULES.md) — 전 모듈 카탈로그·토글 규약·의존 관계·구축 순서
 2. [`guide/AUTH_COMPOSITION_GUIDE.md`](guide/AUTH_COMPOSITION_GUIDE.md) — **무엇을 골라 조합하나**: 인증/상태/소셜/MFA/SSO 결정 + 표준 레시피
-3. [`reference/STACK.md`](reference/STACK.md) — 버전 단일 소스(Boot 4.0.6 / Java 21 / SC 2025.1.1 / Jackson 3)
-4. [`reference/CHANGES_AND_DEPRECATIONS.md`](reference/CHANGES_AND_DEPRECATIONS.md) — 버전업 시 깨지는 지점
-5. 모듈 내부 동작 → 각 `framework/framework-*/README.md`
+3. [`guide/JWT_STATELESS_PITFALLS.md`](guide/JWT_STATELESS_PITFALLS.md) — **JWT·무상태 함정 사례집 + 확장 가이드**(실제 겪은 문제·원인·해결·교훈)
+4. [`guide/PITFALLS.md`](guide/PITFALLS.md) — **함정·교훈 대장**(전 영역 누적 자산: 빌드/Jackson/오토컨피그/보안/DB/테스트/환경). 새 함정은 여기 계속 쌓는다
+5. [`reference/STACK.md`](reference/STACK.md) — 버전 단일 소스(Boot 4.0.6 / Java 21 / SC 2025.1.1 / Jackson 3)
+6. [`reference/CHANGES_AND_DEPRECATIONS.md`](reference/CHANGES_AND_DEPRECATIONS.md) — 버전업 시 깨지는 지점
+7. 모듈 내부 동작 → 각 `framework/framework-*/README.md`
 
 ### ⓒ **운영·배포(DevOps)** 하는 사람
 1. [`ops/LOCAL_SETUP.md`](ops/LOCAL_SETUP.md) — 로컬 DB/Redis 기동
@@ -36,6 +38,8 @@
 | 전체 모듈 카탈로그·의존·구축순서 | [`FRAMEWORK_MODULES.md`](FRAMEWORK_MODULES.md) |
 | 모듈 조합(내 프레임워크 만들기) | [`guide/MODULE_COMPOSITION.md`](guide/MODULE_COMPOSITION.md) |
 | 인증/상태/소셜/MFA/SSO 결정·레시피 | [`guide/AUTH_COMPOSITION_GUIDE.md`](guide/AUTH_COMPOSITION_GUIDE.md) |
+| JWT·무상태 함정·확장 가이드 | [`guide/JWT_STATELESS_PITFALLS.md`](guide/JWT_STATELESS_PITFALLS.md) |
+| 함정·교훈 대장(전 영역 누적) | [`guide/PITFALLS.md`](guide/PITFALLS.md) |
 | 스택/버전 핀 | [`reference/STACK.md`](reference/STACK.md) |
 | 기본 제공 기능 목록 | [`reference/BASELINE_FEATURES.md`](reference/BASELINE_FEATURES.md) |
 | 설정값/필드 암호화(`ENC(...)`) | [`reference/ENCRYPTION_GUIDE.md`](reference/ENCRYPTION_GUIDE.md) |
