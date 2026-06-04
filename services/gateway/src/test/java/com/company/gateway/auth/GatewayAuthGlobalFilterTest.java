@@ -30,6 +30,7 @@ class GatewayAuthGlobalFilterTest {
     private static final String SECRET = "0123456789012345678901234567890123456789"; // 40 bytes
     private final SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
     private final GatewayTokenVerifier verifier = new GatewayTokenVerifier(SECRET, "access");
+    private final GatewayTokenAuthenticator authenticator = new GatewayTokenAuthenticator(verifier, null);
     private final GatewayAuthProperties props = new GatewayAuthProperties();
 
     private String accessToken(String jti, String subject, List<String> roles) {
@@ -54,7 +55,7 @@ class GatewayAuthGlobalFilterTest {
     @Test
     void blacklisted_token_is_rejected_with_401_and_chain_not_called() {
         GatewayTokenBlacklist blacklist = jti -> Mono.just(true);
-        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(verifier, blacklist, props);
+        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(authenticator, blacklist, props);
         String token = accessToken("jti-revoked", "user-1", List.of("USER"));
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/v1/orders").header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
@@ -70,7 +71,7 @@ class GatewayAuthGlobalFilterTest {
     @Test
     void valid_non_blacklisted_token_passes_and_injects_trusted_headers() {
         GatewayTokenBlacklist blacklist = jti -> Mono.just(false);
-        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(verifier, blacklist, props);
+        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(authenticator, blacklist, props);
         String token = accessToken("jti-live", "user-7", List.of("ADMIN"));
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/v1/orders").header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
@@ -89,7 +90,7 @@ class GatewayAuthGlobalFilterTest {
     @Test
     void permit_all_path_skips_auth_even_if_blacklist_would_reject() {
         GatewayTokenBlacklist blacklist = jti -> Mono.just(true); // 화이트리스트면 토큰/블랙리스트 무관 통과
-        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(verifier, blacklist, props);
+        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(authenticator, blacklist, props);
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/api/v1/auth/login"));
         AtomicBoolean chainCalled = new AtomicBoolean(false);
 
@@ -102,7 +103,7 @@ class GatewayAuthGlobalFilterTest {
     @Test
     void missing_bearer_is_rejected_with_401() {
         GatewayTokenBlacklist blacklist = jti -> Mono.just(false);
-        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(verifier, blacklist, props);
+        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(authenticator, blacklist, props);
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/api/v1/orders"));
         AtomicBoolean chainCalled = new AtomicBoolean(false);
 
@@ -116,7 +117,7 @@ class GatewayAuthGlobalFilterTest {
     @Test
     void client_supplied_trusted_headers_are_stripped() {
         GatewayTokenBlacklist blacklist = jti -> Mono.just(false);
-        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(verifier, blacklist, props);
+        GatewayAuthGlobalFilter filter = new GatewayAuthGlobalFilter(authenticator, blacklist, props);
         String token = accessToken("jti-live", "real-user", List.of("USER"));
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/api/v1/orders")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)

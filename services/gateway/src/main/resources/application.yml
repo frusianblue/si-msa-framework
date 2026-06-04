@@ -76,6 +76,13 @@ gateway:
     token-type: access
     blacklist-check:
       enabled: ${GATEWAY_BLACKLIST_CHECK_ENABLED:false}  # 중앙 로그아웃(SSO). true 면 reactive Redis 필요.
+    # 이중 발급기(AUTH_SERVER.md §4): AS(OP) 발급 RS256 토큰을 JWKS 로 검증. 기본 off(자체 JWT 만).
+    #   그룹사/외부 위임 연동을 켤 때만 true. issuer 는 services/auth-server 의 auth-server.issuer 와 동일해야 한다.
+    authorization-server:
+      enabled: ${GATEWAY_AS_ENABLED:false}
+      issuer: ${AUTH_SERVER_ISSUER:}
+      jwks-uri: ${AUTH_SERVER_JWKS_URI:}      # 생략 시 {issuer}/oauth2/jwks 자동
+      roles-claim: roles
     permit-all-patterns:
       - /api/*/auth/**
       - /actuator/**

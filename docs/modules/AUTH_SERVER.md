@@ -50,7 +50,13 @@ db/migration: V1(SAS 스키마) · V2(서명키)
 - **issuer 로 분기**: 토큰의 `iss` 가 AS issuer 면 JWKS 경로, 우리 내부 issuer 면 기존 자체 JWT 경로. 검증·로그아웃·블랙리스트 경로가 갈리므로 **경계를 코드/문서로 못 박을 것**(이중 발급기 혼란 = 핵심 함정).
 - **로그아웃 경계**: 자체 JWT 의 jti 블랙리스트/`logoutAllByUserId` 는 내부 토큰에만 적용. AS 토큰 폐기는 `/oauth2/revoke`(AS) 경로. 혼용 금지.
 
-> 본 드롭은 **프레임워크 라이브러리 무변경**. 위 정합은 리소스 서버 측 설정/어댑터로 수행(다음 작업 후보).
+> 본 정합의 **정본 검증 지점 = 게이트웨이**(1차 canonical 검증자). 게이트웨이가 AS 토큰을 검증해
+> `X-User-Id`/`X-User-Roles` 를 주입하면, 다운스트림(`framework-context`)은 **무변경으로 AS 발급자를 투명 수용**한다.
+>
+> **✅ 게이트웨이 이중 발급기 구현 완료(2026-06-04)** — `services/gateway` 의 `GatewayJwksTokenVerifier`(JWKS/RS256,
+> `JwksKeyResolver` 패턴 자립 재현) + `GatewayTokenAuthenticator`(iss 분기). **프레임워크 라이브러리 무변경.**
+> 켜는 법은 [`GATEWAY_EDGE_AUTH.md`](./GATEWAY_EDGE_AUTH.md) "이중 발급기" 절. 다운스트림 servlet 자체 재검증
+> (zero-trust)은 선택적 심층방어이며 별도 후속(§8).
 
 ## 5. 엔드포인트 (SAS 기본)
 
@@ -83,6 +89,11 @@ db/migration: V1(SAS 스키마) · V2(서명키)
 
 ## 8. 다음 (후속)
 
-- **리소스 서버 이중 issuer 정합**(프레임워크 무변경): 게이트웨이/리소스서버가 토큰 `iss` 로 분기 — AS issuer 면 `framework-oauth-client.JwksKeyResolver` 로 `{issuer}/oauth2/jwks` 검증(RS256), 내부 issuer 면 기존 자체 JWT 경로(§4).
+- ~~**리소스 서버 이중 issuer 정합(게이트웨이)**~~ **✅ 완료(2026-06-04)**: `services/gateway` 가 토큰 `iss` 로 분기 —
+  AS issuer 면 `{issuer}/oauth2/jwks` 로 RS256 검증(`GatewayJwksTokenVerifier`), 내부면 자체 JWT(HMAC). 프레임워크 무변경.
+  상세 [`GATEWAY_EDGE_AUTH.md`](./GATEWAY_EDGE_AUTH.md) "이중 발급기".
+- **(선택) 다운스트림 servlet zero-trust 재검증**: 현재 다운스트림은 게이트웨이가 주입한 `X-User-*` 헤더를 신뢰
+  (게이트웨이=1차 검증자, K8s NetworkPolicy 로 인그레스 제한이 정석). 더 강한 zero-trust 가 필요하면 user-service 등에서
+  `Authorization` Bearer 를 직접 이중 issuer 재검증해야 하며, 이는 `framework-security`(servlet) 변경을 수반하므로 **별도 드롭**.
 - **서명키 회전 스케줄러**: `framework-lock @SchedulerLock`(리더 선출)로 단일 파드만 새 ACTIVE 발급 + 오래된 키 RETIRE. 개인키 저장 암호화(KMS/Vault).
 - **토큰 발급 라운드트립 통합테스트**: demo-web authorization_code+PKCE, demo-service client_credentials.

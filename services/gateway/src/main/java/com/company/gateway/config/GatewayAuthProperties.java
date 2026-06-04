@@ -1,5 +1,6 @@
 package com.company.gateway.config;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -14,7 +15,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     jwt-secret: "${JWT_SECRET}"     # framework.security.jwt.secret 와 "동일한" 비밀키여야 한다.
  *     token-type: access             # JWT typ 클레임 검증값(access 토큰만 통과)
  *     blacklist-check:                # 중앙 로그아웃(SSO) — 기본 off
- *       enabled: false               #   true 면 jti 를 reactive Redis 블랙리스트와 대조
+ *       enabled: false               #   true 면 jti 를 reactive Redis 블랙리스트와 대조(자체 JWT 한정)
+ *     authorization-server:           # 이중 발급기 — AS(OP) 토큰 수용. 기본 off(자체 JWT 만 검증)
+ *       enabled: false               #   true 면 iss=AS issuer 인 RS256 토큰을 JWKS 로 검증
+ *       issuer: https://auth.example.com          # AS issuer(= auth-server.issuer 와 동일)
+ *       jwks-uri: https://auth.example.com/oauth2/jwks  # 생략 시 {issuer}/oauth2/jwks 로 자동 구성
+ *       roles-claim: roles           # 권한 클레임명(AS RoleClaimTokenCustomizer 와 정합)
  *     user-id-header: X-User-Id       # 검증 성공 시 sub 를 이 헤더로 다운스트림에 주입
  *     roles-header: X-User-Roles      # roles 를 쉼표로 연결해 주입
  *     tenant-header: X-Tenant-Id      # 클라이언트 위조 방지를 위해 항상 제거(주입은 하지 않음 — 토큰에 없음)
@@ -38,6 +44,7 @@ public class GatewayAuthProperties {
     private String tenantHeader = "X-Tenant-Id";
     private List<String> permitAllPatterns = new ArrayList<>(List.of("/api/*/auth/**", "/actuator/**", "/fallback/**"));
     private final BlacklistCheck blacklistCheck = new BlacklistCheck();
+    private final AuthorizationServer authorizationServer = new AuthorizationServer();
 
     public boolean isEnabled() {
         return enabled;
@@ -99,6 +106,10 @@ public class GatewayAuthProperties {
         return blacklistCheck;
     }
 
+    public AuthorizationServer getAuthorizationServer() {
+        return authorizationServer;
+    }
+
     /**
      * 중앙 로그아웃(SSO) 옵트인 설정. {@code enabled=true} 면 게이트웨이가 access jti 를 공유 저장소
      * (reactive Redis)의 블랙리스트와 대조해 로그아웃된 토큰을 엣지에서 차단한다. 기본 off(서명/만료만 검증).
@@ -119,6 +130,92 @@ public class GatewayAuthProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+    }
+
+    /**
+     * 이중 발급기(AUTH_SERVER.md §4) — Authorization Server(OP)가 발급한 RS256 토큰을 엣지에서 수용하는 옵트인 설정.
+     * {@code enabled=true} 면 토큰의 {@code iss} 가 {@link #issuer} 와 같을 때 {@link #jwksUri} 의 공개키로 검증한다.
+     * 기본 off — 켜기 전에는 자체 JWT(HMAC)만 검증(도입 전 동작과 동일).
+     *
+     * <pre>
+     * gateway:
+     *   auth:
+     *     authorization-server:
+     *       enabled: false                                   # 운영 그룹사 연동 시 true
+     *       issuer: ${AUTH_SERVER_ISSUER:}                   # = services/auth-server 의 auth-server.issuer
+     *       jwks-uri: ${AUTH_SERVER_JWKS_URI:}               # 생략 시 {issuer}/oauth2/jwks 로 자동
+     *       roles-claim: roles                               # AS RoleClaimTokenCustomizer 와 정합
+     *       clock-skew: 60s
+     *       jwk-cache-ttl: 1h
+     * </pre>
+     */
+    public static class AuthorizationServer {
+        private boolean enabled = false;
+        private String issuer;
+        private String jwksUri;
+        private String rolesClaim = "roles";
+        private Duration clockSkew = Duration.ofSeconds(60);
+        private Duration jwkCacheTtl = Duration.ofHours(1);
+
+        /** jwks-uri 가 비어 있으면 issuer 로부터 표준 경로({issuer}/oauth2/jwks)를 구성한다. */
+        public String resolvedJwksUri() {
+            if (jwksUri != null && !jwksUri.isBlank()) {
+                return jwksUri;
+            }
+            if (issuer == null || issuer.isBlank()) {
+                return null;
+            }
+            String base = issuer.endsWith("/") ? issuer.substring(0, issuer.length() - 1) : issuer;
+            return base + "/oauth2/jwks";
+        }
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getIssuer() {
+            return issuer;
+        }
+
+        public void setIssuer(String issuer) {
+            this.issuer = issuer;
+        }
+
+        public String getJwksUri() {
+            return jwksUri;
+        }
+
+        public void setJwksUri(String jwksUri) {
+            this.jwksUri = jwksUri;
+        }
+
+        public String getRolesClaim() {
+            return rolesClaim;
+        }
+
+        public void setRolesClaim(String rolesClaim) {
+            this.rolesClaim = rolesClaim;
+        }
+
+        public Duration getClockSkew() {
+            return clockSkew;
+        }
+
+        public void setClockSkew(Duration clockSkew) {
+            this.clockSkew = clockSkew;
+        }
+
+        public Duration getJwkCacheTtl() {
+            return jwkCacheTtl;
+        }
+
+        public void setJwkCacheTtl(Duration jwkCacheTtl) {
+            this.jwkCacheTtl = jwkCacheTtl;
         }
     }
 }

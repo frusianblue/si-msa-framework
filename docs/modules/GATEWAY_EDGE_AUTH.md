@@ -11,7 +11,8 @@
 [클라이언트] --Bearer JWT--> [게이트웨이]
                                │ 1) 클라이언트가 보낸 X-User-* 헤더 제거(스푸핑 차단)
                                │ 2) 화이트리스트(/api/*/auth/**, /actuator/**, /fallback/**)면 그냥 통과
-                               │ 3) 그 외엔 JWT 서명+만료+typ=access 검증 (실패 → 401)
+                               │ 3) 그 외엔 JWT 검증 (실패 → 401)
+                               │    iss 로 분기 — 자체 JWT=HMAC+typ=access / AS=RS256·JWKS (이중 발급기)
                                │ 4) sub→X-User-Id, roles→X-User-Roles 주입 + userId 로 레이트리밋
                                ▼
                           [user-service / admin-service ...]
@@ -71,6 +72,58 @@ export GATEWAY_AUTH_ENABLED=true
 > **신뢰 경계**: "게이트웨이를 거친 요청만 신뢰"는 네트워크에서 보장하는 게 정석이다. K8s 라면 NetworkPolicy 로
 > 백엔드 서비스의 인그레스를 게이트웨이 파드로만 제한하라. `AddRequestHeader=X-Gateway` 같은 상수 헤더는
 > 위조 가능하므로 신뢰 근거로 쓰지 말 것.
+
+---
+
+## 이중 발급기 (자체 JWT + Authorization Server)
+
+게이트웨이는 **두 종류의 발급자**를 동시에 받을 수 있다(옵트인). 설계 배경/경계는
+[`AUTH_SERVER.md`](./AUTH_SERVER.md) §4 가 정본이다.
+
+| 구분 | 자체 JWT (INTERNAL) | AS 토큰 (AUTHORIZATION_SERVER) |
+|---|---|---|
+| 발급자 | `framework-security` `JwtProvider` | `services/auth-server` (OP) |
+| 서명 | HMAC(대칭키, `jwt-secret` 공유) | RS256(JWKS 공개키) |
+| `iss` | 없음 | AS issuer(설정값) |
+| 검증 | 서명+만료+`typ=access` | 서명(JWKS)+만료+`iss` 일치+`sub` 필수 |
+| 폐기 | jti 블랙리스트(중앙 로그아웃) | **AS `/oauth2/revoke`** (게이트웨이 블랙리스트 미적용) |
+
+분기 방식: 토큰 payload 의 `iss` 를 **서명 검증 전에 엿보고**(라우팅 전용), AS issuer 와 같으면 JWKS 경로,
+아니면 자체 JWT 경로로 보낸다. **`iss` 엿보기는 신뢰 경계가 아니다** — 분기된 경로가 서명을 끝까지 검증하므로,
+`iss` 를 위조해도 라우팅만 바뀔 뿐 위조 토큰은 통과하지 못한다(잘못 분기되면 그 경로의 서명 검증에서 탈락).
+
+구현 노트:
+- WebFlux 게이트웨이에 servlet 의존(`framework-oauth-client`)을 끌어오지 않기 위해, `JwksKeyResolver` 패턴
+  (kid 캐시 TTL + 미발견 시 1회 강제 재조회 + 쿨다운 + 단일키 fallback)을 게이트웨이 안에 **자립적으로 재현**했다
+  (`GatewayJwksTokenVerifier`, jjwt `keyLocator`).
+- JWKS 조회는 블로킹 IO(`RestClient`)이므로 **AS 토큰일 때만** `boundedElastic` 스케줄러로 오프로드한다.
+  자체 JWT 핫패스는 이벤트 루프에서 그대로(CPU only) — 도입 전 성능 특성 유지.
+- **§4 경계**: AS 토큰은 자체 jti 블랙리스트를 조회하지 않는다(혼용 금지). 다운스트림(`framework-context`)은
+  주입된 `X-User-Id`/`X-User-Roles` 만 읽으므로, AS 발급자 수용을 위해 **프레임워크/다운스트림 코드는 무변경**이다.
+
+### AS 경로 켜는 법
+
+```yaml
+gateway:
+  auth:
+    enabled: true                                  # 엣지 인증 전체
+    jwt-secret: ${JWT_SECRET:}                     # 자체 JWT(HMAC)
+    authorization-server:
+      enabled: ${GATEWAY_AS_ENABLED:false}         # ★ AS 경로 옵트인(기본 off)
+      issuer: ${AUTH_SERVER_ISSUER:}               # = services/auth-server 의 auth-server.issuer
+      jwks-uri: ${AUTH_SERVER_JWKS_URI:}           # 생략 시 {issuer}/oauth2/jwks 자동
+      roles-claim: roles                           # AS RoleClaimTokenCustomizer 와 정합
+      clock-skew: 60s
+      jwk-cache-ttl: 1h
+```
+
+```bash
+export GATEWAY_AS_ENABLED=true
+export AUTH_SERVER_ISSUER="https://auth.yourcompany.com"   # auth-server 와 동일 값
+```
+
+기본 `authorization-server.enabled=false` → 켜기 전에는 자체 JWT(HMAC)만 검증(도입 전 동작 100% 동일).
+`enabled=true` 인데 `issuer` 가 비면 기동 시 fail-fast.
 
 ---
 
