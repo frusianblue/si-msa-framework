@@ -276,13 +276,20 @@ class TokenIssuanceRoundTripTest {
         }
     }
 
-    /** 서명 세그먼트의 마지막 문자를 1글자 바꿔 서명을 깨뜨린다(RS256 검증 실패 유도). */
+    /**
+     * 서명 세그먼트의 <b>중간</b> 문자 1글자를 바꿔 서명을 깨뜨린다(RS256 검증 실패 유도).
+     *
+     * <p>주의: 마지막 문자는 base64url 의 trailing-bit 특성상 일부 값 변경이 디코딩 바이트를 안 바꿔 변조가 무효가
+     * 될 수 있다. 중간 문자는 온전한 바이트(6비트)를 인코딩하므로 변경이 반드시 서명 바이트를 바꾼다.
+     */
     private static String tamperSignature(String jwt) {
         int lastDot = jwt.lastIndexOf('.');
+        String head = jwt.substring(0, lastDot + 1);
         String sig = jwt.substring(lastDot + 1);
-        char last = sig.charAt(sig.length() - 1);
-        char flipped = (last == 'A') ? 'B' : 'A';
-        return jwt.substring(0, lastDot + 1) + sig.substring(0, sig.length() - 1) + flipped;
+        int mid = sig.length() / 2;
+        char c = sig.charAt(mid);
+        char repl = (c == 'a') ? 'b' : 'a'; // 'a'·'b' 모두 base64url 유효 문자, c 와 반드시 다름
+        return head + sig.substring(0, mid) + repl + sig.substring(mid + 1);
     }
 
     private record Tokens(String accessToken, String idToken) {}
