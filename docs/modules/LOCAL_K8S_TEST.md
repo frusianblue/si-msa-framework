@@ -18,6 +18,8 @@ local 오버레이가 dev/prod 와 다른 점:
 - kind (`go install sigs.k8s.io/kind@latest` 또는 `brew install kind` / `choco install kind`)
 - Docker 메모리 ≥ 6GB 권장(서비스 4개 × 요청 512Mi + redis + postgres)
 
+> Docker/kubectl/kind 설치를 OS별(macOS/Windows+WSL2/Linux)로 푼 가이드는 `docs/modules/LOCAL_K8S_ENV_SETUP.md` 참고.
+
 ---
 
 ## 1. 클러스터 생성
