@@ -93,5 +93,5 @@ db/migration: V1(SAS 스키마) · V2(서명키)
   AS issuer 면 `{issuer}/oauth2/jwks` 로 RS256 검증(`GatewayJwksTokenVerifier`), 내부면 자체 JWT(HMAC). 프레임워크 무변경.
   상세 [`GATEWAY_EDGE_AUTH.md`](./GATEWAY_EDGE_AUTH.md) "이중 발급기".
 - ~~**(선택) 다운스트림 servlet zero-trust 재검증**~~ **✅ 완료(2026-06-04)**: `framework-security` 가 `edge-trust.mode=zero-trust` + `resource-server.enabled=true` 에서 `Authorization` Bearer 를 자체 JWT(HMAC) + AS 토큰(RS256/JWKS)으로 **직접 재검증**. 신규 `ResourceServerJwtVerifier`/`DownstreamTokenAuthenticator`/`TokenIssuerKind`, `JwtAuthenticationFilter` 가 모드 분기. 배치 환경별(K8s=gateway-headers / VM=zero-trust) 분기는 env(`EDGE_TRUST_MODE`). 상세 [`../TOKEN_VERIFICATION_GUIDE.md`](../TOKEN_VERIFICATION_GUIDE.md) §6.4/§7.3.
-- **서명키 회전 스케줄러**: `framework-lock @SchedulerLock`(리더 선출)로 단일 파드만 새 ACTIVE 발급 + 오래된 키 RETIRE. 개인키 저장 암호화(KMS/Vault).
+- **▶ 서명키 회전 스케줄러 (다음 착수)**: `framework-lock @SchedulerLock`(리더 선출)로 **단일 파드만** 새 ACTIVE 발급 + 직전 키 RETIRE + grace 지난 키 정리. DB 개인키는 `framework-core` `AesCryptoService`(AES-GCM)로 **컬럼 암호화**(KMS/Vault 는 후속). 회전 골격(읽기/부트스트랩/오버랩/상태전이 매퍼)은 이미 있으므로 **스케줄러 + 개인키 암호화 + 정리 매퍼 + 락 테이블 V4** 만 추가. **착수 설계 = [`../NEXT_SIGNING_KEY_ROTATION.md`](../NEXT_SIGNING_KEY_ROTATION.md)**(구현 항목·결정·프로퍼티·함정·체크리스트 정리됨).
 - **토큰 발급 라운드트립 통합테스트**: demo-web authorization_code+PKCE, demo-service client_credentials.
