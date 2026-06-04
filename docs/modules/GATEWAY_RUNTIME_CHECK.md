@@ -55,6 +55,7 @@
 ## 3. 검증 체크리스트
 
 ### 자동 테스트 (받는 쪽 gradle)
+> ✅ 받는 쪽에서 `:services:gateway:test`(신규 3종 + 기존 회귀) + `spotlessApply` 통과 확인(2026-06-04).
 ```bash
 ./gradlew :services:gateway:test --tests "*PrincipalKeyResolverTest"   # 키 산출 우선순위/XFF/폴백 (Redis 불요)
 ./gradlew :services:gateway:test --tests "*FallbackControllerTest"     # 서킷브레이커 503 (컨텍스트 불요)

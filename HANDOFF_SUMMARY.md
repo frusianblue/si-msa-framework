@@ -6,7 +6,7 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**직전 = 그릇 정비 \"게이트웨이 런타임 점검\" 처리(2026-06-04).** 라우팅/CORS/레이트리밋/서킷브레이커/프로브가 실제 기동 시 의도대로 도는지 점검 → **결함 2건 보강 + 검증 공백 3건 메움**. ① **서킷브레이커 폴백 404→503**: `application.yml` 의 `fallbackUri: forward:/fallback/user` 를 받는 핸들러가 없어 회로 개방 시 404 가 샜음 → `web/FallbackController` 신설(`/fallback/{service}`+`/fallback`, 모든 메서드, ApiResponse.fail 형식 **503**, 서비스명 영숫자/`-_` 정화). ② **레이트리밋 선행 콤마 XFF 누출**: `principalKeyResolver.clientIp` 의 `comma > 0` 가드가 `", 1.2.3.4"` 같은 기형/위조 XFF 에서 원문 통째를 키로 누출(`ip:, 1.2.3.4`) → `comma >= 0` 으로 보강(remote 폴백, 정상 케이스 전부 동일). ③ 오해 소지 주석 정정(`default-filters`=`X-Gateway`, X-Trace-Id 오기; 트레이스는 micrometer-tracing). **신규 테스트 3종** — `PrincipalKeyResolverTest`(키 우선순위, Redis 불요)·`FallbackControllerTest`(503/정화, 컨텍스트 불요)·`GatewayCorsPreflightTest`(`@SpringBootTest` RANDOM_PORT+WebTestClient: 허용 origin echo/미허용 차단/비라우트 경로/methods/max-age). **순수 로직 JDK 단독 하네스 12+8 통과.** **새 외부 의존성 0.** **바로 다음 = 받는 쪽 `:services:gateway:test` 실행 확인 → commit/push.**
+**직전 = 그릇 정비 \"게이트웨이 런타임 점검\" 처리(2026-06-04).** 라우팅/CORS/레이트리밋/서킷브레이커/프로브가 실제 기동 시 의도대로 도는지 점검 → **결함 2건 보강 + 검증 공백 3건 메움**. ① **서킷브레이커 폴백 404→503**: `application.yml` 의 `fallbackUri: forward:/fallback/user` 를 받는 핸들러가 없어 회로 개방 시 404 가 샜음 → `web/FallbackController` 신설(`/fallback/{service}`+`/fallback`, 모든 메서드, ApiResponse.fail 형식 **503**, 서비스명 영숫자/`-_` 정화). ② **레이트리밋 선행 콤마 XFF 누출**: `principalKeyResolver.clientIp` 의 `comma > 0` 가드가 `", 1.2.3.4"` 같은 기형/위조 XFF 에서 원문 통째를 키로 누출(`ip:, 1.2.3.4`) → `comma >= 0` 으로 보강(remote 폴백, 정상 케이스 전부 동일). ③ 오해 소지 주석 정정(`default-filters`=`X-Gateway`, X-Trace-Id 오기; 트레이스는 micrometer-tracing). **신규 테스트 3종** — `PrincipalKeyResolverTest`(키 우선순위, Redis 불요)·`FallbackControllerTest`(503/정화, 컨텍스트 불요)·`GatewayCorsPreflightTest`(`@SpringBootTest` RANDOM_PORT+WebTestClient: 허용 origin echo/미허용 차단/비라우트 경로/methods/max-age). **순수 로직 JDK 단독 하네스 12+8 통과.** **새 외부 의존성 0.** **✅ 받는 쪽 `:services:gateway:test` + `spotlessApply` 통과 확인(2026-06-04). 바로 다음 = commit/push.**
 
 ## 최종 갱신
 - 일자: 2026-06-04 · 갱신자: 게이트웨이 런타임 점검 세션
@@ -35,10 +35,10 @@
 ./gradlew :services:gateway:spotlessApply
 # (수동 기동) README §4~5: 헬스 /actuator/health · CORS preflight · 429(Redis) · 폴백 503
 ```
-> 작성환경은 Maven Central 차단으로 gradle 실행 불가 → 위 명령은 받는 쪽 실행 확인 필요. 순수 키 산출 로직은 JDK 단독 하네스 12+8 통과(2026-06-04). 남은 건 받는 쪽 테스트 통과 확인 → commit/push.
+> 작성환경은 Maven Central 차단으로 gradle 실행 불가 → 위 명령은 받는 쪽에서 실행. 순수 키 산출 로직은 JDK 단독 하네스 12+8 통과(2026-06-04). **✅ 받는 쪽 `:services:gateway:test`(신규 3종 + 기존 회귀) + `spotlessApply` 통과 확인 완료(2026-06-04).** 남은 건 commit/push.
 
 ## 다음 (Next) 후보
-- **▶ 받는 쪽 `:services:gateway:test`(+spotless) 통과 확인 후 commit/push** (이번 산출물 = FallbackController 신규 + RateLimitConfiguration 보강 + 테스트 3종 + 문서).
+- **▶ commit/push** (받는 쪽 `:services:gateway:test` + `spotlessApply` 통과 확인 완료 2026-06-04. 이번 산출물 = FallbackController 신규 + RateLimitConfiguration 보강 + 테스트 3종 + 문서).
 - **그릇 정비 잔여**(권장 다음): k8s redis/secret/멀티서비스 + observability ServiceMonitor 실배포 · CI-CD 멀티서비스화(현재 user-service 단일 → gateway/admin/auth-server 확장) · 게이트웨이 **레이트리밋 429 Testcontainers Redis 통합테스트**(선택).
 - (선택 백로그) 아카이빙 tar/tar.gz(commons-compress 옵트인) · RetryUtils · 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · 암호화 파일 키 회전 · S3 멀티파트 병렬 업로드(TransferManager).
 - (보류) SSO 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn) · OIDC B안 전체 흐름 e2e(confidential demo-rp) · 게이트웨이 AS aud 검증.
