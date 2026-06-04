@@ -111,7 +111,7 @@ id_token** 도 그대로 검증한다(JWKS RS256 · iss · aud⊇client-id · no
 `IdTokenVerifier`(+ 실 `JwksKeyResolver` → 라이브 `/oauth2/jwks`)로 검증한다 — 양성(클레임 왕복 sub=demo·iss·
 roles(ROLE_USER)·nonce·auth_time + JWKS 캐시 히트) 2 + 음성(issuer/aud(clientId)/nonce 불일치) 3 = **5테스트**,
 받는 쪽 통과. 연계는 `testImplementation project(':framework:framework-oauth-client')` 라이브러리 의존만으로 성립
-(서비스 간 의존 0). 설계/경위: [`../NEXT_RP_IDTOKEN_LINK.md`](../NEXT_RP_IDTOKEN_LINK.md)(✅ 완료 배너).
+(서비스 간 의존 0). 설계/경위: [`../NEXT_RP_IDTOKEN_LINK.md`](../_internal/planning/NEXT_RP_IDTOKEN_LINK.md)(✅ 완료 배너).
 
 > ⚠️ 예외 타입: 이 모듈의 `IdTokenVerifier`/`JwksKeyResolver` 는 검증 실패를 `BusinessException(ErrorCode.Common.UNAUTHORIZED)`
 > 로 던진다 — AS 측 `ResourceServerJwtVerifier` 의 `io.jsonwebtoken.JwtException` 과 다르므로 음성 테스트 단언에서 혼동 금지.

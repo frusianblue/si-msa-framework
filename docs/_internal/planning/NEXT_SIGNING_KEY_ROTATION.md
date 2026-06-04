@@ -1,7 +1,7 @@
 # NEXT — AS 서명키 회전 스케줄러 (착수 설계 노트)
 
 > **✅ 구현 완료(2026-06-04).** 본 노트는 설계 정본으로 보존한다. 실제 구현은 두 가지를 노트와 **의도적으로 다르게** 했다(아래 [구현 시 편차] 참조).
-> 구현 산출물·검증 상태는 [`modules/AUTH_SERVER.md`](./modules/AUTH_SERVER.md) §3/§7/§8, 함정은 [`../HANDOFF.md`](../HANDOFF.md) §6 참조.
+> 구현 산출물·검증 상태는 [`modules/AUTH_SERVER.md`](../../modules/AUTH_SERVER.md) §3/§7/§8, 함정은 [`../HANDOFF.md`](../HANDOFF.md) §6 참조.
 >
 > **[구현 시 편차 2건]**
 > 1. **grace 정리 기준 = `retired_at`(폐기 시각), `created_at` 아님.** 노트 §3 의 `created_at < now-grace` 는 grace(14d) < 회전주기(30d)일 때 직전 키가 RETIRE 즉시 삭제돼 오버랩이 깨진다. → 스키마에 `retired_at` 컬럼 추가(V5), `deleteRetiredOlderThan(cutoff)` 가 `retired_at` 기준.

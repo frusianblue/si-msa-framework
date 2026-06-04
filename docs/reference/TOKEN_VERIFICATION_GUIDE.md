@@ -4,9 +4,9 @@
 > 결정하는 방법을 정리한 문서. 실제 배치(운영) 전에 검증 방식을 고르는 의사결정 가이드 + 업계 표준 카탈로그 +
 > 현재 설계 평가 + 확장 방법을 담는다.
 >
-> 관련: 구현/켜는 법은 [`modules/GATEWAY_EDGE_AUTH.md`](./modules/GATEWAY_EDGE_AUTH.md),
-> 발급자(OP) 측은 [`modules/AUTH_SERVER.md`](./modules/AUTH_SERVER.md), 중앙 로그아웃은
-> [`modules/SSO_CENTRAL_LOGOUT.md`](./modules/SSO_CENTRAL_LOGOUT.md).
+> 관련: 구현/켜는 법은 [`modules/GATEWAY_EDGE_AUTH.md`](../modules/GATEWAY_EDGE_AUTH.md),
+> 발급자(OP) 측은 [`modules/AUTH_SERVER.md`](../modules/AUTH_SERVER.md), 중앙 로그아웃은
+> [`modules/SSO_CENTRAL_LOGOUT.md`](../modules/SSO_CENTRAL_LOGOUT.md).
 
 ---
 
