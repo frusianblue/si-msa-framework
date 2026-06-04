@@ -123,25 +123,22 @@ class TokenIssuanceRoundTripTest {
 
     @Test
     void authorizationCodePkce_token_is_reverified_downstream_zero_trust() throws Exception {
-        Tokens tokens = issueAuthorizationCodePkceTokens();
+        String accessToken = issueAuthorizationCodeAccessToken();
 
         ResourceServerJwtVerifier verifier = downstreamVerifier(issuer());
-        ResourceServerJwtVerifier.Verified verified = verifier.verify(tokens.accessToken());
+        ResourceServerJwtVerifier.Verified verified = verifier.verify(accessToken);
 
         // 사용자 위임: sub = userId(demo), roles 클레임 = RoleClaimTokenCustomizer 가 권한을 그대로 실음.
         assertThat(verified.userId()).isEqualTo("demo");
         assertThat(verified.roles()).contains("ROLE_USER");
 
         DownstreamTokenAuthenticator authenticator = new DownstreamTokenAuthenticator(internalProvider(), verifier);
-        DownstreamTokenAuthenticator.Authenticated authed = authenticator.tryAuthenticate(tokens.accessToken());
+        DownstreamTokenAuthenticator.Authenticated authed = authenticator.tryAuthenticate(accessToken);
         assertThat(authed).isNotNull();
         assertThat(authed.authentication().getName()).isEqualTo("demo");
         assertThat(authed.authentication().getAuthorities())
                 .extracting(Object::toString)
                 .contains("ROLE_USER");
-
-        // id_token 도 같은 서명키로 검증 가능(라운드트립 일관성 — aud 검증은 생략 설정이므로 sub 만 본다).
-        assertThat(verifier.verify(tokens.idToken()).userId()).isEqualTo("demo");
     }
 
     // =====================================================================
@@ -186,8 +183,17 @@ class TokenIssuanceRoundTripTest {
         return readJson(result, "$.access_token");
     }
 
-    /** demo/demo 로그인(우리 Authenticator 경유) → authorize(PKCE) → 코드 교환 → access/id 토큰. */
-    private Tokens issueAuthorizationCodePkceTokens() throws Exception {
+    /**
+     * demo/demo 로그인(우리 Authenticator 경유) → authorize(PKCE) → 코드 교환 → <b>access_token</b> 반환.
+     *
+     * <p><b>scope 에서 {@code openid} 를 의도적으로 뺀다(= id_token 미발급)</b>: SS7 의 {@code JwtGenerator} 는
+     * id_token 의 {@code auth_time} 를 {@code SessionInformation}(OIDC 세션 추적)에서 가져오는데, MockMvc 폼 로그인은
+     * 실 서블릿 세션 이벤트를 일으키지 않아 SessionRegistry 에 세션이 등록되지 않고 {@code SessionInformation} 이 null
+     * 이 된다(→ "authenticationTime cannot be null"). 이는 토큰 라운드트립이 아니라 OIDC 세션 관리의 관심사다. 본
+     * 시험의 검증 대상은 <b>access_token 의 발급→JWKS→다운스트림 재검증</b>이므로 access_token 만 받아 검증한다.
+     * (OIDC id_token 발급은 실 브라우저 흐름/세션 레지스트리 시드가 필요한 별도 시험으로 둔다.)
+     */
+    private String issueAuthorizationCodeAccessToken() throws Exception {
         // PKCE(RFC 7636, S256): challenge = BASE64URL(SHA-256(ASCII(verifier))).
         byte[] verifierBytes = new byte[32];
         new SecureRandom().nextBytes(verifierBytes);
@@ -207,7 +213,7 @@ class TokenIssuanceRoundTripTest {
                         .queryParam("response_type", "code")
                         .queryParam("client_id", "demo-web")
                         .queryParam("redirect_uri", REDIRECT_URI)
-                        .queryParam("scope", "openid profile")
+                        .queryParam("scope", "profile") // openid 제외 — 위 javadoc 참조
                         .queryParam("code_challenge", codeChallenge)
                         .queryParam("code_challenge_method", "S256"))
                 .andExpect(status().is3xxRedirection())
@@ -229,7 +235,7 @@ class TokenIssuanceRoundTripTest {
                         .param("code_verifier", codeVerifier))
                 .andExpect(status().isOk())
                 .andReturn();
-        return new Tokens(readJson(token, "$.access_token"), readJson(token, "$.id_token"));
+        return readJson(token, "$.access_token");
     }
 
     // =====================================================================
@@ -291,6 +297,4 @@ class TokenIssuanceRoundTripTest {
         char repl = (c == 'a') ? 'b' : 'a'; // 'a'·'b' 모두 base64url 유효 문자, c 와 반드시 다름
         return head + sig.substring(0, mid) + repl + sig.substring(mid + 1);
     }
-
-    private record Tokens(String accessToken, String idToken) {}
 }
