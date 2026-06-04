@@ -289,7 +289,89 @@ gateway:
 
 ---
 
-## 7. 표준 레퍼런스 (용어가 막힐 때)
+## 7. 배치 환경별 신뢰 경계 (K8s vs VM) — 그리고 환경별 선택을 코드로 분기하기
+
+엣지 전용 검증(A1)의 안전성은 "게이트웨이를 우회해 다운스트림에 직접 못 닿는다"에 달려 있다(§2.3, §5.2-①).
+그런데 **그 "못 닿게 강제하는 수단"은 배치 환경마다 다르고, 대부분 애플리케이션 코드 밖(인프라)에 있다.**
+
+### 7.1 신뢰 "강제" 수단은 환경마다 다르다
+
+| 배치 환경 | 신뢰 경계 강제 수단 | 격리 단위 | 게이트웨이-only 보장 강도 |
+|-----------|---------------------|-----------|---------------------------|
+| **K8s** | **NetworkPolicy**(필수) → 강화 시 mesh mTLS | **워크로드(파드)** 단위 | 강함(정책이 정확하면) |
+| **VM** | 보안그룹 / 호스트 방화벽 / iptables | **호스트** 단위(거침) | 중간~약함(평평한 망·동거 서비스면 약함) |
+| **서버리스/PaaS** | 플랫폼 IAM·VPC·프라이빗 엔드포인트 | 함수/서비스 | 플랫폼 의존 |
+
+핵심: **VM은 "이 워크로드만 통과"를 K8s NetworkPolicy만큼 깔끔히 못 그린다.** 한 호스트에 여러 서비스가 뜨거나
+내부망이 평평하면, 네트워크만으로 게이트웨이 우회를 막기 어렵다. → **네트워크 격리가 약할수록 앱 계층 재검증으로 메운다.**
+
+NetworkPolicy 예시(다운스트림에 "게이트웨이 파드 인그레스만" 허용):
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: user-service-allow-gateway-only }
+spec:
+  podSelector: { matchLabels: { app: user-service } }   # 보호 대상
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: gateway } } # 게이트웨이에서 온 것만
+```
+
+> ⚠️ **점검 3가지**: (1) `framework-context`-only 서비스에도 정책이 걸렸나(가장 절실) (2) `ingress.from` 셀렉터가
+> 게이트웨이 파드 라벨을 **정확히** 집나(오타=조용히 allow-all) (3) 클러스터 **CNI가 NetworkPolicy 를 실제 강제**하나(Calico·Cilium=OK, 일부 flannel 구성=무시).
+
+### 7.2 그래서 환경별 "검증 자세(posture)"가 갈린다
+
+| 환경 | 네트워크가 게이트웨이-only 보장? | 권장 다운스트림 자세 |
+|------|--------------------------------|---------------------|
+| K8s + NetworkPolicy | 예 | **헤더 신뢰(A1)** — 저렴 |
+| VM(격리 불확실) | 보장 약함 | **재검증(zero-trust/A2)** — 안전 |
+
+**강제 수단(NetworkPolicy/방화벽)은 인프라라 못 바꾸지만, "다운스트림이 헤더를 믿을지 / Bearer 를 다시 검증할지"라는
+자세는 앱 설정으로 분기할 수 있다.**
+
+### 7.3 환경별 선택을 코드로 분기하기 — profile + 토글
+
+`services/auth-server` 가 이미 쓰는 3-프로파일 yml 방식으로, **같은 산출물(jar/이미지)이 환경에 맞는 자세로** 뜨게 한다.
+
+```yaml
+# application.yml — 기본은 안전한 쪽(strict)
+framework:
+  edge-trust:
+    mode: zero-trust          # zero-trust(기본) | gateway-headers(완화)
+```
+```yaml
+# application-k8s.yml — NetworkPolicy 로 격리 보장됨 → 완화
+framework: { edge-trust: { mode: gateway-headers } }
+```
+```yaml
+# application-vm.yml — 격리 불확실 → 앱에서 재검증
+framework: { edge-trust: { mode: zero-trust } }
+```
+
+`SPRING_PROFILES_ACTIVE=k8s` 또는 `vm` 로 활성. 자세별 동작:
+
+| `edge-trust.mode` | 다운스트림 동작 | 신원(authn) 근거 |
+|-------------------|-----------------|------------------|
+| `gateway-headers` | 주입된 `X-User-*` 를 그대로 신뢰(현재 `HeaderContextResolver`) | 게이트웨이가 박은 헤더 |
+| `zero-trust` | `Authorization` Bearer 를 **직접 재검증**(`framework-security` 체인) 후에만 바인딩; 검증 없는 `X-User-*` 는 authn 근거로 불사용 | 로컬 재검증 결과 |
+
+지킬 원칙 둘:
+
+1. **기본값은 엄격한 쪽(zero-trust).** 완화(`gateway-headers`)는 "네트워크 격리를 확인했다"는 **의도적 옵트인**이어야 한다. 토글을 잘못 켜면 곧 구멍이므로, 이 프레임워크의 "기본 disabled = 안전" 철학과 같은 결.
+2. **솔직한 갭**: 현재 다운스트림(`user-service`)은 **자체 JWT(HMAC)만** 재검증 가능. VM에서 **AS 토큰(RS256)까지** zero-trust로 재검증하려면 게이트웨이의 이중 issuer 검증기를 servlet 버전으로 `framework-security` 에 이식해야 한다(§6.4, 별도 드롭). 자체 JWT만 쓰는 배치면 이미 커버.
+
+### 7.4 지금 권장
+
+- **K8s + NetworkPolicy 이미 적용** → K8s 환경의 A1 설계는 사실상 완성. 위 7.1 점검 3가지만 확인.
+- **VM 배치가 로드맵에 있으면**: 7.3의 `edge-trust.mode` 토글을 지금 설계(기본 strict, k8s 프로파일만 완화). AS 토큰 VM zero-trust가 필요하면 §6.4를 함께.
+- **VM 계획이 아직 없으면**: 원칙만 이 문서로 남기고 토글 구현은 보류(안 쓸 추상화를 미리 만들지 않는다). NetworkPolicy(C1) + `aud`(§6.1) + 짧은 TTL이 당장의 우선순위.
+
+---
+
+## 8. 표준 레퍼런스 (용어가 막힐 때)
 
 | 표준 | 무엇 | 우리와의 관계 |
 |------|------|---------------|
@@ -306,11 +388,12 @@ gateway:
 
 ---
 
-## 8. 결론 — 지금 무엇을 하면 되나
+## 9. 결론 — 지금 무엇을 하면 되나
 
-1. **배치 전 필수**: K8s **NetworkPolicy** 로 다운스트림 인그레스를 게이트웨이로 제한(C1). 이게 A1 설계를 "완성"시킨다.
+1. **배치 전 필수**: K8s **NetworkPolicy** 로 다운스트림 인그레스를 게이트웨이로 제한(C1, §7.1). 이게 A1 설계를 "완성"시킨다. *(이미 적용 중이면 §7.1 점검 3가지만 확인.)*
 2. **권장(작음)**: AS 토큰 **`aud` 검증 추가**(§6.1) + access TTL을 짧게.
-3. **보안 등급이 오르면**: introspection(§6.2) 또는 mTLS(C2)로 단계 상향, 자체 JWT의 RS256 전환(§6.3) 고려.
-4. **고규제·외부 개방이면**: 다운스트림 zero-trust(§6.4) + sender-constrained 토큰까지.
+3. **VM 배치를 고려한다면**: §7.3의 `edge-trust.mode` 프로파일 토글로 환경별 자세를 분기(기본 strict). 안 쓸 거면 원칙만 남기고 보류.
+4. **보안 등급이 오르면**: introspection(§6.2) 또는 mTLS(C2)로 단계 상향, 자체 JWT의 RS256 전환(§6.3) 고려.
+5. **고규제·외부 개방이면**: 다운스트림 zero-trust(§6.4) + sender-constrained 토큰까지.
 
 현재 구성은 **틀린 설계가 아니라, "기본을 잘 깐 출발점"** 이다. 위 1번(NetworkPolicy)만 갖추면 일반적인 사내 MSA로서는 충분하고, 나머지는 실제 위협 모델이 요구할 때 축별로 하나씩 올리면 된다.
