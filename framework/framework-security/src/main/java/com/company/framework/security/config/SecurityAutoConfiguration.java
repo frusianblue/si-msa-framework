@@ -11,10 +11,12 @@ import com.company.framework.security.devauth.DevAuthProperties;
 import com.company.framework.security.devauth.DevAuthSafetyGuard;
 import com.company.framework.security.handler.RestAccessDeniedHandler;
 import com.company.framework.security.handler.RestAuthenticationEntryPoint;
+import com.company.framework.security.jwt.DownstreamTokenAuthenticator;
 import com.company.framework.security.jwt.JwtAuthenticationFilter;
 import com.company.framework.security.jwt.JwtProperties;
 import com.company.framework.security.jwt.JwtProvider;
 import com.company.framework.security.jwt.JwtSecretSafetyGuard;
+import com.company.framework.security.jwt.ResourceServerJwtVerifier;
 import com.company.framework.security.loginattempt.InMemoryLoginAttemptService;
 import com.company.framework.security.loginattempt.LoginAttemptProperties;
 import com.company.framework.security.loginattempt.LoginAttemptService;
@@ -33,6 +35,7 @@ import com.company.framework.security.rbac.web.MenuController;
 import com.company.framework.security.support.SecurityContextCurrentUserProvider;
 import com.company.framework.security.token.TokenStore;
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -52,6 +55,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClient;
 
 /**
  * 공통 보안 자동 설정.
@@ -78,6 +83,42 @@ public class SecurityAutoConfiguration {
     @Bean
     public JwtProvider jwtProvider(JwtProperties props) {
         return new JwtProvider(props);
+    }
+
+    /**
+     * 리소스 서버 검증기(이중 발급기 — AUTH_SERVER.md §4). {@code framework.security.resource-server.enabled=true} 일 때만
+     * 등록 → zero-trust 다운스트림 재검증에서 AS(OP) RS256/JWKS 토큰을 받는다. issuer 가 비면 fail-fast.
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "framework.security.resource-server", name = "enabled", havingValue = "true")
+    public ResourceServerJwtVerifier resourceServerJwtVerifier(FrameworkSecurityProperties props) {
+        FrameworkSecurityProperties.ResourceServer rs = props.getResourceServer();
+        if (!StringUtils.hasText(rs.getIssuer())) {
+            throw new IllegalStateException(
+                    "framework.security.resource-server.enabled=true 이면 issuer 가 필요합니다(= auth-server.issuer 와 동일 값).");
+        }
+        String jwksUri = rs.resolvedJwksUri();
+        if (!StringUtils.hasText(jwksUri)) {
+            throw new IllegalStateException("framework.security.resource-server.jwks-uri 를 해석할 수 없습니다(issuer 확인).");
+        }
+        return new ResourceServerJwtVerifier(
+                RestClient.create(),
+                rs.getIssuer(),
+                jwksUri,
+                rs.getRolesClaim(),
+                rs.getAudience(),
+                rs.getClockSkew(),
+                rs.getJwkCacheTtl());
+    }
+
+    /**
+     * 다운스트림 발급자 분기 인증기. 리소스 서버 검증기가 있으면 AS 토큰(iss 일치)을 JWKS 로, 그 외는 자체 JWT(HMAC)로
+     * 재검증한다. 검증기가 없으면(기본) 항상 자체 JWT 경로 — 도입 전 동작과 동일.
+     */
+    @Bean
+    public DownstreamTokenAuthenticator downstreamTokenAuthenticator(
+            JwtProvider jwtProvider, ObjectProvider<ResourceServerJwtVerifier> resourceServerVerifier) {
+        return new DownstreamTokenAuthenticator(jwtProvider, resourceServerVerifier.getIfAvailable());
     }
 
     /** prod 에서 기본/약한 JWT 시크릿이면 부팅 실패시키는 안전장치(dev-auth 가드와 동일 패턴). */
@@ -215,7 +256,7 @@ public class SecurityAutoConfiguration {
     @ConditionalOnMissingBean(SecurityFilterChain.class)
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            JwtProvider jwtProvider,
+            DownstreamTokenAuthenticator downstreamAuthenticator,
             TokenStore tokenStore,
             FrameworkSecurityProperties props,
             DynamicAuthorizationManager dynamicAuthorizationManager,
@@ -245,7 +286,15 @@ public class SecurityAutoConfiguration {
                     }
                 })
                 .addFilterBefore(
-                        new JwtAuthenticationFilter(jwtProvider, tokenStore),
+                        new JwtAuthenticationFilter(
+                                downstreamAuthenticator,
+                                tokenStore,
+                                props.getEdgeTrust().getMode()
+                                                == FrameworkSecurityProperties.EdgeTrust.Mode.GATEWAY_HEADERS
+                                        ? JwtAuthenticationFilter.Mode.GATEWAY_HEADERS
+                                        : JwtAuthenticationFilter.Mode.ZERO_TRUST,
+                                props.getEdgeTrust().getUserIdHeader(),
+                                props.getEdgeTrust().getRolesHeader()),
                         UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

@@ -103,9 +103,8 @@ public class GatewayAuthGlobalFilter implements GlobalFilter, Ordered {
             GatewayTokenVerifier.Verified verified,
             TokenIssuerKind kind) {
         // (4) 중앙 로그아웃: 자체 JWT(INTERNAL)의 jti 만 블랙리스트 대조. AS 토큰 폐기는 AS /oauth2/revoke (혼용 금지, §4).
-        Mono<Boolean> revokedCheck = (kind == TokenIssuerKind.INTERNAL)
-                ? blacklist.isBlacklisted(verified.jti())
-                : Mono.just(Boolean.FALSE);
+        Mono<Boolean> revokedCheck =
+                (kind == TokenIssuerKind.INTERNAL) ? blacklist.isBlacklisted(verified.jti()) : Mono.just(Boolean.FALSE);
 
         return revokedCheck.flatMap(revoked -> {
             if (Boolean.TRUE.equals(revoked)) {

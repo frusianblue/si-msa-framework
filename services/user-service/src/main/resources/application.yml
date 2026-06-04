@@ -54,6 +54,19 @@ framework:
       refresh-token-validity-seconds: 1209600
     token-store:
       type: ${TOKEN_STORE_TYPE:memory}   # memory | jdbc | redis (프로파일에서 override)
+    # ===== 다운스트림 신뢰 자세(배치 환경별) — docs/TOKEN_VERIFICATION_GUIDE.md §7 =====
+    #   K8s + NetworkPolicy(게이트웨이 우회 불가 보장): EDGE_TRUST_MODE=gateway-headers (Bearer 재검증 생략, 저렴)
+    #   VM 등 네트워크 격리 약함: 기본 zero-trust (Bearer 로컬 재검증). local|dev|prod 와 직교하므로 env 로 주입.
+    edge-trust:
+      mode: ${EDGE_TRUST_MODE:zero-trust}   # zero-trust(안전 기본) | gateway-headers(의도적 완화)
+    # ===== 리소스 서버: AS(OP) RS256/JWKS 토큰까지 zero-trust 재검증(기본 off) =====
+    #   외부/그룹사 위임(AS) 토큰을 다운스트림이 직접 재검증할 때만 true. issuer 는 auth-server 와 동일해야 한다.
+    resource-server:
+      enabled: ${RESOURCE_SERVER_ENABLED:false}
+      issuer: ${AUTH_SERVER_ISSUER:}
+      jwks-uri: ${AUTH_SERVER_JWKS_URI:}        # 생략 시 {issuer}/oauth2/jwks
+      roles-claim: roles
+      audience: ${RESOURCE_SERVER_AUDIENCE:}    # 비면 aud 검증 생략
   openapi:
     title: "사용자 서비스 API"
     version: "v1"
