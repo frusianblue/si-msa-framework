@@ -29,6 +29,9 @@ WebFlux 기반 Spring Cloud Gateway. 라우팅·레이트리밋·엣지 인증(J
 주요 테스트:
 - `auth/GatewayDualIssuerTest` — 실 RSA 키 + JWKS 로 AS 토큰 검증, `iss` 분기, AS 토큰 jti 블랙리스트 미적용(§4 경계).
 - `auth/GatewayAuthGlobalFilterTest` — 스푸핑 헤더 제거·화이트리스트·401·신뢰 헤더 주입.
+- `config/PrincipalKeyResolverTest` — 레이트리밋 키 산출 우선순위(검증 userId → Principal → XFF 첫 홉 → remote IP → unknown)·선행 콤마 기형 XFF 폴백·deny-empty-key 안전.
+- `web/FallbackControllerTest` — 서킷브레이커 폴백 503(ApiResponse.fail 형식)·서비스명 보간/정화.
+- `GatewayCorsPreflightTest` — 게이트웨이 기동 후 CORS preflight(허용 origin echo / 미허용 차단 / 비라우트 경로 처리).
 
 ---
 
@@ -86,8 +89,27 @@ curl -s http://localhost:8000/actuator/health
 curl -i http://localhost:8000/api/v1/users/me
 # 유효 Bearer 면 통과 + 다운스트림에 X-User-Id/X-User-Roles 주입
 ```
-- 레이트리밋: 토큰버킷(`replenishRate=10/s`, `burstCapacity=20`), 키=인증 userId. 초과 시 `429`.
-- 서킷브레이커: user-service 라우트에 `fallbackUri: forward:/fallback/user`.
+- 레이트리밋: 토큰버킷(`replenishRate=10/s`, `burstCapacity=20`), 키=인증 userId(없으면 XFF 첫 홉 → remote IP). 초과 시 `429`.
+- 서킷브레이커: user-service 라우트에 `fallbackUri: forward:/fallback/user` → `FallbackController` 가 **503**(`{"success":false,"code":"E0503",...}`)로 graceful 응답(핸들러가 없으면 404 로 샜었음 — 점검에서 보강).
+
+### CORS preflight 확인
+```bash
+# 허용 origin → 200 + Access-Control-Allow-Origin echo
+curl -i -X OPTIONS http://localhost:8000/api/v1/users/me \
+  -H "Origin: https://app.yourdomain.com" \
+  -H "Access-Control-Request-Method: GET"
+# 미허용 origin(https://evil.com) → Access-Control-Allow-Origin 미부여
+```
+
+### 레이트리밋 429 확인 (Redis 필요)
+```bash
+# burstCapacity(20) 를 넘겨 같은 키로 연타 → 일부 429
+for i in $(seq 1 30); do \
+  curl -s -o /dev/null -w "%{http_code} " http://localhost:8000/api/v1/users/me \
+    -H "X-Forwarded-For: 203.0.113.9"; done; echo
+# 200 ... 200 429 429 ... (replenishRate=10/s 로 회복)
+```
+> 429 의 실제 토큰버킷 동작은 reactive Redis 가 떠 있어야 한다. 키 산출 로직 자체는 `PrincipalKeyResolverTest`(Redis 불요)가 커버한다.
 
 ---
 

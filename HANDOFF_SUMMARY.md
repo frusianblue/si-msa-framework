@@ -6,42 +6,40 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**직전 = 백로그 3건 마감(2026-06-04): QR 생성 모듈 + SFTP 후속(연결 풀·키 회전) + (devops) CI 게이트/멀티모듈 jacoco 집계.** ① **framework-qr** 신설 — `QrGenerator` SPI + `ZxingQrGenerator`(ZXing `core` 인코딩만, **렌더링은 JDK ImageIO 직접** → `zxing-javase` 불필요·외부 의존성 **1개**), PNG 전용·ECC L/M/Q/H, mfa 의 `otpauth://` URI 를 서버측 QR PNG 로 보완. ② **framework-file-sftp 후속**(둘 다 옵트인·기본 off) — 순수 JDK `BoundedObjectPool<ClientSession>`(connection pool) + `ReloadingSftpCredentialProvider`(key rotation), `SftpFileStorage` 를 자격증명 공급자+`PoolSettings(nullable)` 로 리팩터링. ③ **CI** — 루트 `jacoco-report-aggregation` + 전 39모듈 집계(`testCodeCoverageReport`), GitHub Actions **PR 차단 `verify` 잡** + Jenkinsfile Architecture Rules 스테이지. **순수 로직 검증: QR 22/22 · SFTP 풀+회전 33/33 (JDK 단독 하네스).** **받는 쪽 gradle 전 항목 통과 확인 완료(2026-06-04): `:framework-qr:test`·`:framework-file-sftp:test`·`:framework-archtest:test`·`testCodeCoverageReport`·spotless 모두 ✅.** **바로 다음 = commit/push.** 이후 후보 = 그릇 정비(k8s 멀티서비스·게이트웨이 런타임 점검) 또는 잔여 백로그(tar/tar.gz·규제특화).
+**직전 = 그릇 정비 \"게이트웨이 런타임 점검\" 처리(2026-06-04).** 라우팅/CORS/레이트리밋/서킷브레이커/프로브가 실제 기동 시 의도대로 도는지 점검 → **결함 2건 보강 + 검증 공백 3건 메움**. ① **서킷브레이커 폴백 404→503**: `application.yml` 의 `fallbackUri: forward:/fallback/user` 를 받는 핸들러가 없어 회로 개방 시 404 가 샜음 → `web/FallbackController` 신설(`/fallback/{service}`+`/fallback`, 모든 메서드, ApiResponse.fail 형식 **503**, 서비스명 영숫자/`-_` 정화). ② **레이트리밋 선행 콤마 XFF 누출**: `principalKeyResolver.clientIp` 의 `comma > 0` 가드가 `", 1.2.3.4"` 같은 기형/위조 XFF 에서 원문 통째를 키로 누출(`ip:, 1.2.3.4`) → `comma >= 0` 으로 보강(remote 폴백, 정상 케이스 전부 동일). ③ 오해 소지 주석 정정(`default-filters`=`X-Gateway`, X-Trace-Id 오기; 트레이스는 micrometer-tracing). **신규 테스트 3종** — `PrincipalKeyResolverTest`(키 우선순위, Redis 불요)·`FallbackControllerTest`(503/정화, 컨텍스트 불요)·`GatewayCorsPreflightTest`(`@SpringBootTest` RANDOM_PORT+WebTestClient: 허용 origin echo/미허용 차단/비라우트 경로/methods/max-age). **순수 로직 JDK 단독 하네스 12+8 통과.** **새 외부 의존성 0.** **바로 다음 = 받는 쪽 `:services:gateway:test` 실행 확인 → commit/push.**
 
 ## 최종 갱신
-- 일자: 2026-06-04 · 갱신자: QR + SFTP 후속 + CI 게이트/jacoco 집계 세션
-- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / **Jackson 3(tools.jackson.*)** / ZXing core 3.5.4(신규, BOM 밖) · MINA SSHD 2.16.0
+- 일자: 2026-06-04 · 갱신자: 게이트웨이 런타임 점검 세션
+- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / Jackson 3(tools.jackson.*) / Spring Cloud Gateway(WebFlux) · jjwt 0.12.6
 
-## 직전에 한 것 (Done — 순수 로직 하네스 통과 / 라이브러리 경로는 받는 쪽 대기)
-- **① framework-qr 신설(옵트인 신규 모듈)**: `QrGenerator` SPI(`toPng`/`generate(content, QrSpec)`) + `ZxingQrGenerator`(ZXing `core` 인코딩) + `QrSpec`(record+Builder, sizePx/margin/ECC/charset/색/검증) + `QrEccLevel`(L/M/Q/H, zxing-free) + `PixelGrid` 경계 + `QrPngRenderer`(JDK ImageIO, zxing-free) + `QrErrorCode`(QR0001~5) + `QrProperties`/`QrAutoConfiguration`(`@ConditionalOnClass(QRCodeWriter)`+`@ConditionalOnProperty(framework.qr.enabled=true)`+`@ConditionalOnMissingBean`) + `.imports` + README. **렌더링을 JDK ImageIO 로 직접** 해 `zxing-javase` 를 떼고 외부 의존성 1개(`com.google.zxing:core`)로 최소화. PNG 전용(JPEG 스캔성 저하 제외).
-- **② framework-file-sftp 후속(연결 풀 + 키 회전, 둘 다 옵트인)**: 신규 `pool/BoundedObjectPool`(제네릭 순수 JDK — cap+maxWait·LIFO 재사용·validate-on-borrow·maxIdle/maxLifetime 만료·invalidate·close 드레인, 훅은 락 밖)·`cred/SftpCredentials`(record, JDK `KeyPair` 만)·`cred/SftpCredentialProvider`(SPI+`fixed`)·`cred/ReloadingSftpCredentialProvider`(지문 mtime+size 변경 감지 재로드·interval 게이트·실패 시 기존 유지)·`SftpKeyLoader`(MINA `FileKeyPairProvider` 위임·지문). `SftpFileStorage` **생성자 시그니처 변경**(자격증명 공급자+`PoolSettings(nullable)`, 풀 null=기존 "작업마다 세션 개폐" 보존). `FileStorageProperties.Sftp` 에 `Pool`/`KeyRotation` nested + `SftpFileStorageAutoConfiguration` 가 토글 따라 공급자/풀 빌드.
-- **③ (devops) CI 게이트 + 멀티모듈 jacoco 집계**: 루트 `build.gradle` 에 `jacoco-report-aggregation` 적용 + 전 39모듈 `jacocoAggregation` 나열(framework-qr 포함) → `testCodeCoverageReport`. `deploy/cicd/ci-cd.yml` 에 **PR 차단 `verify` 잡**(spotlessCheck → `:framework-archtest:test` → 전모듈 `test` → 통합 커버리지 → OWASP → push 한정 Sonar), build/docker/deploy 가 그 뒤 의존. `Jenkinsfile` 에 Architecture Rules 스테이지 + 전모듈 test+집계.
-- **검증(작성환경, JDK 단독 standalone 하네스 — 실제 소스 컴파일·실행)**: QR 순수(`QrSpec` 검증·`QrPngRenderer` 실 PNG 렌더→ImageIO 디코드 왕복) **22/22**, SFTP 풀+회전(생성/LIFO/cap+timeout/validate/maxIdle/maxLifetime/invalidate/close 드레인/블로킹 핸드오프 + 회전 첫로드/interval 게이트/변경감지/실패유지/재시도) **33/33**. ZXing encode→decode 왕복·MINA 서버 풀 왕복은 JUnit(받는 쪽).
-- **문서(5종 + 모듈 README 2종)**: `docs/FRAMEWORK_MODULES.md`(§2.4 dated 마감 + 모듈표 qr/sftp 행) · `STACK.md`(zxing-core 3.5.4 행) · `README.md`(선택 모듈 목록 + 의존성 예시 qr/sftp) · `HANDOFF.md`(§1 sftp/qr 항목·§6 함정 2묶음·§7 dated 저널·우선순위 마킹) · `HANDOFF_SUMMARY.md`(이 문서) · `framework/framework-qr/README.md`·`framework/framework-file-sftp/README.md`(풀/회전 절).
+## 직전에 한 것 (Done — 정적 리뷰 + 순수 로직 하네스 통과 / Spring 경로는 받는 쪽 대기)
+- **① `web/FallbackController` 신설**: `@RestController`, `@RequestMapping("/fallback/{service}")`(+`/fallback`), 모든 HTTP 메서드(원 요청 메서드 보존 포워딩). 응답 = `{"success":false,"code":"E0503","message":"<service> 서비스가 일시적으로 응답하지 않습니다...","timestamp":...}` **503**(401 필터 응답과 동일 고정 JSON — 게이트웨이는 framework-core 미의존). 서비스명 `sanitize`(영숫자/`-_` 외 제거·빈값=upstream)로 JSON 주입 방지(permit-all 이라 외부 직접 호출 가능).
+- **② `config/RateLimitConfiguration.clientIp` 보강**: XFF 첫 홉 추출을 `comma > 0` → `comma >= 0`. 선행 콤마 XFF 는 첫 토큰이 빈 문자열이 되어 remote addr 로 폴백(원문 누출 차단). 단일/다중 홉·콤마 없음·공백·trim 등 정상 케이스 전부 동일 동작.
+- **③ `application.yml` 주석 정정**: `default-filters` 는 `X-Gateway: si-msa-gateway` 만 붙인다(주석은 X-Trace-Id 오기였음). 분산 추적 헤더 전파는 micrometer-tracing 자동 처리 → 주석 현실화.
+- **신규 테스트 3종**: `config/PrincipalKeyResolverTest`(검증 userId→Principal→XFF 첫 홉→remote→unknown 우선순위·선행 콤마 폴백·deny-empty-key 안전, MockServerWebExchange, **Redis 불요**) · `web/FallbackControllerTest`(503/형식/서비스명 보간/정화/빈값, **컨텍스트 불요**) · `GatewayCorsPreflightTest`(**`@SpringBootTest` RANDOM_PORT + WebTestClient**: 허용 origin echo·credentials·max-age·methods, 미허용 origin 차단, `add-to-simple-url-handler-mapping` 비라우트 경로 처리; 인증 off·Redis 불요 — preflight 는 라우팅/레이트리밋보다 앞에서 단락).
+- **검증(작성환경, JRE→JDK 설치 후 standalone 하네스 — clientIp/키산출 알고리즘 1:1 복제 실행)**: 키 산출 우선순위/XFF/폴백/deny-empty-key **12/12**, `>= 0` 수정안의 정상 케이스 보존 + 선행 콤마 폴백 + 현재 결함 재현 **8/8**. CORS preflight·서킷브레이커 실포워딩은 Spring 기동 필요 → 받는 쪽.
+- **문서**: `docs/modules/GATEWAY_RUNTIME_CHECK.md` **신설**(발견→보강·런타임 거동 요약·검증 체크리스트·gotcha) · `services/gateway/README.md` §2(테스트 3종 추가)·§5(폴백 503·CORS preflight·429 Redis 확인) · `HANDOFF.md`(§6 함정 묶음·§7 완료 항목·우선순위 마킹) · `HANDOFF_SUMMARY.md`(이 문서).
 
 ## 새로 확정한 함정 (HANDOFF §6 등록)
-- **QR 의존성 1개 원칙**: 렌더링은 JDK ImageIO 직접 → `zxing-javase`(MatrixToImageWriter) 금지(의존성만 늘고 가치 없음). **PNG 전용**(JPEG 손실=스캔성 저하). mfa 의 QR 미생성 정책 유지(별도 옵트인 모듈로 보완).
-- **SFTP 풀 훅은 락 밖 호출**: creator/validator/destroyer(네트워크 IO·블로킹)를 락 보유 중 호출하면 풀이 직렬화 → 슬롯만 락 안 예약, 생성/검증/파기는 락 밖. creator 실패 시 예약 슬롯 반납.
-- **`ClientSession::isOpen` 유효**: `ClientSession`→`Session`→`SessionContext`→`Closeable extends java.nio.channels.Channel.isOpen()`(MINA 2.x). validate-on-borrow 로 끊긴 세션 대여 직전 폐기.
-- **키 회전은 "새 세션부터"**: `openSession()` 이 세션마다 `current()` 해석 → 풀에 살아있는 세션은 옛 키. 즉시 전파 필요 시 `maxLifetime` < 회전 주기. 재로드 실패 시 기존 자격증명 유지+다음 주기 재시도(fail-safe).
-- **`SftpFileStorage` 생성자 시그니처 변경** → 기존 테스트 `new SftpFileStorage(...)` 깨짐(RoundTrip/Pooled 는 `SftpCredentialProvider.fixed(SftpCredentials.password(...))`+`PoolSettings(nullable)` 로 갱신). 풀 null=도입 전 경로 보존.
-- **jacoco 집계 ≠ Sonar 수집**: `testCodeCoverageReport`(사람용 통합 1장)와 Sonar 의 모듈별 XML 글롭은 **독립**(집계를 Sonar 에 먹이면 이중 합산). 새 모듈은 settings include + 루트 `jacocoAggregation` 한 줄 함께 추가.
-- **⚠️ jacoco 집계는 루트에도 BOM import 필요(첫 실행이 잡음)**: `aggregateCodeCoverageReportResults` 는 루트에서 해소되는데 `io.spring.dependency-management` 의 BOM 이 소비자(루트)로 전이 안 돼, gateway 의 버전 없는 spring-cloud 스타터를 못 찾아 `Could not find ...:.`(빈 버전)+config-cache 직렬화 실패. **해법=루트 build.gradle 에 `dependencyManagement { imports { mavenBom boot/cloud/testcontainers } }` 추가**(적용 완료). 모듈 단위 `:X:test` 는 통과하므로 집계 첫 실행 전까지 잠복.
-- (작업 환경 — 유효) **Maven Central 차단** → SB4/SS7/zxing/sshd 다운로드 불가 = 이 환경 gradle 빌드/테스트 불가(정적 리뷰 + JDK 단독 하네스로 순수 로직만 검증). GitHub clone/raw 대조 가능.
+- **서킷브레이커 `forward:/fallback/{service}` 는 받는 핸들러 필수**: `fallbackUri` 만 적고 핸들러 없으면 회로 개방 시 graceful 503 이 아니라 **404**(없는 경로)가 나간다. `FallbackController` 가 503 으로 받음. 서비스명 정화(외부 직접 호출 가능=permit-all → JSON 주입 방지).
+- **레이트리밋 XFF 첫 홉은 `comma >= 0`**: `> 0` 가드는 선행 콤마(`", 1.2.3.4"`)에서 실패해 원문이 키로 샌다(`ip:, 1.2.3.4`). `>= 0` 으로 선행 콤마 → 빈 첫 토큰 → remote 폴백.
+- **CORS preflight 는 인증/레이트리밋 앞에서 단락**: `add-to-simple-url-handler-mapping: true` 라 비라우트 경로 OPTIONS 도 처리, 인증 off 여도 동작(다운스트림 X). `allowCredentials=true` → `allowedOrigins:"*"` 불가, `allowedOriginPatterns` 사용(origin echo).
+- **레이트리밋 429 실측엔 reactive Redis 필요**: 키 산출은 단위 테스트(Redis 불요)로, 토큰버킷 429 자체는 SCG 상위 구현 책임. 통합 429 자동화가 필요하면 Testcontainers Redis 별도 도입(미도입).
 
 ## 실행/검증 (받는 쪽 — gradle 가능 환경)
 ```bash
-./gradlew :framework:framework-qr:test                       # QR: QrSpec/ZxingQrGenerator(encode→decode 왕복)/AutoConfiguration 토글
-./gradlew :framework:framework-file-sftp:test                # SFTP: BoundedObjectPool/ReloadingSftpCredentialProvider/내장 MINA 풀 왕복
-./gradlew :framework:framework-archtest:test                 # 아키텍처 규칙(모듈 순환·Jackson2 금지·AutoConfiguration/Properties 규약·필드주입 금지)
-./gradlew testCodeCoverageReport                             # 멀티모듈 통합 커버리지(build/reports/jacoco/testCodeCoverageReport/)
-./gradlew :framework:framework-qr:spotlessApply :framework:framework-file-sftp:spotlessApply
+./gradlew :services:gateway:test --tests "*PrincipalKeyResolverTest"   # 키 산출 우선순위/XFF/폴백 (Redis 불요)
+./gradlew :services:gateway:test --tests "*FallbackControllerTest"     # 서킷브레이커 503 (컨텍스트 불요)
+./gradlew :services:gateway:test --tests "*GatewayCorsPreflightTest"   # CORS preflight (게이트웨이 기동, Redis 불요)
+./gradlew :services:gateway:test                                       # 전체(기존 DualIssuer/AuthGlobalFilter/TokenVerifier 회귀 포함)
+./gradlew :services:gateway:spotlessApply
+# (수동 기동) README §4~5: 헬스 /actuator/health · CORS preflight · 429(Redis) · 폴백 503
 ```
-> 작성환경은 Maven Central 차단으로 gradle 실행 불가 → 위 명령은 받는 쪽에서 실행 확인 필요. 순수 로직은 JDK 단독 하네스로 QR 22/22·SFTP 33/33 통과(2026-06-04). **받는 쪽 최종 확인(2026-06-04, 전부 ✅)**: `:framework-qr:test`·`:framework-file-sftp:test`·`:framework-archtest:test`·spotless·`testCodeCoverageReport` 모두 통과. (`testCodeCoverageReport` 는 루트 BOM 미import 로 1차 실패 → 루트 build.gradle 에 BOM import 추가 후 통과.) 남은 건 commit/push.
+> 작성환경은 Maven Central 차단으로 gradle 실행 불가 → 위 명령은 받는 쪽 실행 확인 필요. 순수 키 산출 로직은 JDK 단독 하네스 12+8 통과(2026-06-04). 남은 건 받는 쪽 테스트 통과 확인 → commit/push.
 
 ## 다음 (Next) 후보
-- **▶ 받는 쪽 빌드/테스트 통과 확인 후 commit/push** (이번 세션 산출물 = framework-qr 신규 + framework-file-sftp 후속 + CI/jacoco + 문서).
-- **그릇 정비**(권장 다음): 게이트웨이 런타임 점검(CORS preflight·rate-limit 429) · k8s redis/secret/멀티서비스 + observability ServiceMonitor 실배포 · CI-CD 멀티서비스화(현재 user-service 단일 → gateway/admin/auth-server 확장).
+- **▶ 받는 쪽 `:services:gateway:test`(+spotless) 통과 확인 후 commit/push** (이번 산출물 = FallbackController 신규 + RateLimitConfiguration 보강 + 테스트 3종 + 문서).
+- **그릇 정비 잔여**(권장 다음): k8s redis/secret/멀티서비스 + observability ServiceMonitor 실배포 · CI-CD 멀티서비스화(현재 user-service 단일 → gateway/admin/auth-server 확장) · 게이트웨이 **레이트리밋 429 Testcontainers Redis 통합테스트**(선택).
 - (선택 백로그) 아카이빙 tar/tar.gz(commons-compress 옵트인) · RetryUtils · 규제특화 잔여(pki/hsm/recon/egov) · saga 단계별 타임아웃/보상 재시도 · 암호화 파일 키 회전 · S3 멀티파트 병렬 업로드(TransferManager).
-- (보류) SSO 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn) · OIDC B안 전체 흐름 e2e(confidential demo-rp).
+- (보류) SSO 6.2-B SP-initiated SLO · 6.4 Passwordless(WebAuthn) · OIDC B안 전체 흐름 e2e(confidential demo-rp) · 게이트웨이 AS aud 검증.
 <!-- 갱신 끝 -->

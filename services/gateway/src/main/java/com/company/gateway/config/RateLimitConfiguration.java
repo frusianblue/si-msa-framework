@@ -42,8 +42,11 @@ public class RateLimitConfiguration {
         ServerHttpRequest request = exchange.getRequest();
         String xff = request.getHeaders().getFirst("X-Forwarded-For");
         if (StringUtils.hasText(xff)) {
+            // 첫 홉(클라이언트)만 사용. 콤마가 있으면 그 앞까지, 없으면(comma=-1) 전체.
+            // comma >= 0 으로 선행 콤마(", 1.2.3.4" 같은 기형/위조 XFF)도 빈 첫 토큰으로 보고
+            // 아래 remote addr 로 폴백시킨다(원문 통째가 키에 새는 것을 방지).
             int comma = xff.indexOf(',');
-            String first = (comma > 0 ? xff.substring(0, comma) : xff).trim();
+            String first = (comma >= 0 ? xff.substring(0, comma) : xff).trim();
             if (StringUtils.hasText(first)) {
                 return first;
             }
