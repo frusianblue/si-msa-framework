@@ -31,7 +31,7 @@
 ./gradlew :services:auth-server:test --tests "*OidcIdTokenIssuanceTest"   # 신규 2테스트
 ./gradlew :services:auth-server:test --tests "*TokenIssuanceRoundTripTest" # 회귀(여전히 4/4 기대)
 ```
-> ✅ 받는 쪽에서 **신규 2테스트 통과 확인**(사용자, 2026-06-04). (회귀로 라운드트립 4종 재실행은 권장.) 정적 리뷰 근거도 일치했었다: 검증기 7-arg 시그니처·포트 주입·`FactorGrantedAuthority` Jackson3 직렬화 모두 라운드트립과 동일 경로.
+> ✅ 받는 쪽에서 **신규 2테스트 + 라운드트립 회귀 4종 모두 통과 확인**(사용자, 2026-06-04). 변경 ②(roles 클레임 팩터 제외)는 라운드트립의 다운스트림 `.contains("ROLE_USER")` 통과로 정확성 입증. ⚠️ **남은 게이트 = `spotlessCheck`(Palantir)** — 테스트와 별개라 커밋/PR 전 `:services:auth-server:spotlessApply` 권장.
 
 ## 다음 (Next) 후보
 - **▶ (선택) RP `IdTokenVerifier` 연계** — AS 발급 id_token 을 `framework-oauth-client` `IdTokenVerifier` 가 그대로 검증하는 경로까지 e2e 로 닫으면 OIDC 전 구간(발급↔검증) 완결.
