@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1
+#
+# deploy/docker/Dockerfile.build
+# ─────────────────────────────────────────────────────────────────────────────
+# 로컬 compose 전용: 소스부터 컨테이너 안에서 Gradle 로 직접 빌드(A안).
+#   (운영/CI 는 deploy/docker/Dockerfile = 미리 빌드된 JAR 만 받는 런타임 전용 이미지를 사용.)
+#
+# 빌드 인자 SERVICE 로 어떤 실행형 서비스를 빌드할지 지정한다.
+#   SERVICE ∈ { gateway | auth-server | user-service | admin-service }
+#
+# ⚠️ 이 이미지는 빌드 시 Maven Central 에 접근해 의존성을 받는다(인터넷 필요).
+#    Chae 로컬은 Central 차단이 없으므로 정상 동작한다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ===== build stage : Gradle bootJar =====
+FROM eclipse-temurin:21-jdk AS builder
+WORKDIR /workspace
+ARG SERVICE
+
+# 멀티모듈 전체를 복사(서비스가 의존하는 framework 모듈까지 함께 컴파일된다).
+COPY . .
+
+# BuildKit 캐시 마운트로 ~/.gradle(의존성/래퍼)을 빌드 간 공유 → 재빌드 시 다운로드 생략.
+# -x test : 이미지 빌드 단계에서는 테스트 생략(테스트는 CI 에서 별도 수행).
+RUN --mount=type=cache,target=/root/.gradle \
+    chmod +x ./gradlew && \
+    ./gradlew :services:${SERVICE}:bootJar --no-daemon -x test
+
+# bootJar 산출물만 골라낸다(-plain.jar 제외). 버전(1.0.0)에 의존하지 않도록 glob.
+RUN set -eux; \
+    JAR="$(ls services/${SERVICE}/build/libs/*.jar | grep -v -- '-plain' | head -n1)"; \
+    cp "$JAR" application.jar; \
+    java -Djarmode=tools -jar application.jar extract --layers --destination extracted
+
+# ===== runtime stage : 레이어 추출본으로 슬림 런타임 =====
+FROM eclipse-temurin:21-jre
+WORKDIR /application
+
+# compose healthcheck(/actuator/health)용 curl. (운영 Dockerfile 은 k8s httpGet probe 라 curl 불요)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# 비루트 실행
+RUN useradd -r -u 1001 appuser
+
+# 변경 빈도 낮은 레이어부터 복사 → 도커 레이어 캐시 적중률 ↑
+COPY --from=builder /workspace/extracted/dependencies/ ./
+COPY --from=builder /workspace/extracted/spring-boot-loader/ ./
+COPY --from=builder /workspace/extracted/snapshot-dependencies/ ./
+COPY --from=builder /workspace/extracted/application/ ./
+
+USER appuser
+
+# 컨테이너 메모리 인지(MaxRAMPercentage). Boot 4 런처 메인 클래스 사용.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "org.springframework.boot.loader.launch.JarLauncher"]
