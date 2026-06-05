@@ -21,7 +21,7 @@
 4. [`guide/PITFALLS.md`](guide/PITFALLS.md) — **함정·교훈 대장**(전 영역 누적 자산: 빌드/Jackson/오토컨피그/보안/DB/테스트/환경). 새 함정은 여기 계속 쌓는다
 5. [`reference/STACK.md`](reference/STACK.md) — 버전 단일 소스(Boot 4.0.6 / Java 21 / SC 2025.1.1 / Jackson 3)
 6. [`reference/CHANGES_AND_DEPRECATIONS.md`](reference/CHANGES_AND_DEPRECATIONS.md) — 버전업 시 깨지는 지점
-7. 모듈 내부 동작 → 각 `framework/framework-*/README.md`
+7. 모듈 **그룹별 색인**(폴더에서 바로 찾기) → [`../framework/README.md`](../framework/README.md) · 모듈 내부 동작 → 각 `framework/framework-*/README.md`
 
 ### ⓒ **운영·배포(DevOps)** 하는 사람
 1. [`ops/LOCAL_SETUP.md`](ops/LOCAL_SETUP.md) — 로컬 DB/Redis 기동
@@ -36,6 +36,7 @@
 
 | 주제 | 문서 |
 |---|---|
+| 모듈 그룹별 색인(폴더에서 빠르게 찾기) | [`../framework/README.md`](../framework/README.md) |
 | 전체 모듈 카탈로그·의존·구축순서 | [`FRAMEWORK_MODULES.md`](FRAMEWORK_MODULES.md) |
 | 모듈 조합(내 프레임워크 만들기) | [`guide/MODULE_COMPOSITION.md`](guide/MODULE_COMPOSITION.md) |
 | 인증/상태/소셜/MFA/SSO 결정·레시피 | [`guide/AUTH_COMPOSITION_GUIDE.md`](guide/AUTH_COMPOSITION_GUIDE.md) |
