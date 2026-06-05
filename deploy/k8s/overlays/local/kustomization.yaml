@@ -30,6 +30,28 @@ images:
   - { name: registry.example.com/si-msa/admin-service, newTag: local }
 
 patches:
+  # admin-service: 전용 DB(admindb) + 컨테이너 쓰기 가능한 업로드 경로(local 파일저장, readOnlyRootFilesystem).
+  #   base 는 DB_URL=sidb(user 와 동일) → Flyway V1 동일 테이블 충돌. local 에선 admindb 로 분리.
+  #   (운영 overlay 도 admin 전용 DB 권장. admin 업로드는 실운영에선 PVC/NAS 또는 file 모듈 비활성.)
+  - target: { kind: ConfigMap, name: admin-service-config }
+    patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata: { name: admin-service-config }
+      data:
+        DB_URL: jdbc:postgresql://postgres:5432/admindb
+        FRAMEWORK_FILE_STORAGE_BASE_PATH: /tmp/uploads
+  # user-service: 로컬 테스트는 S3 없음 → local 파일저장 + 쓰기 가능한 /tmp 경로로 덮음.
+  #   (base 는 FILE_STORAGE_TYPE=s3 유지 — 실운영은 framework-file-s3 주석 해제 + S3 자격증명.)
+  - target: { kind: ConfigMap, name: user-service-config }
+    patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata: { name: user-service-config }
+      data:
+        FILE_STORAGE_TYPE: local
+        FRAMEWORK_FILE_STORAGE_BASE_PATH: /tmp/uploads
+
   # ServiceMonitor 제거 — 로컬 클러스터엔 monitoring.coreos.com CRD 가 없어 그대로 두면 apply 전체가 실패한다.
   # 관측까지 보려면 이 패치를 빼고 kube-prometheus-stack(Helm)으로 오퍼레이터/CRD 를 먼저 설치한다.
   - target: { group: monitoring.coreos.com, version: v1, kind: ServiceMonitor, name: si-msa-services }

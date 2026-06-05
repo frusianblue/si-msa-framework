@@ -23,7 +23,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication
 @EnableScheduling
-@MapperScan(basePackages = "com.company.authserver.jose", annotationClass = Mapper.class)
+@MapperScan(
+        basePackages = {"com.company.authserver.jose", "com.company.authserver.user"},
+        annotationClass = Mapper.class)
 public class AuthServerApplication {
     public static void main(String[] args) {
         SpringApplication.run(AuthServerApplication.class, args);

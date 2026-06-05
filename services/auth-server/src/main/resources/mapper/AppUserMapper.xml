@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.company.authserver.user.AppUserMapper">
+
+    <!-- auth-server 는 map-underscore-to-camel-case 미설정(SigningKeyMapper 규약) → login_id 만 alias.
+         나머지(password/name/role/enabled)는 컬럼명=프로퍼티명이라 자동매핑. -->
+    <select id="findByLoginId" resultType="com.company.authserver.user.AppUser">
+        SELECT id,
+               login_id AS loginId,
+               password,
+               name,
+               role,
+               enabled
+        FROM app_user
+        WHERE login_id = #{loginId}
+    </select>
+</mapper>

@@ -16,11 +16,14 @@ data:
   init.sql: |
     CREATE ROLE authuser WITH LOGIN PASSWORD 'dev-authpass';
     CREATE ROLE siuser   WITH LOGIN PASSWORD 'dev-sipass';
-    CREATE DATABASE authdb OWNER authuser;
-    CREATE DATABASE sidb   OWNER siuser;
+    CREATE DATABASE authdb  OWNER authuser;
+    CREATE DATABASE sidb    OWNER siuser;
+    CREATE DATABASE admindb OWNER siuser;   -- admin-service 전용(user-service 와 Flyway 충돌 회피)
     \connect authdb
     GRANT ALL ON SCHEMA public TO authuser;
     \connect sidb
+    GRANT ALL ON SCHEMA public TO siuser;
+    \connect admindb
     GRANT ALL ON SCHEMA public TO siuser;
 ---
 apiVersion: apps/v1

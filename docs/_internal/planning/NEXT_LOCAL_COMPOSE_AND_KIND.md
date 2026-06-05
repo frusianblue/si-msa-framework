@@ -45,17 +45,18 @@ docker compose -f deploy/compose/docker-compose.yml ps          # 6/6 (healthy)
 curl -i http://localhost:9000/actuator/health                   # 200 + status UP
 ```
 
-## 3. ▶ 지금 할 일 — k8s `overlays/local` 정합 패치
+## 3. k8s `overlays/local` 정합 패치 — ✅ 완료(2026-06-05)
 
-compose 와 kind 는 **같은 이미지**를 쓰므로 1-B 의 1·2·4 는 자동 전파된다. overlays 매니페스트에 **남은 반영**:
+compose 와 kind 는 같은 이미지 → 1-B 의 1·2·4 자동 전파. 매니페스트/코드에 반영 완료:
 
-- [ ] **ⓐ admin-service DB 분리** (1-A ①) — `deploy/k8s/overlays/local/postgres.yaml` initdb 에 `admindb` + 역할 추가, admin-service `DB_URL` 을 `…/admindb` 로 패치(base 는 sidb). 또는 admin 에 `spring.flyway.table` 분리 env. (운영 overlay 도 admin 전용 DB 권장.)
-- [ ] **ⓑ auth-server prod Authenticator 전략** (1-A ②) — prod 엔 `Authenticator` 빈 없음. 택1: (i) overlays/local 의 auth-server 를 `local,local-postgres` 로 띄우는 패치(+`SPRING_DATASOURCE_URL=…/authdb`) = compose 와 동일 경로, kind 검증 목적엔 이게 단순. (ii) 프로젝트 `Authenticator` 구현 주입을 표준으로 두고 문서화. **결정 후 `docs/modules/AUTH_SERVER.md` 반영.**
-- [ ] **ⓒ admin-service 업로드 경로** (1-B 3) — admin 은 local 파일저장(s3 모듈 없음)+`readOnlyRootFilesystem` 이라 **k8s prod 에서도 동일 결함**. admin configmap 에 `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`(쓰기 가능한 /tmp emptyDir). 또는 admin 에서 file 모듈 비활성/PVC 마운트 결정.
-- [ ] **ⓓ user-service 파일저장 결정** — kind 테스트는 local(+`FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`) / 실 prod 은 s3(`framework-file-s3` 주석 해제 + `FILE_STORAGE_TYPE=s3`). overlays/local 은 테스트라 local 권장.
-- [ ] **확인용**: actuator permit(1-B 1)·LOG_DIR(1-B 2)·redis 모듈(1-B 4)은 이미 반영됨(앱 코드/hardening/build.gradle) — 매니페스트 추가 작업 **없음**, 적용됐는지만 스모크에서 확인.
+- [x] **ⓐ admin-service DB 분리** — `overlays/local/postgres.yaml` initdb 에 `admindb`(OWNER siuser) + `kustomization.yaml` 패치로 `admin-service-config.DB_URL=…/admindb`. (운영 overlay 는 admin 전용 DB 별도 provisioning 필요.)
+- [x] **ⓑ auth-server 운영 인증기** — base configmap 이 이미 `prod`+`DB_URL=authdb` 라 프로파일 변경 없이, **`DbAuthenticator`**(authdb `app_user` 비번 검증, `@Profile("!local")`+`@ConditionalOnMissingBean(Authenticator.class)`)로 prod 부팅 가능. Flyway **V7** 가 `app_user` + seed **`tester`/`Test1234!`**({bcrypt}) 생성. `@MapperScan` 에 user 패키지 추가. **local 은 LocalDemo(demo/demo) 그대로** — 상호 배타. 실 프로젝트는 자체 Authenticator(LDAP/AD/GPKI) 주입 시 자동 우선.
+- [x] **ⓒ admin-service 업로드 경로** — `kustomization.yaml` 패치로 `admin-service-config.FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`(admin 은 local 파일저장+s3 모듈 없음+readOnlyRootFilesystem). 실운영은 PVC/NAS 또는 file 모듈 비활성.
+- [x] **ⓓ user-service 파일저장** — `kustomization.yaml` 패치로 `user-service-config` 를 `FILE_STORAGE_TYPE=local`+`/tmp/uploads`(로컬 테스트). base 는 `s3` 유지(실운영=framework-file-s3 주석 해제 + S3 자격증명).
+- [x] actuator permit(앱)·LOG_DIR(hardening)·redis TokenStore(build.gradle) — 이미 반영(매니페스트 추가 작업 없음).
 
-> 각 패치는 PITFALLS §9 + 해당 문서(AUTH_SERVER 등)에 동반 갱신. compose 와 동일 값/경로를 유지해 \"compose=kind 패리티\"를 깨지 않는다.
+> 변경 파일: 코드 = `services/auth-server` V7·`user/{AppUser,AppUserMapper,DbAuthenticator,ProdAuthenticatorConfig}`·`mapper/AppUserMapper.xml`·`AuthServerApplication`(@MapperScan)·`DbAuthenticatorTest` / 매니페스트 = `overlays/local/{postgres,kustomization}.yaml`.
+> 운영(dev/prod) 잔여: admindb 외부 provisioning · admin 업로드 PVC(또는 file 모듈 off) · user-service s3 모듈/자격증명. (테스트 목적 overlays/local 엔 불요.)
 
 ## 4. ▶ 그 다음 — kind 배포
 
