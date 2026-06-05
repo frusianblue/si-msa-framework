@@ -3,40 +3,50 @@
 # deploy/docker/Dockerfile.build
 # ─────────────────────────────────────────────────────────────────────────────
 # 로컬 compose 전용: 소스부터 컨테이너 안에서 Gradle 로 직접 빌드(A안).
-#   (운영/CI 는 deploy/docker/Dockerfile = 미리 빌드된 JAR 만 받는 런타임 전용 이미지를 사용.)
+#   (운영/CI 는 deploy/docker/Dockerfile = 미리 빌드된 JAR 만 받는 런타임 전용 이미지.)
 #
-# 빌드 인자 SERVICE 로 어떤 실행형 서비스를 빌드할지 지정한다.
-#   SERVICE ∈ { gateway | auth-server | user-service | admin-service }
+# 설계 포인트
+#   - builder 스테이지는 SERVICE 인자를 쓰지 않는다 → 4개 서비스 이미지가 같은 builder 를
+#     공유하므로 BuildKit 이 '한 번만' 실행한다(병렬 캐시 경합/중복 컴파일 제거).
+#   - 4개 bootJar 를 한 번의 Gradle 호출로 함께 빌드한다.
+#   - 런타임 스테이지에서 ARG SERVICE 로 해당 서비스 JAR 만 골라 담는다.
 #
-# ⚠️ 이 이미지는 빌드 시 Maven Central 에 접근해 의존성을 받는다(인터넷 필요).
-#    Chae 로컬은 Central 차단이 없으므로 정상 동작한다.
+# ⚠️ 빌드 시 Maven Central 접근(인터넷) 필요. 사내 프록시면 Docker Desktop > Settings >
+#    Resources > Proxies 를 먼저 설정한다.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ===== build stage : Gradle bootJar =====
+# ===== build stage : 4개 bootJar 를 한 번에 빌드(서비스 무관 → 1회만 실행/재사용) =====
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /workspace
-ARG SERVICE
 
-# 멀티모듈 전체를 복사(서비스가 의존하는 framework 모듈까지 함께 컴파일된다).
+# 멀티모듈 전체 복사(서비스가 의존하는 framework 모듈까지 함께 컴파일).
 COPY . .
 
-# BuildKit 캐시 마운트로 ~/.gradle(의존성/래퍼)을 빌드 간 공유 → 재빌드 시 다운로드 생략.
-# -x test : 이미지 빌드 단계에서는 테스트 생략(테스트는 CI 에서 별도 수행).
+# BuildKit 캐시 마운트로 ~/.gradle 재사용. 이 RUN 은 단일 실행이므로 동시쓰기 경합이 없다.
+# -x test : 이미지 빌드 단계에서는 테스트 생략(테스트는 CI 에서 별도).
 RUN --mount=type=cache,target=/root/.gradle \
     chmod +x ./gradlew && \
-    ./gradlew :services:${SERVICE}:bootJar --no-daemon -x test
+    ./gradlew \
+      :services:gateway:bootJar \
+      :services:auth-server:bootJar \
+      :services:user-service:bootJar \
+      :services:admin-service:bootJar \
+      --no-daemon -x test
 
-# bootJar 산출물만 골라낸다(-plain.jar 제외). 버전(1.0.0)에 의존하지 않도록 glob.
+# 부트 JAR(-plain 제외)만 서비스별 디렉터리에 정리해 둔다(버전 글롭, 1.0.0 비의존).
 RUN set -eux; \
-    JAR="$(ls services/${SERVICE}/build/libs/*.jar | grep -v -- '-plain' | head -n1)"; \
-    cp "$JAR" application.jar; \
-    java -Djarmode=tools -jar application.jar extract --layers --destination extracted
+    for s in gateway auth-server user-service admin-service; do \
+      JAR="$(ls services/$s/build/libs/*.jar | grep -v -- '-plain' | head -n1)"; \
+      mkdir -p /app/$s; \
+      cp "$JAR" /app/$s/app.jar; \
+    done
 
-# ===== runtime stage : 레이어 추출본으로 슬림 런타임 =====
+# ===== runtime stage : 해당 서비스 JAR 만 담은 슬림 런타임 =====
 FROM eclipse-temurin:21-jre
+ARG SERVICE
 WORKDIR /application
 
-# compose healthcheck(/actuator/health)용 curl. (운영 Dockerfile 은 k8s httpGet probe 라 curl 불요)
+# compose healthcheck(/actuator/health)용 curl.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
@@ -44,13 +54,9 @@ RUN apt-get update \
 # 비루트 실행
 RUN useradd -r -u 1001 appuser
 
-# 변경 빈도 낮은 레이어부터 복사 → 도커 레이어 캐시 적중률 ↑
-COPY --from=builder /workspace/extracted/dependencies/ ./
-COPY --from=builder /workspace/extracted/spring-boot-loader/ ./
-COPY --from=builder /workspace/extracted/snapshot-dependencies/ ./
-COPY --from=builder /workspace/extracted/application/ ./
-
+COPY --from=builder /app/${SERVICE}/app.jar /application/app.jar
+RUN chown appuser:appuser /application/app.jar
 USER appuser
 
-# 컨테이너 메모리 인지(MaxRAMPercentage). Boot 4 런처 메인 클래스 사용.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "org.springframework.boot.loader.launch.JarLauncher"]
+# 컨테이너 메모리 인지(MaxRAMPercentage). Boot 팻JAR 는 java -jar 로 실행(매니페스트 런처).
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/application/app.jar"]
