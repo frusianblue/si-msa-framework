@@ -25,6 +25,13 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          # 루트FS 읽기전용이라 앱이 쓸 수 있는 건 아래 /tmp emptyDir 뿐.
+          # logback-common(FILE/AUDIT_FILE 롤링, user/admin 등 logback-spring.xml 포함 서비스)의
+          # 기본 LOG_DIR=./logs 는 읽기전용이라 부팅이 깨진다 → 쓰기 가능한 /tmp 로 통일(전 서비스 공통).
+          # (로그 파일은 휘발 emptyDir — k8s 운영은 stdout/CONSOLE 수집·DB/SIEM 연계가 정석. 파일은 보조.)
+          env:
+            - name: LOG_DIR
+              value: /tmp
           resources:
             requests: { cpu: "250m", memory: "512Mi" }
             limits:   { cpu: "1",    memory: "1Gi" }

@@ -144,6 +144,11 @@ services:
       AUTH_SERVER_JWKS_URI: http://auth-server:9000/oauth2/jwks
       RESOURCE_SERVER_ENABLED: "false"
       FILE_STORAGE_TYPE: local      # 로컬엔 S3 가 없으므로 local 로 덮음(base 는 s3)
+      # logback-common(FILE/AUDIT_FILE 롤링)이 기본 ./logs 에 쓰는데 컨테이너 WORKDIR(/application)은
+      # root 소유 + 앱은 비루트(uid 1001)라 생성 불가 → 부팅 실패. k8s 는 readOnlyRootFilesystem+/tmp emptyDir.
+      # 둘 다에서 쓰기 가능한 /tmp 로 LOG_DIR 을 덮는다(logback ${LOG_DIR} knob). auth-server/gateway 는
+      # logback-spring.xml 미포함(콘솔만)이라 불요.
+      LOG_DIR: /tmp
     ports:
       - "8080:8080"
     healthcheck:
@@ -171,6 +176,7 @@ services:
       DB_PASSWORD: dev-sipass
       JWT_SECRET: *app-jwt-secret
       AES_SECRET: *aes-secret
+      LOG_DIR: /tmp     # user-service 와 동일 사유(logback-common 파일 appender → 컨테이너 쓰기경로 /tmp)
     ports:
       - "8081:8081"
     healthcheck:
