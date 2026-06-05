@@ -45,6 +45,7 @@
 - **[겪음] `.imports` 등록 누락 = 죽은 코드** — 오토컨피그 클래스만 만들고 `META-INF/spring/...AutoConfiguration.imports` 에 안 넣으면 토글해도 안 켜짐(redis LoginAttempt 사례). 해결: 클래스 + `.imports` + 등록 가드 테스트(`.imports` 를 직접 읽어 단언).
 - **[겪음] before-순서로 core 백오프 유도** — core 가 `matchIfMissing=true` 로 항상 등록하는 빈(CacheManager 등)을 대체하려면 `@AutoConfiguration(before=CacheAutoConfiguration)`. 동적 DataSource 는 `ImportBeanDefinitionRegistrar`(BDRPP 는 before-순서 못 지킴).
 - **[겪음] 선택 백엔드는 중첩 `@Configuration static` + 클래스레벨 `@ConditionalOnClass`** — 톱레벨 `@Bean` 파라미터가 `compileOnly` 타입이면 Spring 이 클래스 전체를 먼저 로드해 메서드레벨 가드보다 먼저 깨짐.
+- **[일반] 기능 모듈 토글 기본값 = OFF(opt-in)** — 대부분의 `framework.<x>.enabled` 는 `matchIfMissing` 없는 `havingValue="true"` 라 **명시 안 하면 비활성**(security 마스터만 `matchIfMissing=true`=ON 예외). README `끄는 법`/`켜는 법` 작성·문서화 시 이 기본값을 추측하지 말고 `@ConditionalOnProperty(matchIfMissing=?)` 로 확인. 3단 스토어 토글(`...store.type=memory|jdbc|redis`)은 redis 백엔드가 framework-redis 에 있을 때만 선택됨(`@ConditionalOnClass(StringRedisTemplate)` + `.imports`).
 
 ## 5. 보안 / 인증 / JWT  → 깊은 사례는 [`JWT_STATELESS_PITFALLS.md`](JWT_STATELESS_PITFALLS.md)
 

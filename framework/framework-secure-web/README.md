@@ -106,6 +106,19 @@ curl -i "http://localhost:8080/api/v1/files/..%2f..%2fetc%2fpasswd"
 for i in $(seq 1 200); do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/v1/ping; done | sort | uniq -c
 ```
 
+## 끄는 법
+```yaml
+framework.secure-web.enabled: false   # 마스터 off(기본값, opt-in) — 모든 보안 필터 미등록
+# 또는 필요한 필터만 개별 off
+framework.secure-web.injection.enabled:      false
+framework.secure-web.path-traversal.enabled: false
+framework.secure-web.rate-limit.enabled:     false
+framework.secure-web.cors.enabled:           false
+framework.secure-web.csrf.enabled:           false
+framework.secure-web.headers.enabled:        false
+```
+마스터를 끄면 이 모듈의 필터가 전부 미등록된다(게이트웨이 1선 방어만 남음). 직접 노출 서비스는 마스터 on + 필요한 서브 토글만 조정한다.
+
 ## 의존성
 
 새 외부 의존성 0. CORS/RateLimit 모두 호스트가 제공하는 web 스택만 사용(`compileOnly` web).

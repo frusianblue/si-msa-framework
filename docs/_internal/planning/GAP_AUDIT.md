@@ -5,6 +5,13 @@
 ## 한 줄 결론
 **구현 본체는 매우 완결적이다.** 미구현 스텁 0 · 무테스트 라이브러리 모듈 0 · `.imports` 누락 0(과거 redis `RedisLoginAttemptAutoConfiguration` 누락은 **이미 수정됨**) · 코드가 참조하는 DDL 전부 존재 · 실제 `TODO` 마커는 1건(SAML SS8 마이그레이션). 남은 것은 **명시적으로 보류된 기능 + 일부 SPI 백엔드 비대칭 + README 양식 비일관 + k8s devops 산출물 부재**다.
 
+## 처리 현황 (2026-06-05 후속 — 추천 우선순위대로)
+- ✅ **C 완료** — 전 36개 모듈 README 에 `끄는 법` 섹션 통일(없던 10개 신설, 실제 토글·기본 off·폴백 근거). 켜기·실전·끄기 36/36 일관 + 코드펜스 짝수.
+- ✅ **D 완료(매니페스트)** — `base/common/{ingress,networkpolicy,pdb}.yaml` 신설 + base kustomization 등록 + prod overlay TLS/실도메인 Ingress 패치. `K8S_ADDONS.md` 갱신(요구 매핑·ingress 노트). 단 **레이트리밋 429 Testcontainers(Redis) 통합테스트는 미작성**(Docker+Maven 필요 → 항목 E, 받는 쪽 환경에서).
+- ✅ **A4 완료** — `framework-redis` 에 `RedisConcurrentSessionService`(register 를 Lua 로 원자 실행) + `RedisConcurrentSessionAutoConfiguration` + `.imports` 등록 + 토글/등록 가드 테스트. `store.type=memory|jdbc|redis`. (실 Redis Lua 라운드트립은 받는 쪽 검증.)
+- ✅ **A9 완료** — 게이트웨이 `GatewayJwksTokenVerifier` 에 옵트인 `aud` 검증 추가(`gateway.auth.authorization-server.audiences`) + 통과/거부 테스트. 비우면 하위호환.
+- ⬜ **다음** — A1(WebAuthn)·A2(SP-initiated SLO)·A3(KMS/Vault) 각각 독립 세션 권장(규모 큼). A5~A8 선택 백로그.
+
 ## 오해 방지 — 핸드오프엔 "다음"이었으나 이미 완료된 것
 - **RP id_token 링크 e2e** — `services/auth-server/src/test/java/.../e2e/OidcRpLinkageTest.java`(279줄, 5+테스트: 정상검증·JWKS 캐시 재사용·잘못된 issuer/aud 거부) **완료**.
 - **saga step-timeout** — `SagaProperties.stepTimeout`(기본 60s) + `JdbcSagaStore` `deadline_at` + 복구 폴러(`findStuck`) **구현됨**.

@@ -1,0 +1,28 @@
+# deploy/k8s/overlays/prod/ingress-prod.yaml
+# prod 진입 도메인 + TLS. base 의 si-msa-gateway Ingress 를 머지 패치(strategic merge)한다.
+#   - host 를 실제 운영 도메인으로 교체(rules[0].host).
+#   - TLS 종료(cert-manager 등으로 발급한 시크릿 si-msa-tls 가정 — ops 정책에 맞게 이름 조정).
+#   - HSTS/SSL 리다이렉트는 ingress-nginx 기본 + 아래 annotation 으로 강제.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: si-msa-gateway
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  tls:
+    - hosts:
+        - api.example.com
+      secretName: si-msa-tls
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8000

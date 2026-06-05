@@ -1,0 +1,85 @@
+# deploy/k8s/base/common/networkpolicy.yaml
+# 인그레스(수신) 최소권한 — 백엔드는 게이트웨이에서만 도달 가능하게 잠근다.
+#   설계: ① 네임스페이스 전체 default-deny(Ingress) → ② 필요한 경로만 additive allow.
+#   정책 유형은 Ingress 만 다룬다("백엔드 인그레스 게이트웨이 한정 제한"이 목표). Egress 잠금은 별도 단계.
+#   ⚠️ 전제: CNI 가 NetworkPolicy 를 '집행'해야 효력 발생.
+#       - 집행 O: Calico/Cilium/AWS VPC CNI(정책모드) 등 (prod 권장)
+#       - 집행 X: kind 의 kindnet(로컬) → 매니페스트는 무해히 무시됨(로컬에선 inert).
+#   namespaceSelector 는 k8s 1.21+ 자동 라벨 `kubernetes.io/metadata.name` 사용.
+#   모니터링 스크레이프(ServiceMonitor /actuator/prometheus)를 막지 않도록 monitoring ns 수신을 허용한다.
+#     → Prometheus 가 다른 ns 면 아래 `monitoring` 을 실제 ns 이름으로 바꾼다.
+
+# ① 기본 차단: ns 안 모든 파드의 수신을 막는다(아래 allow 들이 구멍을 낸다).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# ② 게이트웨이 수신: ingress-nginx 컨트롤러(외부 진입) + monitoring(스크레이프) 에서만.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-ingress
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+      ports:
+        - { protocol: TCP, port: http }
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+      ports:
+        - { protocol: TCP, port: http }
+---
+# ③ 백엔드(앱) 수신: 게이트웨이 파드 + monitoring 에서만. (auth/user/admin 으로의 외부·상호 직접 호출 차단)
+#    component=service 는 gateway 도 포함하나, from 이 'gateway 파드'라 백엔드 상호 호출은 열리지 않는다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backends-from-gateway
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: service
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: gateway }
+      ports:
+        - { protocol: TCP, port: http }
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+      ports:
+        - { protocol: TCP, port: http }
+---
+# ④ Redis 수신: 같은 ns 의 앱 서비스(component=service)에서만 6379.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-from-apps
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: service }
+      ports:
+        - { protocol: TCP, port: 6379 }

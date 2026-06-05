@@ -1,0 +1,28 @@
+# deploy/k8s/base/common/ingress.yaml
+# 외부 진입점 — 모든 외부 트래픽은 게이트웨이(ClusterIP gateway:8000)로만 들어온다.
+#   전제: ingress-nginx 컨트롤러 설치(ops/K8S_ADDONS.md). IngressClass 이름은 설치값에 맞게(여기선 nginx).
+#   host 는 base placeholder(si-msa.example.com) — overlays/{dev,prod} 에서 실제 도메인/TLS 로 패치한다(prod 예시 포함).
+#   파일 업로드(framework-file) 대비 본문 크기 상향. 그 외 타임아웃 등은 환경별 overlay 에서 조정.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: si-msa-gateway
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: si-msa
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: si-msa.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8000

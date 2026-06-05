@@ -19,7 +19,13 @@ framework:
 > 이 모듈은 두 오토컨피그(`RedisTokenStoreAutoConfiguration`, `RedisLoginAttemptAutoConfiguration`)를 모두 `.imports` 에 등록한다. 각각 security 의 해당 `type=redis` 일 때 활성.
 
 ## 쓰는 법
-직접 호출할 API 는 없다. `framework-security` 의 인증 흐름이 자동으로 Redis 구현을 사용한다(토큰 저장/무효화, 실패 횟수 카운트/잠금).
+직접 호출할 API 는 없다. `framework-security` 의 인증 흐름이 자동으로 Redis 구현을 사용한다(토큰 저장/무효화, 실패 횟수 카운트/잠금, 동시 로그인 세션 추적). 백엔드별 토글:
+```yaml
+framework.security.token-store.type: redis          # 토큰/블랙리스트
+framework.security.login-attempt.type: redis         # 로그인 실패 카운트/잠금
+framework.security.concurrent-session.store.type: redis   # 동시(중복) 로그인 한도 — 다중 파드 정확
+```
+> 동시세션 Redis 백엔드(`RedisConcurrentSessionService`)는 한도 판정→초과분 축출→신규 등록을 **단일 Lua 로 원자 실행**해, 여러 파드에서 동시에 로그인해도 한도가 정확하다(InMemory 는 파드별 분리라 다중 파드에서 부정확 — 그래서 운영은 jdbc 또는 redis). 토글을 켠 것은 `framework.security.concurrent-session.enabled: true` 가 전제다.
 
 ## framework-session 과의 관계 (둘 다 Redis 를 쓴다)
 이 모듈은 **JWT 경로**(TokenStore/LoginAttempt)를 Redis 로, [`framework-session`](../framework-session/README.md) 은 **세션 경로**(HttpSession)를 Redis 로 외부화한다. 같은 사상의 형제 모듈이며, 한 프로젝트가 둘을 동시에 켜도 충돌하지 않는다:

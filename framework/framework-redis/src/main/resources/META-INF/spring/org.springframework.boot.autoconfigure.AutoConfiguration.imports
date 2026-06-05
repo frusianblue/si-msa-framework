@@ -1,2 +1,3 @@
 com.company.framework.redis.RedisTokenStoreAutoConfiguration
 com.company.framework.redis.RedisLoginAttemptAutoConfiguration
+com.company.framework.redis.RedisConcurrentSessionAutoConfiguration

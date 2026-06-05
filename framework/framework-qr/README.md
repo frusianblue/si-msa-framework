@@ -100,6 +100,12 @@ byte[] big = qr.generate("https://corp.com/pay/123", new QrSpec(512, QrEccLevel.
 curl 'http://localhost:8080/api/v1/qr?text=hello' -o qr.png
 ```
 
+## 끄는 법
+```yaml
+framework.qr.enabled: false   # 기본값(opt-in) — 명시하지 않으면 비활성
+```
+끄면 `QrGenerator` 빈이 등록되지 않는다. mfa 는 이 빈이 없어도 동작하며(otpauth:// URI 만 제공), QR PNG 보강이 필요할 때만 켠다.
+
 ## 설계 메모
 
 - **PNG 전용(JPEG 미지원)**: QR 은 흑백 경계가 날카로워야 인식된다. JPEG 같은 손실 압축은 경계에 잡음을 남겨

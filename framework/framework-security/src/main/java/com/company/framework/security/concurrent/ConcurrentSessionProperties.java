@@ -11,7 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       max-sessions: 1           # 사용자당 허용 동시 세션 수
  *       strategy: evict-oldest    # evict-oldest(기존 세션 강제 로그아웃) | reject(신규 로그인 거부)
  *       store:
- *         type: memory            # 3단 토글: memory | jdbc (상호배제)
+ *         type: memory            # 3단 토글: memory | jdbc | redis (상호배제)
  */
 @ConfigurationProperties(prefix = "framework.security.concurrent-session")
 public class ConcurrentSessionProperties {

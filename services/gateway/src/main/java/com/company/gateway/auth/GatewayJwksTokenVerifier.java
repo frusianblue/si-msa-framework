@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
@@ -54,6 +55,7 @@ public class GatewayJwksTokenVerifier {
     private final String rolesClaim;
     private final long clockSkewSeconds;
     private final Duration cacheTtl;
+    private final List<String> expectedAudiences;
 
     private final ConcurrentHashMap<String, Snapshot> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> lastForcedRefetch = new ConcurrentHashMap<>();
@@ -64,7 +66,8 @@ public class GatewayJwksTokenVerifier {
             String jwksUri,
             String rolesClaim,
             Duration clockSkew,
-            Duration cacheTtl) {
+            Duration cacheTtl,
+            List<String> expectedAudiences) {
         this.restClient = restClient;
         this.expectedIssuer = expectedIssuer;
         this.jwksUri = jwksUri;
@@ -72,6 +75,7 @@ public class GatewayJwksTokenVerifier {
         this.clockSkewSeconds = (clockSkew == null) ? 60 : Math.max(0, clockSkew.toSeconds());
         this.cacheTtl =
                 (cacheTtl == null || cacheTtl.isZero() || cacheTtl.isNegative()) ? Duration.ofHours(1) : cacheTtl;
+        this.expectedAudiences = (expectedAudiences == null) ? List.of() : List.copyOf(expectedAudiences);
     }
 
     public String expectedIssuer() {
@@ -98,6 +102,14 @@ public class GatewayJwksTokenVerifier {
         if (expectedIssuer != null && !expectedIssuer.equals(claims.getIssuer())) {
             throw new JwtException(
                     "AS 토큰 issuer 가 일치하지 않습니다(기대=" + expectedIssuer + ", 실제=" + claims.getIssuer() + ").");
+        }
+        if (!expectedAudiences.isEmpty()) {
+            // 혼동된 대리(confused deputy) 방지 — 다른 RP/리소스용 토큰을 게이트웨이가 받아주지 않도록.
+            Set<String> tokenAud = claims.getAudience();
+            if (tokenAud == null || expectedAudiences.stream().noneMatch(tokenAud::contains)) {
+                throw new JwtException(
+                        "AS 토큰 audience 가 허용 목록과 일치하지 않습니다(기대 중 하나=" + expectedAudiences + ", 실제=" + tokenAud + ").");
+            }
         }
         String userId = claims.getSubject();
         if (userId == null || userId.isBlank()) {

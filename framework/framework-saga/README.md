@@ -117,6 +117,13 @@ String sagaId = orchestrator.start("ORDER",
 ```
 중단된 사가는 `findStuck(limit)` + 복구 릴레이가 재구동한다.
 
+## 끄는 법
+```yaml
+framework.saga.enabled:          false   # 기본값(opt-in) — 오케스트레이터/스토어 미등록
+framework.saga.recovery.enabled: false   # 스턱 사가 복구 폴러만 별도로 off
+```
+`saga.enabled` 를 끄면 `SagaOrchestrator`·`SagaStore` 가 등록되지 않는다. 복구 폴러만 끄고 싶으면 `recovery.enabled: false`(오케스트레이션은 유지, 자동 재구동만 중단).
+
 ## 한계 / 다음 후보
 
 - 컨텍스트 병합은 단순 치환(리플라이가 컨텍스트를 주면 교체). 부분 병합은 앱 책임 또는 추후.

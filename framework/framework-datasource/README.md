@@ -140,6 +140,13 @@ public List<Stat> heavyReadReport() {
 public void writeToSecondary(Log row) { secondaryMapper.insert(row); }
 ```
 
+## 끄는 법
+```yaml
+framework.datasource.routing.enabled: false   # 기본값(opt-in)
+framework.datasource.multi.enabled:   false   # 기본값(opt-in) — routing 과 상호 배타
+```
+둘 다 끄면(기본) Spring Boot 표준 **단일 `DataSource`** 만 사용한다. 라우팅과 다중 DB 는 둘 중 **하나만** 켜며, 동시에 켜면 fail-fast 로 막는다.
+
 ## 일관 동작 (multi)
 
 각 독립 `SqlSessionFactory` 는 단일 DB MyBatis 기본값을 그대로 복제하고, 컨텍스트의 모든

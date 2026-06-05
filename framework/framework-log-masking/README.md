@@ -104,6 +104,12 @@ framework.log-masking:
   max-length: 2000
 ```
 
+## 끄는 법
+```yaml
+framework.log-masking.enabled: false   # 기본값(opt-in) — 명시하지 않으면 비활성
+```
+끄면 `SensitiveDataMasker` 빈과 Logback 마스킹 컨버터가 모두 등록되지 않아 **로그가 원문 그대로** 남는다. 값 단위 마스킹이 필요하면 core 의 `MaskingUtils` 를 직접 호출하는 경로는 이 토글과 무관하게 항상 가능하다.
+
 ## 한계 / 주의
 
 - **Boot 구조화 로깅(observability 모듈의 JSON 로그)** 은 `PatternLayout` 을 우회하므로 `%mmsg` 컨버터가 적용되지 않는다. 이 경우 **1차 경로(`SensitiveDataMasker` 빈 명시 호출)** 로 마스킹해야 한다.

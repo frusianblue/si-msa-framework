@@ -74,7 +74,8 @@ public class GatewayAuthConfiguration {
                 jwksUri,
                 as.getRolesClaim(),
                 as.getClockSkew(),
-                as.getJwkCacheTtl());
+                as.getJwkCacheTtl(),
+                as.getAudiences());
     }
 
     /**

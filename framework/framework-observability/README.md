@@ -85,6 +85,16 @@ public void onFail() { loginFailures.increment(); }
 ```
 로그 MDC 태그는 `MDC.put("orderId", id)` 로 추가하면 구조화(JSON) 로그 필드로 출력된다.
 
+## 끄는 법
+```yaml
+framework.observability.enabled: false                    # 마스터 off(기본값, opt-in)
+# 또는 표준별 개별 off
+framework.observability.metrics.common-tags-enabled: false
+framework.observability.metrics.otlp.enabled: false       # 메트릭 OTLP push
+framework.observability.logging.structured.enabled: false # 구조화(JSON) 로그
+```
+마스터를 끄면 공통 태그·구조화 로그·OTel 익스포터가 모두 미등록된다(Boot 기본 메트릭/로그로 복귀). 표준별로도 따로 끌 수 있다 — 트레이싱 OTLP 등 전체 항목은 아래 "토글 한눈에" 표 참고.
+
 ## k8s
 `deploy/k8s/observability.yaml` 에 ServiceMonitor(Prometheus Operator)·annotation 스크레이프·
 액추에이터 노출·health 프로브 샘플이 있다.

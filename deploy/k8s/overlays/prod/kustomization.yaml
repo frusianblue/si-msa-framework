@@ -50,3 +50,5 @@ patches:
       - op: replace
         path: /data/DB_URL
         value: jdbc:postgresql://prod-postgres.internal:5432/sidb
+  # prod 진입 도메인 + TLS (base si-msa-gateway Ingress 를 머지 패치)
+  - path: ingress-prod.yaml

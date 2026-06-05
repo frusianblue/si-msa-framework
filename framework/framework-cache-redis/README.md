@@ -82,6 +82,12 @@ framework.cache.redis:
 ```
 확인: `redis-cli KEYS 'product*'` 로 키 생성 확인.
 
+## 끄는 법
+```yaml
+framework.cache.redis.enabled: false   # 기본값(opt-in) — 명시하지 않으면 비활성
+```
+끄면 core 의 로컬 Caffeine `CacheManager` 가 그대로 쓰인다(위 동작 매트릭스 참고). 애플리케이션 코드(`@Cacheable`/`@CacheEvict`)는 바꿀 필요 없이 **캐시 위치만 로컬로** 돌아간다.
+
 ## 동작 매트릭스
 
 | `framework.cache.redis.enabled` | 호스트에 data-redis | 결과 |

@@ -1,0 +1,48 @@
+# deploy/k8s/base/common/pdb.yaml
+# 자발적 중단(노드 드레인·롤링·클러스터 업그레이드) 시 각 서비스의 최소 가용 파드를 보장한다.
+#   - 4개 앱 서비스는 replicas>=2(기본 2, prod HPA min 2) → maxUnavailable: 1 이면 항상 >=1 유지.
+#   - redis 는 단일 인스턴스(replicas=1·휘발 캐시)라 PDB 를 두지 않는다(두면 minAvailable 로 드레인이 영구 차단됨).
+#   - 셀렉터는 서비스별 `app.kubernetes.io/name` 라벨(서비스 manifest 와 동일 규약).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway-pdb
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-server-pdb
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-server
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-service-pdb
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: admin-service-pdb
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: admin-service

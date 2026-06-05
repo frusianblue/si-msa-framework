@@ -11,6 +11,8 @@
 | `ServiceMonitor`(관측) | Prometheus Operator CRD | **kube-prometheus-stack** (Helm) | 관측 볼 때(dev/prod, 선택 local) |
 | `HPA`(오토스케일, prod 오버레이) | **metrics-server** | metrics-server (Helm/매니페스트) | prod (HPA 쓰면) |
 | gateway 외부 노출 | Ingress Controller | **ingress-nginx** (선택) | 외부 접근 시(아니면 port-forward) |
+| `NetworkPolicy`(백엔드 인그레스 제한) | **집행하는 CNI**(Calico/Cilium/VPC CNI) | CNI 정책모드 | prod 권장(kind kindnet=무집행·inert) |
+| `PodDisruptionBudget`(드레인/롤링 가용성) | 없음(코어 API) | 기본 포함 | 전부(replicas≥2 서비스) |
 | prod 시크릿 주입 | 시크릿 오퍼레이터 | **External Secrets Operator** 또는 **Sealed Secrets** | prod |
 | DB(`authdb`/`sidb`) | PostgreSQL | local=동봉(`overlays/local`)·dev/prod=외부/매니지드 | 전부 |
 | 캐시/토큰/레이트리밋 | Redis | local/dev=인-클러스터(base)·prod=매니지드 권장 | 전부 |
@@ -90,8 +92,9 @@ kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.
 kubectl -n ingress-nginx wait --for=condition=ready pod \
   --selector=app.kubernetes.io/component=controller --timeout=120s
 ```
-> ⚠️ **gateway 용 Ingress 리소스(host/path 라우팅)는 아직 매니페스트에 없다**(백로그). 컨트롤러만 깔아두고,
-> 노출이 필요하면 gateway Service(8000) 를 가리키는 Ingress 를 별도 작성해야 한다. 그 전까지는 port-forward 가 정석.
+> ✅ **gateway 용 Ingress 리소스가 base 에 포함됨**(`base/common/ingress.yaml` — host `si-msa.example.com`, `/` → gateway:8000, class `nginx`).
+> prod 는 `overlays/prod/ingress-prod.yaml` 패치로 실도메인+TLS(`api.example.com`, secret `si-msa-tls`) 적용. dev/로컬은 host 만 환경에 맞게 패치하거나 port-forward 사용.
+> kind 로컬은 80/443 포트매핑 + 컨트롤러가 있어야 Ingress 가 동작한다(없으면 port-forward 가 정석).
 
 ---
 

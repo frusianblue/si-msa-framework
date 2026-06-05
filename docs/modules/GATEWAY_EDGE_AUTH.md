@@ -115,7 +115,9 @@ gateway:
       roles-claim: roles                           # AS RoleClaimTokenCustomizer 와 정합
       clock-skew: 60s
       jwk-cache-ttl: 1h
+      audiences: []                                # 비우면 aud 검증 생략(기본). 설정 시 토큰 aud 중 하나가 목록에 있어야 통과
 ```
+> `audiences` 를 설정하면 서명·`iss`·`exp` 에 더해 **`aud` 클레임**까지 검증한다(혼동된 대리 방지 — 다른 RP/리소스용으로 발급된 AS 토큰을 게이트웨이가 받아주지 않는다). 보통 게이트웨이 뒤 리소스 식별자(또는 AS 가 발급에 넣는 audience 값)를 넣는다. 비우면 하위호환(검증 생략).
 
 ```bash
 export GATEWAY_AS_ENABLED=true

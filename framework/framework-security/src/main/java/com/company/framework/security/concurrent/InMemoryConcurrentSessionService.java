@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 단일 인스턴스/로컬용 동시 세션 제어. 재시작 시 소멸, MSA 다중 인스턴스 공유 불가.
- * 다중 인스턴스 운영에서는 jdbc(또는 추후 redis) 구현으로 교체 권장.
+ * 다중 인스턴스 운영에서는 jdbc 또는 redis 구현으로 교체 권장(store.type=jdbc|redis).
  */
 public class InMemoryConcurrentSessionService implements ConcurrentSessionService {
 

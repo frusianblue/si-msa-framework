@@ -78,6 +78,12 @@ public void inspect(byte[] original) {
 }
 ```
 
+## 끄는 법
+```yaml
+framework.image.enabled: false   # 기본값(opt-in) — 명시하지 않으면 비활성
+```
+끄면 `ImageProcessor` 빈이 등록되지 않는다(이미지 리사이즈/썸네일을 쓰지 않는 서비스). file-batch 의 `ImageTransformOperation` 도 이 빈이 없으면 자동 백오프한다.
+
 ## 주의 / 함정
 
 - **메타 제거는 리인코딩의 부수효과**: ImageIO 디코드→재인코딩 시 EXIF/GPS 등이 보존되지 않으므로 별도 strip

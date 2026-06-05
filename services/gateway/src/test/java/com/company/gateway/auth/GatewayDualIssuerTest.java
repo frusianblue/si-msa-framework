@@ -71,13 +71,39 @@ class GatewayDualIssuerTest {
 
     /** 네트워크 없이 JWKS 를 주입한 AS 검증기. */
     private GatewayJwksTokenVerifier asVerifier() {
+        return asVerifier(List.of());
+    }
+
+    /** audience 허용목록을 지정한 AS 검증기(빈 목록이면 aud 검증 생략). */
+    private GatewayJwksTokenVerifier asVerifier(List<String> audiences) {
         return new GatewayJwksTokenVerifier(
-                null, ISSUER, ISSUER + "/oauth2/jwks", "roles", Duration.ofSeconds(60), Duration.ofHours(1)) {
+                null,
+                ISSUER,
+                ISSUER + "/oauth2/jwks",
+                "roles",
+                Duration.ofSeconds(60),
+                Duration.ofHours(1),
+                audiences) {
             @Override
             protected String fetchJwksJson(String uri) {
                 return jwksJson();
             }
         };
+    }
+
+    private String asTokenWithAud(String sub, String aud) {
+        return Jwts.builder()
+                .header()
+                .keyId(asKid)
+                .and()
+                .issuer(ISSUER)
+                .subject(sub)
+                .audience()
+                .add(aud)
+                .and()
+                .expiration(Date.from(Instant.now().plusSeconds(60)))
+                .signWith(asKeys.getPrivate(), Jwts.SIG.RS256)
+                .compact();
     }
 
     private String asToken(String iss, String sub, List<String> roles) {
@@ -116,6 +142,20 @@ class GatewayDualIssuerTest {
     @Test
     void as_token_with_wrong_issuer_is_rejected() {
         assertThatThrownBy(() -> asVerifier().verify(asToken("https://evil.example.com", "ext-user", List.of())))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    void as_token_with_matching_audience_passes() {
+        GatewayJwksTokenVerifier v = asVerifier(List.of("si-msa-api"));
+        GatewayTokenVerifier.Verified out = v.verify(asTokenWithAud("ext-user", "si-msa-api"));
+        assertThat(out.userId()).isEqualTo("ext-user");
+    }
+
+    @Test
+    void as_token_with_wrong_audience_is_rejected() {
+        GatewayJwksTokenVerifier v = asVerifier(List.of("si-msa-api"));
+        assertThatThrownBy(() -> v.verify(asTokenWithAud("ext-user", "other-rp")))
                 .isInstanceOf(JwtException.class);
     }
 

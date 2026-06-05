@@ -94,6 +94,12 @@ framework.file.sftp:
   base-dir: /upload
 ```
 
+## 끄는 법
+SFTP 백엔드는 `framework.file.storage.type` 가 `sftp` 일 때만 활성화된다. 다른 백엔드로 바꾸면 SFTP 빈은 등록되지 않는다(연결 풀·키 회전 포함).
+```yaml
+framework.file.storage.type: local   # 또는 s3 — sftp 비활성
+```
+
 ## 설계 메모
 
 - 순수 알고리즘(연결 풀 `pool/BoundedObjectPool`, 키 회전 결정 `cred/ReloadingSftpCredentialProvider`, 자격증명 홀더 `cred/SftpCredentials`)은 **SSHD 무의존**으로 분리되어 JDK 단독 단위테스트가 가능하다. SSHD 에 닿는 부분(`SftpKeyLoader`, `SftpFileStorage` 의 세션 개폐)은 내장 MINA SFTP 서버 왕복 테스트로 검증한다.

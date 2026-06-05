@@ -3,7 +3,7 @@ package com.company.framework.security.concurrent;
 import java.util.List;
 
 /**
- * 사용자별 활성 세션 추적 + 동시 로그인 한도 제어. 구현 교체(memory/jdbc).
+ * 사용자별 활성 세션 추적 + 동시 로그인 한도 제어. 구현 교체(memory/jdbc/redis).
  * 세션 식별자(sessionId)는 로그인 1회당 고유(refresh token 사용). accessJti 는 강제 로그아웃 시
  * 액세스 토큰 블랙리스트에 사용한다.
  */

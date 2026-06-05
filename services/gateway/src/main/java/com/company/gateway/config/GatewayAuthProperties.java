@@ -157,6 +157,12 @@ public class GatewayAuthProperties {
         private String rolesClaim = "roles";
         private Duration clockSkew = Duration.ofSeconds(60);
         private Duration jwkCacheTtl = Duration.ofHours(1);
+        /**
+         * 허용 audience 목록(비우면 aud 검증 생략 — 하위호환 기본). 설정하면 토큰의 {@code aud} 중
+         * 최소 하나가 이 목록에 있어야 통과(혼동된 대리(confused deputy) 방지 — 다른 RP/리소스용 토큰 차단).
+         * 보통 게이트웨이 뒤 리소스 식별자(또는 AS 의 audience 값)를 넣는다.
+         */
+        private java.util.List<String> audiences = new java.util.ArrayList<>();
 
         /** jwks-uri 가 비어 있으면 issuer 로부터 표준 경로({issuer}/oauth2/jwks)를 구성한다. */
         public String resolvedJwksUri() {
@@ -216,6 +222,14 @@ public class GatewayAuthProperties {
 
         public void setJwkCacheTtl(Duration jwkCacheTtl) {
             this.jwkCacheTtl = jwkCacheTtl;
+        }
+
+        public java.util.List<String> getAudiences() {
+            return audiences;
+        }
+
+        public void setAudiences(java.util.List<String> audiences) {
+            this.audiences = (audiences == null) ? new java.util.ArrayList<>() : audiences;
         }
     }
 }

@@ -78,6 +78,12 @@ public class JwtTenantContextResolver implements ContextResolver {
 }
 ```
 
+## 끄는 법
+```yaml
+framework.context.enabled: false   # 기본값(opt-in) — 명시하지 않으면 비활성
+```
+끄면 컨텍스트 추출 필터와 비동기/아웃바운드 전파가 등록되지 않고, `ContextHolder.get()` 은 `RequestContext.EMPTY` 를 반환한다(멀티테넌시·컨텍스트 전파가 필요 없는 단일 서비스).
+
 ## 주의 / 함정
 
 - **상속형 ThreadLocal 을 쓰지 않는다.** 가상 스레드/풀에서 누수가 나므로 전파는 데코레이터·인터셉터로 명시한다.

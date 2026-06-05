@@ -15,6 +15,9 @@ resources:
   - user-service
   - admin-service
   - common/servicemonitor.yaml
+  - common/ingress.yaml
+  - common/networkpolicy.yaml
+  - common/pdb.yaml
 
 # 공통 패치: hardened=true 인 Deployment(=4개 서비스, redis 제외) 전부에 보안컨텍스트/프로브/리소스/tmp 주입.
 patches:

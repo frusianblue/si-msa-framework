@@ -3,6 +3,7 @@ package com.company.framework.redis;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.company.framework.security.concurrent.ConcurrentSessionService;
 import com.company.framework.security.loginattempt.LoginAttemptService;
 import com.company.framework.security.token.TokenStore;
 import java.io.BufferedReader;
@@ -29,8 +30,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  * </ul>
  *
  * <p>참고: {@code AutoConfiguration.imports} 에 {@link RedisTokenStoreAutoConfiguration} 과
- * {@link RedisLoginAttemptAutoConfiguration} 이 모두 등록돼 있어 {@code type=redis} 설정만으로 자동활성된다.
- * 본 테스트는 두 클래스를 직접 로드해 토글 조건과 빈 등록을 검증한다.
+ * {@link RedisLoginAttemptAutoConfiguration}, {@link RedisConcurrentSessionAutoConfiguration} 가 모두 등록돼 있어 {@code type=redis} 설정만으로 자동활성된다.
+ * 본 테스트는 세 클래스를 직접 로드해 토글 조건과 빈 등록을 검증한다.
  */
 class RedisAutoConfigurationTest {
 
@@ -84,6 +85,32 @@ class RedisAutoConfigurationTest {
         });
     }
 
+    private final ApplicationContextRunner concurrentSessionRunner = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(RedisConcurrentSessionAutoConfiguration.class))
+            .withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class));
+
+    @Test
+    @DisplayName("concurrent-session.store.type=redis → RedisConcurrentSessionService 등록")
+    void registersConcurrentSessionWhenRedis() {
+        concurrentSessionRunner
+                .withPropertyValues("framework.security.concurrent-session.store.type=redis")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(ConcurrentSessionService.class);
+                    assertThat(context.getBean(ConcurrentSessionService.class))
+                            .isInstanceOf(RedisConcurrentSessionService.class);
+                });
+    }
+
+    @Test
+    @DisplayName("concurrent-session.store.type 미지정 → ConcurrentSessionService 미등록(security 기본 빈에 양보)")
+    void concurrentSessionBacksOffByDefault() {
+        concurrentSessionRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(ConcurrentSessionService.class);
+        });
+    }
+
     /**
      * 레지스트레이션 가드: 위 토글 스모크는 클래스를 직접 로드({@code AutoConfigurations.of})하므로
      * {@code .imports} 미등록이어도 통과한다 — 과거 RedisLoginAttemptAutoConfiguration 갭이 그렇게 숨었다.
@@ -107,9 +134,10 @@ class RedisAutoConfigurationTest {
             }
         }
         assertThat(registered)
-                .as(".imports 에 redis 오토컨피그 2종이 모두 등록돼야 자동활성된다")
+                .as(".imports 에 redis 오토컨피그 3종이 모두 등록돼야 자동활성된다")
                 .contains(
                         RedisTokenStoreAutoConfiguration.class.getName(),
-                        RedisLoginAttemptAutoConfiguration.class.getName());
+                        RedisLoginAttemptAutoConfiguration.class.getName(),
+                        RedisConcurrentSessionAutoConfiguration.class.getName());
     }
 }
