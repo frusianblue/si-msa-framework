@@ -105,6 +105,16 @@
 - **[일반] 새 모듈은 jacocoAggregation 목록에도 추가** — `settings.gradle` include 만으로는 "전체 합산 1장" 커버리지에서 빠진다(루트 `build.gradle` 의 `jacocoAggregation project(...)` 목록에 한 줄). Sonar 글롭 수집은 별개라 안 놓치지만 집계 리포트는 누락됨.
 - **[겪음] "완료로 기록" ≠ "레포에 반영"** — 핸드오프/NEXT 문서에 ✅ 완료로 적혀 있어도 실제 master 에 커밋이 안 됐을 수 있다(예: README 실전샘플 — 문서엔 security·redis·session 완료였으나 라이브 레포엔 security·session 만 존재, redis 는 다른 헤더). **세션 시작 시 "기록"이 아니라 "레포"를 기준으로 재검증**한다. 점검 한 줄: `for d in framework/framework-*; do grep -q '^## 실전 사용 예' "$d/README.md" || echo "$d 누락"; done`.
 
+## 9. 로컬 통합 실행(Docker Compose) · 멀티서비스 배포 정합
+
+> 2026-06-05 로컬 compose 스택(`deploy/compose/`, A안=소스부터 컨테이너 안 Gradle 빌드) 가져오며 발견. ①②는 **k8s `overlays/local` 에도 동일 결함**(kind 배포도 같은 자리에서 깨짐).
+
+- ★ **[겪음] user-service ↔ admin-service 는 같은 DB(sidb) 공유 불가** — 증상: 둘째로 뜨는 서비스가 `relation "users" already exists` 또는 Flyway 체크섬 불일치로 부팅 실패. 원인: 두 서비스 Flyway 가 `locations=classpath:db/migration`·같은 `flyway_schema_history`·**버전·테이블명 충돌**(양쪽 `V1__init` 이 `users/roles/user_roles/resources/menus/...` 동일 생성, user `V1` 은 `IF NOT EXISTS` 도 아님). 해결: **서비스별 DB 분리**(compose 는 admin→`admindb`; 운영/overlay 는 admin 전용 DB 또는 `spring.flyway.table` 분리). 같은 DB 한 스키마에 두 서비스 마이그레이션 금지. [§6 관련]
+- ★ **[겪음] auth-server 는 `prod` 단독 부팅 불가(의도된 템플릿)** — 증상: `Parameter 0 of method frameworkAuthenticationProvider … required a bean of type 'com.company.framework.security.auth.Authenticator'`. 원인: `Authenticator` 빈을 만드는 `LocalDemo` 가 `@Profile("local")` → prod 엔 없음(framework 는 `@ConditionalOnBean(Authenticator.class)` 로 앱 제공 전제). 실배포는 프로젝트가 DB/LDAP `Authenticator` 구현을 주입해야 한다. 해결(로컬): `SPRING_PROFILES_ACTIVE=local,local-postgres`(demo/demo + demo-web/demo-service 클라이언트) + 실 PG. user-service 는 자체 `DbAuthenticationProvider`(@Component), admin-service 는 Authenticator 의존 없음 → 둘 다 prod OK. [§5 관련]
+- **[겪음] `application-local-postgres.yml` 은 datasource URL 을 `localhost:5432` 로 하드코딩** — user-service 의 같은 파일과 달리 `${DB_URL:...}` 자리표시자가 없다. 컨테이너에선 `localhost`=자기 자신이라 PG 연결 실패. 해결: `SPRING_DATASOURCE_URL`(env 최우선) 로 `jdbc:postgresql://postgres:5432/authdb` 덮기. (username/password 는 `${DB_USER}`/`${DB_PASSWORD}` 라 env 로 들어감.)
+- **[겪음] compose 다중 서비스 빌드 = 단일 공유 builder 스테이지** — 증상: `up --build` 가 4서비스 병렬 빌드 중 한둘이 Gradle `exit 1`(락/캐시 깨짐). 원인: 서비스마다 `RUN --mount=type=cache,target=/root/.gradle`(동일 id) 를 **동시 쓰기**. 해결: builder 스테이지를 `ARG SERVICE` **무관**하게 만들어(4 bootJar 한 번에 빌드) BuildKit 이 1회만 실행·재사용 → 경합·중복컴파일 동시 제거. 런타임 스테이지만 `ARG SERVICE` 로 JAR 선택.
+- **[겪음] 로컬 이미지는 팻JAR `java -jar` 가 단순·견고** — 증상: 컨테이너가 `Error: Could not find or load main class org.springframework.boot.loader.launch.JarLauncher` 로 즉시 종료. 원인: Boot 4 레이어 추출(`jarmode=tools extract --layers`) 레이아웃을 워크디렉터리에 **평탄화 병합**해야 `JarLauncher` 가 클래스패스에 잡히는데 추출본을 하위 디렉터리째 둬서 미스. 해결(로컬): 추출/JarLauncher 대신 bootJar 를 그대로 `ENTRYPOINT ["java","-jar","app.jar"]`. (운영 Dockerfile 의 레이어 캐시 최적화는 별개로 유지.)
+
 ---
 
 ## 부록: 빠른 자가진단
@@ -116,6 +126,9 @@
 | 토글했는데 기능 안 켜짐 | §4 `.imports` 등록 / §7 배선 |
 | 멀티 파드에서 잠금/로그아웃 샘 | §5 memory→redis |
 | OIDC `authenticationTime cannot be null` | §5 FactorGrantedAuthority |
+| `ClassNotFoundException: …loader.launch.JarLauncher` | §9 로컬은 팻JAR `java -jar` |
+| `required a bean of type …Authenticator` | §9 auth-server 는 local 데모 프로파일 |
+| `relation "users" already exists` / Flyway 체크섬 불일치 | §9 user↔admin DB 분리(admindb) |
 | `Invalid bound statement` | §6 mapper-locations |
 | 기동 시 `NoClassDefFoundError: LogFactory` | §1 SAS commons-logging |
 | 한글 깨짐 | §7 콘솔 인코딩 3계층 |

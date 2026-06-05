@@ -2,6 +2,8 @@
 
 > 대상: `si-msa-framework` 로컬 개발. 인프라를 **로컬에 직접 설치**해서 눈으로 확인하는 워크플로 기준.
 > Docker 로 한 방에 띄우는 대안은 맨 끝 부록 참고.
+> **4서비스(gateway/auth-server/user-service/admin-service)까지 통째로** 컨테이너로 띄워 통합 검증하려면
+> [`../../deploy/compose/README.md`](../../deploy/compose/README.md)(소스부터 빌드하는 Docker Compose 스택)를 쓴다.
 
 ---
 

@@ -6,29 +6,32 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**A1 후속 ③ WebAuthn rpId/origin 멀티서비스 일원화 정책(2026-06-05) — A1(passkey) 묶음 완결.** 패스키는 rpId(등록가능 도메인)에 바인딩되고 origin host 는 rpId 와 같거나 하위 도메인이어야 하므로, MSA 에서 서비스별 설정이 갈리면 한 서비스 등록 패스키를 다른 서비스가 검증 못 한다. 정책 문서 신설(`docs/guide/WEBAUTHN_RPID_ORIGIN_POLICY.md`) + **정책을 코드로 강제하는 기동 검증 가드** `WebAuthnRpSafetyGuard`(jwt-secret/session-store 가드와 동일 패턴) 추가. 가드는 서비스마다 부팅 시 rp-id↔origin 정합(origin host 가 rp-id 등록가능 도메인 안인지)·prod https·localhost 오용·allowed-origins 누락을 검사 → **prod 위반은 부팅 실패, 비-prod 는 경고**. `diagnose()` static 분리로 프로파일/부팅 없이 단위 검증. MFA WebAuthn 2차(②)는 동일 RP 빈 재사용이라 rpId/origin 자동 일관(별도 설정 0).
+**로컬 통합 실행용 Docker Compose 스택 신설(2026-06-05, `deploy/compose/` + `deploy/docker/Dockerfile.build`) — A안(소스부터 컨테이너 안 Gradle 빌드).** 4개 서비스(gateway/auth-server/user-service/admin-service)+PostgreSQL+Redis 를 한 번에 띄우는 compose 작성. **빌드는 성공(4이미지 Built), postgres/redis healthy 확인**. 가져오는 과정에서 **멀티서비스 배포 정합 결함 3건을 발견·우회**(① user/admin 가 같은 sidb 공유 시 Flyway V1/V2 테이블·체크섬 충돌 → admin 을 `admindb` 분리 ② auth-server 의 `prod` 는 Authenticator 빈을 의도적으로 안 넣음(LocalDemo=@Profile("local")) → 로컬은 `local,local-postgres` 데모 경로 ③ `local-postgres.yml` 의 `localhost:5432` 하드코딩 → `SPRING_DATASOURCE_URL` env 로 덮음). **①②는 k8s `overlays/local` 에도 동일 결함**(kind 올리면 같은 자리에서 깨짐). 새 외부 의존성 0, framework/service 소스 무변경(전부 deploy 자산 + 문서).
 
 ## 최종 갱신
-- 일자: 2026-06-05 · 갱신자: A1 후속 ③ rpId/origin 일원화 세션
-- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 / Jackson 3(tools.jackson.*) — **스택·build.gradle 무변경**(spring-security-webauthn 이미 존재, 신규 의존 0).
+- 일자: 2026-06-05 · 갱신자: 로컬 compose 스택 세션
+- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SC 2025.1.1 / Jackson 3 — **스택·build.gradle 무변경**.
 
-## 직전에 한 것 (Done — 정적 검증, 받는 쪽 컴파일/테스트 확인)
-- **신규 소스 1종**: `config/WebAuthnRpSafetyGuard`(InitializingBean + Environment prod 판정 → prod FAIL / 비-prod WARN; `diagnose(rpId, origins, prod)` static: rp-id 공백·localhost(prod)·origins 공백(prod)·origin 형식/scheme·https(prod, localhost 예외)·origin host 가 rp-id 등록가능 도메인 밖 검사. `hostMatchesRpId` = host==rpId || host.endsWith("."+rpId)).
-- **수정 1종(소스)**: `config/WebAuthnAutoConfiguration`(+`webAuthnRpSafetyGuard` 빈 — RP 연산 빈 옆, `@ConditionalOnMissingBean`, enabled 컨텍스트; +`Environment` import).
-- **신규 테스트 1종**: `WebAuthnRpSafetyGuardTest`(10) — prod 정상(상위도메인 rpId+서브도메인 origin / rpId==origin)·로컬 정상·비prod origins공백 허용·rpId공백 거부·prod localhost rpId 거부·prod origins공백 거부·prod http 거부·origin host 무관 거부·형식오류 거부.
-- **신규 문서 1종**: `docs/guide/WEBAUTHN_RPID_ORIGIN_POLICY.md`(rpId 범위 결정표·권장 토폴로지·설정 일원화(Config/ConfigMap)·가드 표·안티패턴·배포 체크리스트).
-- **문서 동반 갱신 4종**: framework-webauthn README(HTTPS 노트 옆 일원화/가드 + 정책 링크) · PITFALLS §5(+1건 rpId/origin 일원화·가드) · AUTH_COMPOSITION_GUIDE(future-work ①②③ 완료) · 본 HANDOFF_SUMMARY.
+## 직전에 한 것 (Done)
+- **신규 `deploy/docker/Dockerfile.build`**: 로컬 compose 전용 멀티스테이지. builder 스테이지가 `SERVICE` 인자를 안 써서 4서비스가 **같은 builder 를 공유 → BuildKit 이 1회만 빌드**(병렬 캐시경합·중복컴파일 제거). 4개 bootJar 를 한 번에 빌드 후 런타임은 해당 JAR 만 복사해 `java -jar`. (운영용 `deploy/docker/Dockerfile`=미리빌드 JAR 런타임 전용은 무변경.)
+- **신규 `deploy/compose/docker-compose.yml`**: env 는 `overlays/local` ConfigMap/Secret 과 동일값. auth-server 만 `local,local-postgres`(+`SPRING_DATASOURCE_URL=…/authdb`), 나머지 `prod`. admin-service 는 `admindb`. user-service `FILE_STORAGE_TYPE=local`(s3 덮음). 앱 healthcheck=`/actuator/health`(curl, 이미지에 설치).
+- **신규 `deploy/compose/initdb/init.sql`**: authdb/sidb + **admindb** 역할/DB 생성.
+- **신규 `deploy/compose/README.md`**: 켜는법/쓰는법/끄는법 + 발견 3건 주의.
+- **문서 동반 갱신**: PITFALLS §9 신설(compose/배포정합 5건) + 자가진단표 2행 · 본 HANDOFF_SUMMARY · HANDOFF §6 한 줄 · 착수문서 `_internal/planning/NEXT_LOCAL_COMPOSE_AND_KIND.md` 신설 · 00_INDEX/LOCAL_SETUP compose 포인터.
 
 ## 현재 상태 (적용/검증)
-- 작성환경 Maven Central 차단 → 정적 작성. **받는 쪽에서 컴파일/테스트 확인 필요**: `:framework:framework-webauthn:test`(기존 + 신규 `WebAuthnRpSafetyGuardTest` 10) · `spotlessApply`(Palantir) · `:framework:framework-archtest:test`.
-- 가드는 **정합성 검사만** — 실제 ceremony/credential 공유 동작은 멀티서비스 배포(공통 rp-id+공유 jdbc 저장소+게이트웨이 라우팅)에서 검증. 정책 문서의 배포 체크리스트 참조.
+- **빌드 ✅**(4 이미지 Built, 받는 쪽 실행). **postgres/redis healthy ✅**. JarLauncher 오류(v1 레이어추출 잔재) → `java -jar` 로 교체해 해소. auth-server `Authenticator` 누락 → `local` 프로파일로 해소(수정 적용 직후).
+- ⚠️ **auth-server 이후 부팅·user/admin prod 부팅·Flyway 는 미검증** — 받는 쪽에서 그다음 에러가 났고(스샷 다음 세션 제공 예정) 트리아지 대기. 작성환경 Maven Central 차단으로 빌드/기동 직접 실행 불가(정적 작성 + 받는 쪽 확인).
 
-## 바로 다음 할 일 (Next)
-- 받는 쪽에서 위 3개 그래들 태스크 확인.
-- **A1(passkey) 묶음 완결**(①2차 MFA factor ②패스키 관리 ③rpId/origin 정책 모두 done). 다음 큰 축: **A2(SAML SP-initiated SLO)·A3(KMS/Vault 키관리)** 각 독립 세션.
+## 바로 다음 할 일 (Next) — 상세 `_internal/planning/NEXT_LOCAL_COMPOSE_AND_KIND.md`
+1. **compose 그린 만들기**: 다음 세션 스샷의 `APPLICATION FAILED TO START`/`Caused by:` 트리아지. 유력 후보 = (a) postgres `pg_isready` 가 init.sql 완료 전에 healthy → role/DB 부재 레이스 (b) auth-server Flyway(authdb V1~V6) (c) user/admin prod 첫 부팅(DB/Flyway).
+2. **k8s `overlays/local` 정합 패치**(compose 와 동일 결함이라 kind 도 깨짐): admin-service DB 분리(admindb 또는 `spring.flyway.table` 분리) + auth-server 의 prod Authenticator 주입 전략(프로젝트 구현 빈 or 로컬 데모 경로 결정).
+3. 그 후 **kind 배포**: 이미지 빌드 → `kind load docker-image` → `kubectl apply -k deploy/k8s/overlays/local` → 스모크.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **멀티서비스 rpId/origin 일원화** — 전 서비스 동일 rp-id(공통 상위 도메인)+동일 allowed-origins+credential 저장소 공유+ceremony 전담 서비스. 서비스별 yml 중복 금지(Config/ConfigMap 단일 출처). origin host ⊄ rp-id 등록가능 도메인 = ceremony 거부 [PITFALLS §5, WEBAUTHN_RPID_ORIGIN_POLICY.md].
-- **`WebAuthnRpSafetyGuard` = jwt-secret 가드 패턴**(InitializingBean+Environment, prod FAIL/비-prod WARN). 진단 로직은 `diagnose()` static 분리 → 단위 테스트 용이. 4번째 SafetyGuard 계열(jwt/session/devauth/password 와 동형).
-- **MFA WebAuthn 2차는 rpId/origin 자동 일관** — 동일 RP 빈 재사용이라 framework.mfa 쪽에 rpId/origin 설정 없음(framework.webauthn.* 단일 출처).
+- **user-service ↔ admin-service 는 같은 DB 공유 불가** — 두 서비스 Flyway `V1__init` 이 동일 테이블(users/roles/…) 생성 + 같은 `flyway_schema_history` → 둘째 서비스 부팅 실패. 서비스별 DB 분리(admin=admindb) [PITFALLS §9, §6].
+- **auth-server 는 prod 단독 부팅 불가** — `Authenticator` 빈은 `LocalDemo`(@Profile("local"))만 제공. 실배포는 프로젝트가 DB/LDAP 구현 주입, 로컬은 `local,local-postgres` 데모(demo/demo) [PITFALLS §9, §5].
+- **`local-postgres.yml` 은 `localhost:5432` 하드코딩**(user-service 와 달리 `${DB_URL}` 없음) → 컨테이너에선 `SPRING_DATASOURCE_URL` env 로 덮어야 함 [PITFALLS §9].
+- **compose 다중 서비스 빌드는 단일 공유 builder 스테이지로** — 서비스별 `RUN --mount=type=cache,target=/root/.gradle` 동시쓰기는 Gradle 캐시 경합으로 깨짐. builder 를 `SERVICE` 무관하게 만들어 BuildKit 이 1회만 실행 [PITFALLS §9].
+- **로컬 이미지는 `java -jar` 팻JAR** — Boot 4 레이어추출(`jarmode=tools extract`)+`JarLauncher` 레이아웃은 추출본을 평탄화해 클래스패스에 합쳐야 함(안 하면 `ClassNotFoundException: JarLauncher`). 로컬은 팻JAR 직실행이 단순·견고 [PITFALLS §9].
 <!-- 갱신 끝 -->

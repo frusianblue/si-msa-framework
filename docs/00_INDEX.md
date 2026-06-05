@@ -25,6 +25,7 @@
 
 ### ⓒ **운영·배포(DevOps)** 하는 사람
 1. [`ops/LOCAL_SETUP.md`](ops/LOCAL_SETUP.md) — 로컬 DB/Redis 기동
+2. [`../deploy/compose/README.md`](../deploy/compose/README.md) — **Docker Compose 로 4서비스+DB+Redis 한 번에**(소스부터 빌드, 로컬 통합 검증)
 2. [`ops/LOCAL_K8S_ENV_SETUP.md`](ops/LOCAL_K8S_ENV_SETUP.md) · [`ops/LOCAL_K8S_TEST.md`](ops/LOCAL_K8S_TEST.md) — kind 로 로컬 클러스터 검증
 3. [`ops/K8S_ADDONS.md`](ops/K8S_ADDONS.md) — 클러스터 애드온(metrics-server·Prometheus·Ingress·Secret 오퍼레이터)
 4. [`ops/K8S_CICD_MULTISERVICE.md`](ops/K8S_CICD_MULTISERVICE.md) — Kustomize base/overlay·4서비스 CI/CD
