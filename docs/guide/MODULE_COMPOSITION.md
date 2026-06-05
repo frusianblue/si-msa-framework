@@ -43,6 +43,7 @@
 |---|---|---|---|---|
 | **framework-security** [코어] | JWT 무상태 인증·TokenStore·**DB기반 RBAC(동적 인가)**·메뉴관리·비번정책(강도/**만료/이력**)·로그인잠금·**동시세션 제어** | core | redis·audit·mfa·oauth-client·saml-sp·idempotency | `framework.security.*`, `...password.{expiry,history}.enabled`, `...concurrent-session.enabled` |
 | **framework-redis** [선택] | Redis 기반 TokenStore / LoginAttempt | security | 멀티 인스턴스 인증 | `framework.security.token-store.type=redis` 등 |
+| **framework-session** [선택] | 서버 세션 모드의 **Redis 세션 클러스터링**(Spring Session). 세션 모드 전환 자체는 코어(`security.session.mode=session`); 이 모듈은 멀티 인스턴스에서 세션 공유만 담당 | security(+spring-session-data-redis) | 세션 모드 멀티 인스턴스 | `framework.security.session.mode=session` + 모듈 추가(`framework.session.enabled` 기본 on) |
 | **framework-audit** [선택] | 접속/감사 로그 표준 **DB 적재·조회** + Kafka 싱크 | core(+mybatis) | messaging(kafka 싱크 시) | `framework.audit.enabled` + `store.type=logging\|jdbc\|kafka` |
 | **framework-secure-web** [선택] | 보안헤더·경로조작·인젝션 스크리닝·CSRF 더블서브밋(XSS는 core) | core | — | `framework.secure-web.enabled` |
 | **framework-log-masking** [선택] | 로그 PII(주민/카드/휴대폰/이메일) 정규식 마스킹 → core `MaskingUtils` 위임, Logback `%mmsg` | core | observability(로그) | `framework.log-masking.enabled` |

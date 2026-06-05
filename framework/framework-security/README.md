@@ -35,6 +35,29 @@ framework:
 
 토큰 검증 상세는 [`../../docs/reference/TOKEN_VERIFICATION_GUIDE.md`](../../docs/reference/TOKEN_VERIFICATION_GUIDE.md).
 
+## 인증 모드: 무상태(JWT) vs 서버 세션
+
+기본은 **무상태 JWT**(위). 브라우저가 곧 클라이언트인 경우(관리자 콘솔·SSR·레거시 호환)는 **서버 세션 모드**로 전환할 수 있다 — 코어 토글 하나, 추가 모듈 0(단일 인스턴스 기준).
+
+```yaml
+framework:
+  security:
+    session:
+      mode: session     # stateless(기본) | session
+      csrf: true        # 세션 모드 CSRF 보호(쿠키 더블서브밋). 기본 on
+      cookie-name: SESSION
+```
+
+- **엔드포인트**: `POST /api/v1/auth/session/login {loginId,password}` → 세션 수립(토큰 미발급, `Set-Cookie`) · `POST /api/v1/auth/session/logout` → 세션 무효화.
+- **인가·로그인 잠금 동일**: 세션 모드도 동일한 `ROLE_*` 권한 형태로 컨텍스트를 세우므로 RBAC·`@PreAuthorize`·로그인 잠금이 JWT 경로와 똑같이 동작한다.
+- **세션 고정 방어**: 로그인 성공 시 세션ID를 회전(`changeSessionId`)한다.
+- **CSRF**: SPA가 쿠키의 원시 토큰을 동봉하는 형태(평문 핸들러). 로그인/로그아웃 경로는 CSRF 면제. 순수 토큰 API만 쓰면 `csrf: false`.
+- **멀티 인스턴스(replicas≥2)**: 세션을 공유해야 하므로 [`framework-session`](../framework-session/README.md)(Spring Session Redis) 추가. `spring.session.data.redis.*`(Boot4 키)로 설정.
+- **dev-auth 우선순위**: `dev-auth` 프로파일이 켜지면 두 모드 모두 무시하고 개발 체인이 우선한다.
+
+> 모드 선택 가이드: 순수 API(모바일/외부 연계)는 JWT, 브라우저 중심(콘솔/SSR)은 세션. 결정·레시피는 [`../../docs/guide/AUTH_COMPOSITION_GUIDE.md`](../../docs/guide/AUTH_COMPOSITION_GUIDE.md) R7.
+
+
 ## 끄는 법
 `framework.security.enabled: false` 또는 의존성 미포함. 개발 우회는 프로파일 `local,local-noauth`(`dev-auth`) — **운영 금지**(`DevAuthSafetyGuard` 가 prod 차단).
 

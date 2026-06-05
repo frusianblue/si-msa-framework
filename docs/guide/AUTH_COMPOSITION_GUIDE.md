@@ -28,7 +28,7 @@
 | **A. 자체 회원 + 토큰** | 우리 DB 회원이 로그인 → 우리가 JWT 발급 | `framework-security`(코어) | 자체 회원제 서비스 | ✅ |
 | **B. 외부 위임** | 외부 IdP(소셜/SAML)가 신원확인 → **우리가 자체 JWT 발급** | `framework-oauth-client`(소셜/OIDC) / `framework-saml-sp`(SAML) + security | B2C 간편가입, 공공/대기업 SSO | ✅ |
 | **C. 중앙 토큰 발급(OP)** | 중앙 인가서버가 그룹사/MSA 전체에 토큰 발급, 각 서비스는 검증만 | `services/auth-server`(OP) + 서비스 `framework.security.resource-server` | 그룹사 통합, 대규모 MSA | ✅ |
-| **D. 서버 세션 기반** | 서버 HttpSession 으로 상태 유지(쿠키 세션ID) | — | 레거시 호환·SSR | ⬜ 미구현(현 프레임워크는 토큰 우선). 필요 시 `framework-session` 추가 |
+| **D. 서버 세션 기반** | 서버 HttpSession 으로 상태 유지(쿠키 세션ID, 무토큰) | `framework.security.session.mode=session`(코어) · 멀티 인스턴스면 `framework-session`(Redis) 추가 | 레거시 호환·SSR·관리자 콘솔 | ✅ (단일 인스턴스는 코어만, 클러스터는 `framework-session`) |
 
 > A/B/C 는 모두 **최종적으로 우리 JWT** 로 수렴한다(외부는 신원확인까지, 발급은 우리). 그래서 B/C 를 골라도 다운스트림 인가(RBAC)·MFA 는 동일하게 얹힌다. 상세: [`framework-security/README.md`](../../framework/framework-security/README.md), 토큰 검증 자세 [`../reference/TOKEN_VERIFICATION_GUIDE.md`](../reference/TOKEN_VERIFICATION_GUIDE.md).
 
@@ -45,6 +45,8 @@
 | **JWT + TokenStore(Redis)** | ○ | ○ (권장) | `framework-redis` + `token-store.type=redis` | ✅ |
 | **로그인 잠금 공유** | — | ○ | `login-attempt.type=redis\|jdbc` | ✅ |
 | **쿠키 전달** | (저장 전략과 별개) | — | JWT 를 `Set-Cookie`(HttpOnly)로 내리는 전달 선택. 기본은 `Authorization` 헤더 | 🟡 |
+| **서버 세션(단일)** | ○ (세션 무효화=로그아웃) | ✕ (인스턴스 로컬) | `framework.security.session.mode=session` | ✅ |
+| **서버 세션(클러스터)** | ○ | ○ (Redis 공유) | 위 + `framework-session`(Spring Session Redis) | ✅ |
 
 > **판단**: 단일 인스턴스 데모 = `memory`. 운영(replicas≥2) = **redis**(토큰·로그인잠금 공유). 강제 로그아웃/블랙리스트가 필요하면 `memory` 불가 → `jdbc`/`redis`.
 
@@ -144,6 +146,25 @@ yml : saml-sp.enabled=true, registrations.<idp>.metadata-uri=..., saml-sp.slo.en
 ### R6. 소셜 + 2차 인증(고가치 거래) ✅
 **R1 + MFA** — OAuth2 소셜 + 자체 JWT + Redis + MFA(TOTP/SMS). 간편가입은 소셜, 결제 등 민감 동작에서만 2차 인증 요구.
 
+### R7. 서버 세션 기반(레거시 호환·SSR·관리자 콘솔) ✅
+**자체 로그인 + 서버 HttpSession(무토큰)** — 브라우저가 세션 쿠키만 들고 다니는 전통 방식. 토큰을 클라이언트가 저장/관리하지 않아 XSS 토큰 탈취면이 줄고, 로그아웃이 곧 세션 무효화라 즉시 차단이 자연스럽다.
+```yaml
+framework:
+  security:
+    session:
+      mode: session     # stateless(기본) → session 으로 전환
+      csrf: true        # 브라우저 폼/SPA 면 켜둔다(쿠키 더블서브밋)
+# 멀티 인스턴스(replicas≥2)면 세션을 공유해야 함 → framework-session 추가
+spring:
+  session:
+    data:
+      redis:
+        namespace: "myapp:sessions"   # Boot 4: spring.session.data.redis.* (구 spring.session.redis.* 아님)
+```
+의존성: 단일 인스턴스는 **추가 모듈 0**(코어만). 클러스터는 `implementation project(':framework:framework-session')`.
+엔드포인트: `POST /api/v1/auth/session/login`(토큰 대신 세션 수립) · `POST /api/v1/auth/session/logout`(세션 무효화). 인가(RBAC `ROLE_*`)·로그인 잠금은 JWT 경로와 **동일하게** 동작.
+왜: 관리자 백오피스·SSR 페이지·레거시 연동처럼 "브라우저가 곧 클라이언트"인 경우. 순수 API(모바일/외부 연동)는 여전히 JWT(R1~R3)가 맞다.
+
 ---
 
 ## 7. 아직 없는 것 (추가 후보)
@@ -153,7 +174,7 @@ yml : saml-sp.enabled=true, registrations.<idp>.metadata-uri=..., saml-sp.slo.en
 | 후보 | 무엇 | 신설 모듈(예) |
 |---|---|---|
 | Passkey / WebAuthn | FIDO2 비밀번호 없는 인증 | `framework-webauthn` (security `MfaGate`/인증기 SPI 에 연결) |
-| 서버 세션 기반 인증 | HttpSession + 세션 클러스터 | `framework-session` (Spring Session 위임) |
+| ~~서버 세션 기반 인증~~ | ✅ **구현됨** — 코어 `session.mode=session`(단일) + `framework-session`(Redis 클러스터). R7 참고 | — |
 | Keycloak 전용 어댑터 | (현재는 OIDC/SAML 로 대체) | 보통 불필요 |
 | OP 확장 | Device Flow, 토큰 교환 등 | `auth-server` 확장 |
 

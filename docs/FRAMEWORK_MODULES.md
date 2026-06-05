@@ -4,6 +4,8 @@
 > 공공·금융·일반 SI를 같은 코어로 커버한다. 기존 저장소의 오토컨피그 패턴(`@AutoConfiguration` + `.imports` +
 > `@ConditionalOnProperty` + `@ConditionalOnMissingBean`)을 그대로 확장한다.
 > 기준일: 2026-05-31
+>
+> 📂 이 문서는 **카탈로그**(무엇이 있나)다. *무엇을 골라 어떻게 조합하나*는 [`00_INDEX.md`](00_INDEX.md) → `guide/`: 모듈 조합 [`MODULE_COMPOSITION`](guide/MODULE_COMPOSITION.md) · 인증 결정/레시피 [`AUTH_COMPOSITION_GUIDE`](guide/AUTH_COMPOSITION_GUIDE.md) · 함정 대장 [`PITFALLS`](guide/PITFALLS.md).
 
 ---
 

@@ -1,6 +1,9 @@
 package com.company.framework.security.config;
 
 import com.company.framework.mybatis.support.CurrentUserProvider;
+import com.company.framework.security.auth.Authenticator;
+import com.company.framework.security.auth.session.SessionAuthController;
+import com.company.framework.security.auth.session.SessionAuthService;
 import com.company.framework.security.concurrent.ConcurrentSessionProperties;
 import com.company.framework.security.concurrent.ConcurrentSessionService;
 import com.company.framework.security.concurrent.InMemoryConcurrentSessionService;
@@ -37,10 +40,13 @@ import com.company.framework.security.token.TokenStore;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
@@ -54,6 +60,10 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -246,28 +256,10 @@ public class SecurityAutoConfiguration {
         return new PasswordSafetyGuard(props, env);
     }
 
-    // ================= 정상 체인 (실제 인증/인가) =================
-    @Bean
-    @ConditionalOnProperty(
-            prefix = "framework.security.dev-auth",
-            name = "enabled",
-            havingValue = "false",
-            matchIfMissing = true)
-    @ConditionalOnMissingBean(SecurityFilterChain.class)
-    public SecurityFilterChain securityFilterChain(
-            HttpSecurity http,
-            DownstreamTokenAuthenticator downstreamAuthenticator,
-            TokenStore tokenStore,
-            FrameworkSecurityProperties props,
-            DynamicAuthorizationManager dynamicAuthorizationManager,
-            RestAuthenticationEntryPoint entryPoint,
-            RestAccessDeniedHandler accessDeniedHandler)
+    private static void applyCommonHardening(
+            HttpSecurity http, RestAuthenticationEntryPoint entryPoint, RestAccessDeniedHandler accessDeniedHandler)
             throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
-                .formLogin(AbstractHttpConfigurer::disable)
-                .httpBasic(AbstractHttpConfigurer::disable)
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin())
+        http.headers(headers -> headers.frameOptions(frame -> frame.sameOrigin())
                         .contentTypeOptions(Customizer.withDefaults())
                         .httpStrictTransportSecurity(
                                 hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
@@ -275,27 +267,137 @@ public class SecurityAutoConfiguration {
                         .contentSecurityPolicy(
                                 csp -> csp.policyDirectives("default-src 'self'; frame-ancestors 'self'")))
                 .exceptionHandling(
-                        ex -> ex.authenticationEntryPoint(entryPoint).accessDeniedHandler(accessDeniedHandler))
-                .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers("/actuator/**", "/api/*/auth/**", "/swagger-ui/**", "/v3/api-docs/**")
-                            .permitAll();
-                    if (props.isDynamicAuthorization()) {
-                        auth.anyRequest().access(dynamicAuthorizationManager);
-                    } else {
-                        auth.anyRequest().authenticated();
-                    }
-                })
-                .addFilterBefore(
-                        new JwtAuthenticationFilter(
-                                downstreamAuthenticator,
-                                tokenStore,
-                                props.getEdgeTrust().getMode()
-                                                == FrameworkSecurityProperties.EdgeTrust.Mode.GATEWAY_HEADERS
-                                        ? JwtAuthenticationFilter.Mode.GATEWAY_HEADERS
-                                        : JwtAuthenticationFilter.Mode.ZERO_TRUST,
-                                props.getEdgeTrust().getUserIdHeader(),
-                                props.getEdgeTrust().getRolesHeader()),
-                        UsernamePasswordAuthenticationFilter.class);
-        return http.build();
+                        ex -> ex.authenticationEntryPoint(entryPoint).accessDeniedHandler(accessDeniedHandler));
+    }
+
+    // ================= 정상 체인 — 무상태(JWT) : framework.security.session.mode=stateless(기본) =================
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(
+            prefix = "framework.security.session",
+            name = "mode",
+            havingValue = "stateless",
+            matchIfMissing = true)
+    static class StatelessChainConfig {
+
+        @Bean
+        @ConditionalOnProperty(
+                prefix = "framework.security.dev-auth",
+                name = "enabled",
+                havingValue = "false",
+                matchIfMissing = true)
+        @ConditionalOnMissingBean(SecurityFilterChain.class)
+        public SecurityFilterChain securityFilterChain(
+                HttpSecurity http,
+                DownstreamTokenAuthenticator downstreamAuthenticator,
+                TokenStore tokenStore,
+                FrameworkSecurityProperties props,
+                DynamicAuthorizationManager dynamicAuthorizationManager,
+                RestAuthenticationEntryPoint entryPoint,
+                RestAccessDeniedHandler accessDeniedHandler)
+                throws Exception {
+            http.csrf(AbstractHttpConfigurer::disable)
+                    .formLogin(AbstractHttpConfigurer::disable)
+                    .httpBasic(AbstractHttpConfigurer::disable)
+                    .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+            applyCommonHardening(http, entryPoint, accessDeniedHandler);
+            http.authorizeHttpRequests(auth -> {
+                        auth.requestMatchers("/actuator/**", "/api/*/auth/**", "/swagger-ui/**", "/v3/api-docs/**")
+                                .permitAll();
+                        if (props.isDynamicAuthorization()) {
+                            auth.anyRequest().access(dynamicAuthorizationManager);
+                        } else {
+                            auth.anyRequest().authenticated();
+                        }
+                    })
+                    .addFilterBefore(
+                            new JwtAuthenticationFilter(
+                                    downstreamAuthenticator,
+                                    tokenStore,
+                                    props.getEdgeTrust().getMode()
+                                                    == FrameworkSecurityProperties.EdgeTrust.Mode.GATEWAY_HEADERS
+                                            ? JwtAuthenticationFilter.Mode.GATEWAY_HEADERS
+                                            : JwtAuthenticationFilter.Mode.ZERO_TRUST,
+                                    props.getEdgeTrust().getUserIdHeader(),
+                                    props.getEdgeTrust().getRolesHeader()),
+                            UsernamePasswordAuthenticationFilter.class);
+            return http.build();
+        }
+    }
+
+    // ================= 정상 체인 — 서버 세션 : framework.security.session.mode=session =================
+    // 무상태 대신 HttpSession 에 SecurityContext 저장(쿠키 세션ID). JwtAuthenticationFilter 미장착 —
+    // 인증은 세션 로그인(SessionAuthController)이 수립하고, 매 요청은 SecurityContextHolderFilter 가 세션에서 복원한다.
+    // 권한은 무상태 경로와 동일한 ROLE_* 형태 → RBAC/@PreAuthorize 동일 동작.
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "framework.security.session", name = "mode", havingValue = "session")
+    static class SessionChainConfig {
+
+        /** 세션 컨텍스트 저장소. SessionAuthController(쓰기)와 체인(읽기)이 동일 인스턴스를 공유하도록 빈으로 노출. */
+        @Bean
+        @ConditionalOnMissingBean(SecurityContextRepository.class)
+        public SecurityContextRepository securityContextRepository() {
+            return new HttpSessionSecurityContextRepository();
+        }
+
+        @Bean
+        @ConditionalOnProperty(
+                prefix = "framework.security.dev-auth",
+                name = "enabled",
+                havingValue = "false",
+                matchIfMissing = true)
+        @ConditionalOnMissingBean(SecurityFilterChain.class)
+        public SecurityFilterChain sessionSecurityFilterChain(
+                HttpSecurity http,
+                FrameworkSecurityProperties props,
+                SecurityContextRepository securityContextRepository,
+                DynamicAuthorizationManager dynamicAuthorizationManager,
+                RestAuthenticationEntryPoint entryPoint,
+                RestAccessDeniedHandler accessDeniedHandler)
+                throws Exception {
+            if (props.getSession().isCsrf()) {
+                // SPA 쿠키 더블서브밋(XSRF-TOKEN). 평문 핸들러 — 기본 XOR(BREACH 방어)은 쿠키의 원시 토큰을
+                // 그대로 헤더로 보내는 SPA 와 불일치(403)를 일으키므로 명시. 인증 부트스트랩 엔드포인트는 토큰 발급 전이라 면제.
+                http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                        .ignoringRequestMatchers("/api/*/auth/**"));
+            } else {
+                http.csrf(AbstractHttpConfigurer::disable);
+            }
+            http.formLogin(AbstractHttpConfigurer::disable)
+                    .httpBasic(AbstractHttpConfigurer::disable)
+                    .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                    .securityContext(sc -> sc.securityContextRepository(securityContextRepository));
+            applyCommonHardening(http, entryPoint, accessDeniedHandler);
+            http.authorizeHttpRequests(auth -> {
+                auth.requestMatchers("/actuator/**", "/api/*/auth/**", "/swagger-ui/**", "/v3/api-docs/**")
+                        .permitAll();
+                if (props.isDynamicAuthorization()) {
+                    auth.anyRequest().access(dynamicAuthorizationManager);
+                } else {
+                    auth.anyRequest().authenticated();
+                }
+            });
+            return http.build();
+        }
+
+        /** 프로젝트가 Authenticator 를 등록하면 세션 로그인 흐름이 자동 활성(JWT 경로의 AuthAutoConfiguration 과 동일 사상). */
+        @Bean
+        @ConditionalOnBean(Authenticator.class)
+        @ConditionalOnMissingBean
+        public SessionAuthService sessionAuthService(
+                Authenticator authenticator,
+                LoginAttemptService loginAttempts,
+                SecurityContextRepository securityContextRepository,
+                ApplicationEventPublisher eventPublisher) {
+            return new SessionAuthService(authenticator, loginAttempts, securityContextRepository, eventPublisher);
+        }
+
+        @Bean
+        @ConditionalOnBean(SessionAuthService.class)
+        @ConditionalOnMissingBean
+        public SessionAuthController sessionAuthController(
+                SessionAuthService sessionAuthService, LoginAttemptProperties loginAttemptProperties) {
+            return new SessionAuthController(sessionAuthService, loginAttemptProperties);
+        }
     }
 }

@@ -1,0 +1,18 @@
+// 선택형: 서버 세션 기반 인증(framework.security.session.mode=session)에서
+//          HttpSession 을 Redis 로 외부화해 다중 인스턴스(K8s replicas≥2) 간 공유한다.
+// JWT 경로의 framework-redis(TokenStore)와 동일한 사상의 "세션 버전".
+//
+// 주의(Spring Boot 4):
+//  - autoconfigure 모듈 분리로 spring-boot-starter-data-redis 를 함께 가져와야 Redis 오토컨피그가 동작한다.
+//  - Spring Session 프로퍼티가 spring.session.redis.* -> spring.session.data.redis.* 로 리네임됨.
+//  - 버전은 Boot BOM(Spring Session 4.x)이 관리 -> 명시 고정 불필요.
+dependencies {
+    api project(':framework:framework-security')
+    api 'org.springframework.session:spring-session-data-redis'
+    api 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

@@ -22,6 +22,7 @@ dependencies {
     testImplementation project(':framework:framework-security')
     testImplementation project(':framework:framework-openapi')
     testImplementation project(':framework:framework-redis')
+    testImplementation project(':framework:framework-session')
     testImplementation project(':framework:framework-commoncode')
     testImplementation project(':framework:framework-file')
     testImplementation project(':framework:framework-file-s3')

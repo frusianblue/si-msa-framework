@@ -36,6 +36,7 @@
 - **[겪음] actuator/micrometer 재편** — `MeterRegistryCustomizer` 가 `org.springframework.boot.micrometer.metrics.autoconfigure` 로.
 - **[겪음] `HttpHeaders` 가 `MultiValueMap` 미구현(SF7)** — `containsKey`→`containsHeader`, `keySet`→`headerNames`, `forEach/entrySet` 제거.
 - **[겪음] `ClientHttpRequestFactoryBuilder/Settings` 가 starter-web 컴파일 경로에 없음(Boot4 분리)** — RestClient 타임아웃은 spring-web `SimpleClientHttpRequestFactory` 로.
+- **[겪음] Spring Session 프로퍼티 네임스페이스 변경(Boot4)** — `spring.session.redis.*` → **`spring.session.data.redis.*`**(autoconfigure 모듈 분리). 구 키는 조용히 무시됨(세션이 메모리로 떨어져 멀티 인스턴스에서 로그인 유실). `spring-session-data-redis` 는 `spring-boot-starter-data-redis` 동반 필요.
 - **교훈**: 컴파일 미검증 환경이므로 FQCN/이동은 **공식 소스(GitHub raw 해당 버전 브랜치)** 로 확인하고 고친다. 추측 금지.
 
 ## 4. 오토컨피그 / 빈 등록
@@ -54,6 +55,11 @@
 - **[겪음/일반] `X-Forwarded-For` 위조 가능** — `login-id-and-ip` 잠금 키는 신뢰 프록시 환경만.
 - **[겪음] JWT/AES 시크릿 prod 가드** — placeholder·약한키면 기동 실패(`JwtSecretSafetyGuard`/`AesMasterKeySafetyGuard`). 운영은 강한 키 env 주입.
 - **[겪음] SAML SP-initiated SLO ↔ 무상태 충돌** — IdP-initiated 우선, NameID 무상태 추출은 디코더 확장 필요.
+- **[겪음] 세션 모드: 컨트롤러 로그인은 세션 고정(fixation) 수동 회전 필요** — 인증 필터가 아닌 `SessionAuthService` 에서 로그인하므로 SS 의 자동 `changeSessionId` 가 안 걸림. 성공 직후 `request.changeSessionId()` 직접 호출(고정 공격 방어).
+- **[겪음] 세션 모드: `SecurityContextRepository` 명시 공유** — 컨트롤러에서 컨텍스트를 쓰는 측과 필터 체인이 읽는 측이 **같은 repo**(`HttpSessionSecurityContextRepository`)를 봐야 함. 체인 `securityContext().securityContextRepository(repo)` + 서비스의 `saveContext(...)` 가 동일 빈을 공유하도록 배선. 안 맞으면 로그인 직후 익명 취급.
+- **[겪음/일반] 세션 모드 CSRF: SPA 는 XOR/BREACH 핸들러 대신 평문 핸들러** — SS6+ 기본 `XorCsrfTokenRequestAttributeHandler` 는 쿠키의 원시 토큰을 그대로 보내는 SPA 에서 403 유발. `CookieCsrfTokenRepository.withHttpOnlyFalse()` + `CsrfTokenRequestAttributeHandler`(평문) 조합. 로그인/로그아웃 경로는 `ignoringRequestMatchers("/api/*/auth/**")`.
+- **[겪음] 인증 모드 분기는 중첩 `@Configuration static` + 클래스레벨 `@ConditionalOnProperty`** — stateless/session 체인을 한 클래스의 메서드 가드로 가르면 양쪽 `SecurityFilterChain` 빈이 동시 introspect 되어 충돌 위험. 모드별 중첩 설정 클래스로 분리하고 `@ConditionalOnMissingBean(SecurityFilterChain.class)` 로 단일 체인 보장.
+- **[일반] 세션 모드 멀티 인스턴스는 세션 공유 필수** — 코어만으로는 세션이 인스턴스 로컬 → 라운드로빈 시 로그인 유실. `framework-session`(Spring Session Redis) 추가. 미스컨피그(모듈만 있고 `mode≠session`)는 `SessionStoreSafetyGuard` 가 기동 시 WARN.
 
 ## 6. MyBatis / DB
 
