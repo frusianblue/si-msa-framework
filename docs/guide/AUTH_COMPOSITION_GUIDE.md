@@ -74,7 +74,7 @@
 | SMS / Email / 알림톡 OTP | `framework-mfa` `otp.enabled` + `framework-notification`(OtpSender) | ✅ |
 | 일회용 복구코드(ISMS-P) | mfa 기본 | ✅ |
 | 로그인 잠금 / 동시세션 / 비번 만료·이력 | `framework-security` 토글 | ✅ |
-| Passkey / WebAuthn(FIDO2) | — | ⬜ 미구현(백로그). 필요 시 `framework-webauthn` 추가 |
+| Passkey / WebAuthn(FIDO2) | — | 🟡 다음 섹션 착수(킥오프 `_internal/planning/NEXT_WEBAUTHN.md`). SS7 네이티브 `http.webAuthn()` 래핑 → `framework-webauthn` |
 
 상세: [`framework-mfa/README.md`](../../framework/framework-mfa/README.md). TOTP 등록 QR 은 `framework-qr` 로 PNG 변환.
 
@@ -173,7 +173,7 @@ spring:
 
 | 후보 | 무엇 | 신설 모듈(예) |
 |---|---|---|
-| Passkey / WebAuthn | FIDO2 비밀번호 없는 인증 | `framework-webauthn` (security `MfaGate`/인증기 SPI 에 연결) |
+| Passkey / WebAuthn | FIDO2 비밀번호 없는 인증 | `framework-webauthn` (security `MfaGate`/인증기 SPI 연결). **▶ 착수 킥오프: `_internal/planning/NEXT_WEBAUTHN.md`** |
 | ~~서버 세션 기반 인증~~ | ✅ **구현됨** — 코어 `session.mode=session`(단일) + `framework-session`(Redis 클러스터). R7 참고 | — |
 | Keycloak 전용 어댑터 | (현재는 OIDC/SAML 로 대체) | 보통 불필요 |
 | OP 확장 | Device Flow, 토큰 교환 등 | `auth-server` 확장 |

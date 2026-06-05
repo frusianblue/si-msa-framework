@@ -23,15 +23,15 @@
 
 | # | 항목 | 현 상태(근거) | 권장 |
 |---|---|---|---|
-| A1 | **WebAuthn / Passkey (Passwordless)** | 코드 0. `AUTH_COMPOSITION_GUIDE §7` 에 ⬜ 로만 명시 | 신규 모듈 `framework-webauthn`(또는 mfa 확장). 규제권 SI 수요 시 |
+| A1 | **WebAuthn / Passkey (Passwordless)** | 코드 0. `AUTH_COMPOSITION_GUIDE §7` 에 ⬜ 로만 명시 | **▶ 다음 섹션 착수 — 킥오프 [`NEXT_WEBAUTHN.md`](NEXT_WEBAUTHN.md)** (SS7 네이티브 `http.webAuthn()` 래핑) |
 | A2 | **SAML SP-initiated SLO (6.2-B)** | IdP-initiated(6.2-A)만 구현. `SamlSloService` 는 무상태 수신 위주 | SS `saml2Logout` SP-initiated 경로 + 세션 결합 |
 | A3 | **서명키 KMS/Vault 백엔드** | `SigningKeyCipher` SPI + **AES 구현만**. 주석 "KMS/Vault 는 이 빈만 교체"(결정 ①: AES 시작·KMS 후속) | prod 키관리 요구 시 KMS/Vault 구현체 |
-| A4 | **ConcurrentSessionService Redis 백엔드** | InMemory + Jdbc 만. `InMemoryConcurrentSessionService` 주석 "다중 인스턴스는 추후 redis 권장" | 다중 파드 동시세션 제어 정확도 위해 Redis 구현(다른 SPI 패턴 복제) |
+| A4 | ~~ConcurrentSessionService Redis 백엔드~~ | ✅ **완료** — `RedisConcurrentSessionService`(Lua 원자 register) + 오토컨피그 + 테스트. `store.type=memory\|jdbc\|redis` | — |
 | A5 | **archive tar / tar.gz** | `Archiver` = zip + gzip 만(`ZipArchiver`) | commons-compress 로 tar/tar.gz(옵트인) |
 | A6 | **S3 멀티파트 병렬 업로드(TransferManager)** | `S3FileStorage` 단순 putObject | 대용량 업로드 시 TransferManager |
 | A7 | **RetryUtils (core util)** | 없음(client 모듈에 호출단 재시도는 있음) | 범용 재시도 헬퍼(선택) |
 | A8 | **규제특화 pki/hsm/recon/egov** | 코드 0(백로그) | 해당 사업 수주 시 |
-| A9 | **게이트웨이 AS `aud` 클레임 검증** | 엣지에서 서명+`iss`+`exp` 검증·iss 분기 라우팅은 함. `aud` 명시 검증은 RP `IdTokenVerifier` 에만 존재 | 게이트웨이 JWKS 검증기에 audience 검증기 추가(다층 방어) |
+| A9 | ~~게이트웨이 AS `aud` 클레임 검증~~ | ✅ **완료** — `GatewayJwksTokenVerifier` 옵트인 `aud` 검증(`...authorization-server.audiences`) + 테스트. 비우면 하위호환 | — |
 
 ## B. SPI 백엔드 비대칭 (보충 후보 — 우선순위 낮음, 대부분 설계상 OK)
 | SPI | 보유 | 비고 |
@@ -65,8 +65,21 @@
 ---
 
 ## 추천 처리 순서
-1. **C(README 끄는법/덮어쓰기 헤더 통일)** — 비용 낮고 이번 정비 흐름과 연속. 즉시 가능.
-2. **D(Ingress·NetworkPolicy·PDB)** — devops 백로그, 운영 직결. 매니페스트 추가는 코드 위험 0.
-3. **A4(ConcurrentSession Redis) · A9(게이트웨이 aud)** — 보안/정합성 실효, 기존 SPI 패턴 복제라 명확.
-4. **A1(WebAuthn) · A2(SP-initiated SLO) · A3(KMS/Vault)** — 수요 기반(규제/엔터프라이즈). 큼.
-5. **A5~A8(tar·멀티파트·RetryUtils·규제특화)** — 선택 백로그.
+1. ~~C(README 끄는법/덮어쓰기 헤더 통일)~~ ✅ 완료
+2. ~~D(Ingress·NetworkPolicy·PDB)~~ ✅ 완료(레이트리밋 Testcontainers 테스트만 E 로 잔여)
+3. ~~A4(ConcurrentSession Redis)·A9(게이트웨이 aud)~~ ✅ 완료
+4. **A1(WebAuthn)** — ▶ 다음 섹션 착수: [`NEXT_WEBAUTHN.md`](NEXT_WEBAUTHN.md)
+5. A2(SP-initiated SLO)·A3(KMS/Vault) — 각각 독립 세션 권장(규모 큼)
+6. A5~A8(tar·S3 멀티파트·RetryUtils·규제특화) — 선택 백로그
+
+## 남은 보충 항목 (요약 — 2026-06-05 현재)
+| 우선 | 항목 | 규모 | 비고 |
+|---|---|---|---|
+| ▶ 다음 | **A1 WebAuthn/Passkey** | 모듈 1개 | 킥오프 [`NEXT_WEBAUTHN.md`](NEXT_WEBAUTHN.md). SS7 네이티브 래핑 |
+| 후속 | A2 SAML SP-initiated SLO | 중 | IdP-initiated 는 구현됨 |
+| 후속 | A3 서명키 KMS/Vault 백엔드 | 중 | SPI(`SigningKeyCipher`)+AES 만 존재 |
+| 잔여 | E 레이트리밋 429 Testcontainers(Redis) 통합테스트 | 소 | Docker+Maven 필요(작성환경 불가) |
+| 백로그 | A5 tar/tar.gz · A6 S3 멀티파트 · A7 RetryUtils · A8 pki/hsm/recon/egov | 소~중 | 수요 기반 |
+| 낮음 | B: LoginAttemptService jdbc 백엔드(휘발성이라 필요성 낮음) | 소 | — |
+
+> 구현 본체에서 **새로 발견된 미완은 없다**(이번 감사 기준). 위 항목은 전부 "처음부터 의도적으로 보류"였던 후보 기능 + 검증환경 제약 1건.
