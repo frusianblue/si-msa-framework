@@ -57,6 +57,9 @@ public class MfaProperties {
     @NestedConfigurationProperty
     private Enrollment enrollment = new Enrollment();
 
+    @NestedConfigurationProperty
+    private Webauthn webauthn = new Webauthn();
+
     public enum Policy {
         ENROLLED,
         OFF
@@ -284,5 +287,30 @@ public class MfaProperties {
 
     public void setEnrollment(Enrollment enrollment) {
         this.enrollment = enrollment;
+    }
+
+    public Webauthn getWebauthn() {
+        return webauthn;
+    }
+
+    public void setWebauthn(Webauthn webauthn) {
+        this.webauthn = webauthn;
+    }
+
+    /**
+     * WebAuthn 2차 인증 방식 설정. 등록/검증 ceremony 는 framework-webauthn 의 RP 연산/저장소를 재사용하므로,
+     * 이 방식이 실제로 활성화되려면 {@code enabled=true} <b>이면서</b> framework-webauthn 이 활성(RP 빈 존재)이어야 한다.
+     * rpId/origin·자격증명 저장소는 framework-webauthn 설정({@code framework.webauthn.*})을 따른다(중복 설정 없음).
+     */
+    public static class Webauthn {
+        private boolean enabled = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 }

@@ -14,6 +14,7 @@ framework:
     policy: ENROLLED         # ENROLLED(등록자만 2단계) | OFF
     totp: { enabled: true, algorithm: SHA1, digits: 6, period-seconds: 30, recovery-codes: 10 }
     otp:  { enabled: false, length: 6 }
+    webauthn: { enabled: true }   # 패스키 2차(독립 등록형). framework-webauthn 활성(RP 빈 존재) 시에만 동작
     challenge:  { store: { type: memory }, ttl: 5m, max-attempts: 5 }   # 멀티 인스턴스는 redis 필수
     enrollment: { store: { type: memory } }                            # memory | jdbc
 ```
@@ -52,6 +53,27 @@ curl -X POST http://localhost:8080/api/v1/mfa/enroll/totp -H 'Authorization: Bea
 curl -X POST http://localhost:8080/api/v1/auth/mfa/verify \
   -H 'Content-Type: application/json' -d '{"ticket":"...","method":"TOTP","code":"654321"}'
 ```
+
+### WebAuthn(패스키) 2차 — 독립 등록형
+TOTP 처럼 별도 enroll/confirm 로 등록하고 로그인 2단계에서 검증한다. 등록/검증 ceremony 는 framework-webauthn 의 RP 연산·자격증명 저장소를 재사용하며(중복 설정 0, rpId/origin 은 `framework.webauthn.*` 를 따름), challenge 옵션은 세션 대신 발급 티켓에 바인딩한다. attestation/assertion 은 브라우저 `navigator.credentials.*` 결과를 `JSON.stringify` 한 `credentialJson` 으로 보낸다(서버가 SS7 Jackson 3 모듈로 파싱 — 글로벌 Jackson 무영향).
+```bash
+# 1) 등록(인증 필요): 옵션·티켓 수신 → navigator.credentials.create → 확정
+curl -X POST http://localhost:8080/api/v1/mfa/webauthn/enroll -H 'Authorization: Bearer <t>'
+#   → { data: { ticket, optionsJson } }   (optionsJson 을 JSON.parse 하여 create 입력)
+curl -X POST http://localhost:8080/api/v1/mfa/webauthn/enroll/confirm -H 'Authorization: Bearer <t>' \
+  -H 'Content-Type: application/json' \
+  -d '{"ticket":"...","credentialJson":"{...attestation...}","label":"내 노트북"}'
+
+# 2) 로그인 2단계(permitAll): 1차 통과 티켓으로 옵션 수신 → navigator.credentials.get → 검증→토큰
+curl -X POST http://localhost:8080/api/v1/auth/mfa/webauthn/options \
+  -H 'Content-Type: application/json' -d '{"ticket":"<로그인1차_ticket>"}'
+#   → { data: "<requestOptions JSON>" }   (JSON.parse 하여 get 입력)
+curl -X POST http://localhost:8080/api/v1/auth/mfa/webauthn/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"ticket":"<로그인1차_ticket>","credentialJson":"{...assertion...}"}'
+#   → 성공 시 기존 로그인과 동일한 TokenResponse
+```
+서버측 직접 호출(`com.company.framework.mfa.core.MfaWebAuthnService`)도 가능: `beginEnrollment(userId)` → `confirmEnrollment(userId, ticket, credentialJson, label)`, `beginAssertion(ticket)` → `verify(ticket, credentialJson, clientIp)`. 자격증명 본체는 RP 가 `UserCredentialRepository` 에 저장하고, MFA 는 `MfaEnrollment(WEBAUTHN, confirmed)` 메타만 기록한다(`status`/`confirmedMethods`/`disable` 은 기존 방식과 동일하게 동작).
 
 ## 끄는 법
 `framework.mfa.enabled: false`(또는 `policy: OFF`) 또는 의존성 미포함.

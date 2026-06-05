@@ -2,6 +2,8 @@ package com.company.framework.mfa.config;
 
 import com.company.framework.mfa.core.DefaultMfaGate;
 import com.company.framework.mfa.core.MfaService;
+import com.company.framework.mfa.core.MfaWebAuthnService;
+import com.company.framework.mfa.core.MfaWebAuthnSupport;
 import com.company.framework.mfa.otp.OtpSender;
 import com.company.framework.mfa.store.InMemoryMfaChallengeStore;
 import com.company.framework.mfa.store.InMemoryMfaEnrollmentStore;
@@ -13,6 +15,7 @@ import com.company.framework.mfa.totp.Totp;
 import com.company.framework.mfa.totp.TotpSecretGenerator;
 import com.company.framework.mfa.web.MfaEnrollmentController;
 import com.company.framework.mfa.web.MfaVerificationController;
+import com.company.framework.mfa.web.MfaWebAuthnController;
 import com.company.framework.mybatis.support.CurrentUserProvider;
 import com.company.framework.security.auth.LoginService;
 import com.company.framework.security.auth.MfaGate;
@@ -26,8 +29,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.web.webauthn.management.WebAuthnRelyingPartyOperations;
 
 /**
  * 2단계 인증(MFA) 오토컨피그.
@@ -150,5 +155,47 @@ public class MfaAutoConfiguration {
     public MfaVerificationController frameworkMfaVerificationController(
             MfaService mfaService, LoginService loginService, LoginAttemptProperties loginAttemptProperties) {
         return new MfaVerificationController(mfaService, loginService, loginAttemptProperties);
+    }
+
+    /**
+     * WebAuthn 2차 인증 지원(선택). framework-webauthn 이 활성이면 등록되는 {@link WebAuthnRelyingPartyOperations}
+     * 빈을 재사용해 {@link MfaWebAuthnSupport} 를 구성한다. spring-security-webauthn 가 런타임에 없으면(=대부분의
+     * 앱) 이 중첩 설정 자체가 로드되지 않으므로, 최상위 {@code @Bean} 파라미터로 두었을 때의 클래스 로딩 문제를
+     * 회피한다(클래스레벨 {@code @ConditionalOnClass} 격리 — compileOnly→런타임 부재 안전, PITFALLS §4).
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(WebAuthnRelyingPartyOperations.class)
+    static class WebAuthnMfaConfiguration {
+
+        @Bean
+        @ConditionalOnBean(WebAuthnRelyingPartyOperations.class)
+        @ConditionalOnMissingBean
+        public MfaWebAuthnSupport mfaWebAuthnSupport(WebAuthnRelyingPartyOperations rpOperations) {
+            return new MfaWebAuthnSupport(rpOperations);
+        }
+
+        @Bean
+        @ConditionalOnBean(MfaWebAuthnSupport.class)
+        @ConditionalOnMissingBean
+        public MfaWebAuthnService mfaWebAuthnService(
+                MfaProperties props,
+                MfaEnrollmentStore enrollmentStore,
+                MfaChallengeStore challengeStore,
+                MfaWebAuthnSupport support,
+                ApplicationEventPublisher eventPublisher) {
+            return new MfaWebAuthnService(props, enrollmentStore, challengeStore, support, eventPublisher);
+        }
+
+        @Bean
+        @ConditionalOnBean({MfaWebAuthnService.class, LoginService.class})
+        @ConditionalOnMissingBean
+        public MfaWebAuthnController frameworkMfaWebAuthnController(
+                MfaWebAuthnService webAuthnService,
+                CurrentUserProvider currentUserProvider,
+                LoginService loginService,
+                LoginAttemptProperties loginAttemptProperties) {
+            return new MfaWebAuthnController(
+                    webAuthnService, currentUserProvider, loginService, loginAttemptProperties);
+        }
     }
 }

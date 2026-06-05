@@ -75,6 +75,7 @@
 | 일회용 복구코드(ISMS-P) | mfa 기본 | ✅ |
 | 로그인 잠금 / 동시세션 / 비번 만료·이력 | `framework-security` 토글 | ✅ |
 | Passkey / WebAuthn(FIDO2) | `framework-webauthn` `enabled` + `spring-security-webauthn` + 앱 `UserDetailsService` | 🟢 1차 슬라이스(2026-06-05): SS7 네이티브 `http.webAuthn()` 래핑 → 세션+CSRF 전용 체인 ceremony → 토큰교환으로 자체 JWT. 저장소 memory\|jdbc. **+ 패스키 관리(2026-06-05): `GET/DELETE {credentials-path}` 목록·삭제, 삭제 소유권은 SS7 `CredentialRecordOwnerAuthorizationManager` 재사용(deny→404).** 브라우저 ceremony 실서명은 받는 쪽 검증 |
+| 패스키를 **2차 factor** 로(독립 등록형) | `framework-mfa` `webauthn.enabled` + framework-webauthn 활성 | 🟢 2차 factor 연계(2026-06-05): `MfaMethod.WEBAUTHN` 추가. TOTP 처럼 별도 enroll/confirm 로 등록(`/api/v1/mfa/webauthn/**`)하고 로그인 2단계에서 검증(`/api/v1/auth/mfa/webauthn/options`·`/verify`). RP 연산·자격증명 저장소는 framework-webauthn 재사용, challenge 는 세션 대신 **발급 티켓에 바인딩**(무상태 일관). 직렬화는 SS7 Jackson 3 `WebauthnJacksonModule`. SS 결합은 `MfaWebAuthnService`/`MfaWebAuthnController` 로 격리(중첩 `@ConditionalOnClass`). 브라우저 실서명은 받는 쪽 검증 |
 
 상세: [`framework-mfa/README.md`](../../framework/framework-mfa/README.md). TOTP 등록 QR 은 `framework-qr` 로 PNG 변환.
 
@@ -173,7 +174,7 @@ spring:
 
 | 후보 | 무엇 | 신설 모듈(예) |
 |---|---|---|
-| ~~Passkey / WebAuthn~~ | ✅ **1차 구현됨(2026-06-05)** — `framework-webauthn`(SS7 네이티브 `http.webAuthn()` 래핑, 전용 세션+CSRF 체인 → 자체 JWT 교환). **+ 패스키 관리 UX(2026-06-05): 목록/삭제 엔드포인트.** 사용 `framework/framework-webauthn/README.md`. (남은 후속: 2차 MFA factor 연계·rpId/origin 멀티서비스 일원화 정책) | `framework-webauthn` |
+| ~~Passkey / WebAuthn~~ | ✅ **1차 구현됨(2026-06-05)** — `framework-webauthn`(SS7 네이티브 `http.webAuthn()` 래핑, 전용 세션+CSRF 체인 → 자체 JWT 교환). **+ 패스키 관리 UX(2026-06-05): 목록/삭제 엔드포인트.** **+ 2차 MFA factor 연계(2026-06-05): `framework-mfa` `webauthn.enabled`, 독립 등록형.** 사용 `framework/framework-webauthn/README.md`·`framework/framework-mfa/README.md`. (남은 후속: rpId/origin 멀티서비스 일원화 정책) | `framework-webauthn` · `framework-mfa` |
 | ~~서버 세션 기반 인증~~ | ✅ **구현됨** — 코어 `session.mode=session`(단일) + `framework-session`(Redis 클러스터). R7 참고 | — |
 | Keycloak 전용 어댑터 | (현재는 OIDC/SAML 로 대체) | 보통 불필요 |
 | OP 확장 | Device Flow, 토큰 교환 등 | `auth-server` 확장 |

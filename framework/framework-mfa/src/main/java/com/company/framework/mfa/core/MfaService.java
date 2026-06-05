@@ -140,7 +140,7 @@ public class MfaService {
     /** 챌린지 생성(+OTP 자동발송). 티켓·가용 방식을 PendingAuth 로 저장하고 식별자를 반환. */
     public String createChallenge(String userId, List<String> roles, List<String> methods) {
         String ticket = UUID.randomUUID().toString().replace("-", "");
-        PendingAuth pending = new PendingAuth(userId, roles, methods, null, 0);
+        PendingAuth pending = new PendingAuth(userId, roles, methods, null, 0, null);
         if (methods.contains(MfaMethod.OTP.code()) && props.getOtp().isAutoSend() && otpSender != null) {
             String code = MfaCrypto.numericOtp(props.getOtp().getLength());
             pending = pending.withOtpCodeHash(MfaCrypto.sha256Hex(code));

@@ -13,7 +13,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  * 필드 구분자 {@code |}, roles/methods 내부 구분자 {@code ,}. roles/userId 가 구분자를 포함할 수 있어
  * userId·roles·methods 는 Base64(URL-safe)로 인코딩해 충돌을 원천 차단한다.
  *
- * <p>레코드 형식: {@code attempts|userIdB64|otpHashOrDash|rolesCsvB64|methodsCsvB64}
+ * <p>레코드 형식: {@code attempts|userIdB64|otpHashOrDash|rolesCsvB64|methodsCsvB64|webauthnOptsB64OrDash}
  */
 public class RedisMfaChallengeStore implements MfaChallengeStore {
 
@@ -46,7 +46,8 @@ public class RedisMfaChallengeStore implements MfaChallengeStore {
                 + "|" + b64(p.userId())
                 + "|" + (p.otpCodeHash() == null ? "-" : p.otpCodeHash())
                 + "|" + b64(csv(p.roles()))
-                + "|" + b64(csv(p.methods()));
+                + "|" + b64(csv(p.methods()))
+                + "|" + (p.webauthnOptionsJson() == null ? "-" : b64(p.webauthnOptionsJson()));
     }
 
     private static PendingAuth deserialize(String raw) {
@@ -56,7 +57,9 @@ public class RedisMfaChallengeStore implements MfaChallengeStore {
         String otpHash = "-".equals(parts[2]) ? null : parts[2];
         List<String> roles = uncsv(unb64(parts[3]));
         List<String> methods = uncsv(unb64(parts[4]));
-        return new PendingAuth(userId, roles, methods, otpHash, attempts);
+        // 하위호환: 구(舊) 5-필드 레코드도 안전하게 역직렬화(webauthn 옵션 없음).
+        String webauthnOptionsJson = (parts.length > 5 && !"-".equals(parts[5])) ? unb64(parts[5]) : null;
+        return new PendingAuth(userId, roles, methods, otpHash, attempts, webauthnOptionsJson);
     }
 
     private static String csv(List<String> values) {

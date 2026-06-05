@@ -9,6 +9,11 @@ dependencies {
     compileOnly 'org.springframework.boot:spring-boot-starter-web'
     compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
     compileOnly 'org.springframework.boot:spring-boot-starter-data-redis'
+    // WebAuthn 2차(독립 등록형): framework-webauthn 이 등록한 WebAuthnRelyingPartyOperations 빈을 재사용한다.
+    //   RP 연산/자격증명 저장은 spring-security-webauthn(별도 아티팩트, WebAuthn4J 전이) 에 있고, 직렬화는
+    //   SS7 의 Jackson 3 모듈(WebauthnJacksonModule, tools.jackson.*)을 쓴다. webauthn 미사용 앱은 런타임 부재 →
+    //   MfaAutoConfiguration 의 중첩 @ConditionalOnClass 설정이 통째로 스킵되어 안전(컴파일만, 드래그인 방지).
+    compileOnly 'org.springframework.security:spring-security-webauthn'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
@@ -20,4 +25,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-web'
     testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    // compileOnly 는 test 클래스패스로 전이되지 않으므로, WebAuthn 단위테스트(RP/Support mock)·오토컨피그 로딩
+    //   테스트에서 SS7 webauthn 타입을 보려면 test 에 그대로 재선언해야 한다(PITFALLS: compileOnly→test 갭).
+    testImplementation 'org.springframework.security:spring-security-webauthn'
 }

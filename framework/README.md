@@ -26,7 +26,7 @@
 |---|---|
 | [framework-security](framework-security/README.md) | 로그인·JWT/세션·RBAC·계정잠금·비번정책. **인증의 핵심(`Authenticator` 1개만 구현).** |
 | [framework-session](framework-session/README.md) | 서버 세션을 Redis 로 외부화(클러스터 세션, `mode=session`) |
-| [framework-mfa](framework-mfa/README.md) | 2단계 인증(TOTP/OTP + ISMS-P 복구코드, 외부 의존성 0) |
+| [framework-mfa](framework-mfa/README.md) | 2단계 인증(TOTP/OTP + ISMS-P 복구코드 + WebAuthn 패스키 2차, 외부 의존성 0) |
 | [framework-oauth-client](framework-oauth-client/README.md) | 외부 IdP 소셜 로그인(OAuth2/OIDC **RP**) → 자체 JWT 발급 |
 | [framework-saml-sp](framework-saml-sp/README.md) | SAML 2.0 **SP**(외부 SAML IdP) → 자체 JWT. ⚠️ OpenSAML 전이(Shibboleth repo) |
 | [framework-webauthn](framework-webauthn/README.md) | 패스키/**WebAuthn**(FIDO2) 비밀번호 없는 강인증. SS7 네이티브 `http.webAuthn()` 래핑 → 자체 JWT. 패스키 목록/삭제 관리. ⚠️ `spring-security-webauthn` 아티팩트 필요 |
