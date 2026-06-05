@@ -100,7 +100,16 @@ public class AuthorizationServerConfig {
     @Order(2)
     SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http, AuthenticationProvider provider)
             throws Exception {
-        http.authorizeHttpRequests(a -> a.anyRequest().authenticated())
+        // ⚠️ actuator 는 반드시 미인증 허용. K8s startup/liveness/readiness 프로브(/actuator/health{,/liveness,/readiness}),
+        //    로컬 compose healthcheck, Prometheus 스크레이프(/actuator/prometheus)가 토큰 없이 접근한다.
+        //    이 permitAll 이 없으면 /actuator/** 가 아래 anyRequest().authenticated() + formLogin 에 걸려
+        //    302(→/login)/401 이 떨어지고, 프로브/헬스체크가 영영 실패 → 컨테이너 unhealthy(부팅은 정상인데 죽음).
+        //    framework-security 기본 체인(SecurityAutoConfiguration)이 user/admin/gateway 에 쓰는 규약과 동일하게 맞춘다.
+        //    (노출 엔드포인트 자체는 application.yml management.endpoints.web.exposure.include 로 이미 한정됨.)
+        http.authorizeHttpRequests(a -> a.requestMatchers("/actuator/**")
+                        .permitAll()
+                        .anyRequest()
+                        .authenticated())
                 .authenticationProvider(provider)
                 .formLogin(Customizer.withDefaults());
         return http.build();
