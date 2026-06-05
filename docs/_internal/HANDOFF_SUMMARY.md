@@ -6,6 +6,9 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
+**✅ 로컬 compose 풀 그린 달성(2026-06-05) — 6컨테이너(auth-server/gateway/user/admin/postgres/redis) 전부 `(healthy)`.** 받은 스샷들을 순차 트리아지해 배포정합 결함 4건을 발견·수정: ① auth-server actuator 가 자체 보안체인에 막힘(앱 1줄: `/actuator/**` permitAll) ② logback `./logs` 컨테이너 쓰기불가(`LOG_DIR=/tmp`) ③ local 업로드 `./uploads` 쓰기불가(`FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`) ④ prod `token-store.type=redis` 인데 `framework-redis` 미의존(build.gradle 모듈 추가). ②③은 비루트+읽기전용 루트FS 동근원, ④는 백엔드토글↔모듈 불일치. **전부 k8s 에도 동일 적용** → overlays 패치 시 반영하면 kind 도 통과 예상.
+
+## (이전) 한 줄 요약
 **로컬 compose `up -d` 트리아지 — auth-server 만 `unhealthy` 로 의존 서비스(gateway/user-service) 부팅 실패(2026-06-05).** 받은 스샷 판독: auth-server 앱은 **정상 기동**(`Tomcat started on port 9000`, `Started AuthServerApplication`)인데 compose 가 unhealthy 판정 → `dependency failed to start`. **근본 원인 = 보안 체인이 `/actuator/health` 를 막음**(앱 결함, 헬스체크/타이밍 문제 아님). `AuthorizationServerConfig` 의 `@Order(2) defaultSecurityFilterChain` 이 `anyRequest().authenticated()`+formLogin 이라 미인증 actuator 접근이 302(→`/login`)/401 → `curl -fsS … | grep -q UP` 영영 실패. framework-security 기본 체인은 `/actuator/**` permitAll(그래서 user/admin/gateway 정상)인데 AS 가 자체 체인으로 백오프시키며 이 규약이 누락. **같은 코드라 k8s startup/liveness/readiness 프로브도 동일 결함** → 앱 한 줄 수정으로 compose+kind 동시 해소(헬스체크 우회보다 정답). curl 은 런타임 이미지에 정상 설치(원인 아님) 확인. **그 후 user/admin 이 logback `./logs/*.log`(2차) → local FileStorage `./uploads`(3차) 컨테이너 쓰기불가로 연쇄 종료 → `LOG_DIR=/tmp`·`FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads` env 로 수정**(전부 소스/Dockerfile 무변경; 동근원=비루트+읽기전용 루트FS 에서 작업디렉터리 하위 쓰기). k8s readOnlyRootFilesystem 까지 정합. **그다음 user/admin 이 DB/Flyway(sidb/admindb)는 통과했으나 `TokenStore` 빈 부재로 종료 → prod `token-store.type=redis` 인데 `framework-redis` 미의존이 원인 → build.gradle 에 모듈 추가(4차, 유일하게 재빌드 필요).**
 
 ## 최종 갱신
@@ -23,12 +26,12 @@
 ## 현재 상태 (적용/검증)
 - **✅ 받는 쪽 검증 완료(2026-06-05)**: 수정 적용 후 재기동 → `[+] up 10/10`, auth-server `Healthy`. `curl -i …:9000/actuator/health` = **200 + {"groups":["liveness","readiness"],"status":"UP"}**(이전엔 302/401). 응답에 liveness/readiness 그룹이 떠 있어 **k8s 프로브도 동일 통과 확인**(같은 이미지/경로) → compose+kind 동시 해소.
 - **auth-server/gateway/postgres/redis = `(healthy)` 검증 완료.** user/admin 은 `prod` logback 파일경로 문제로 종료했었음(이번 LOG_DIR 수정 대상). 
-- **DB/Flyway(sidb/admindb) 통과 확인됨**(user 4개 마이그레이션 validated, admin up-to-date) → admindb/Flyway 결함은 실제로는 안 터짐(볼륨 정상).
-- ⚠️ **redis 토큰스토어 수정은 재빌드 필요** — `docker compose ... up -d --build`(build.gradle 변경). 이후 user/admin `(healthy)` 확인. 부팅 순서 logging→file→Flyway→security(TokenStore) 까지 다 통과하면 compose 풀 그린. redis 컨테이너는 이미 healthy 라 `spring.data.redis.host=redis` 로 바로 연결.
+- **✅ compose 풀 그린 검증 완료(받는 쪽 `up -d --build` 후 `ps` 6컨테이너 전부 `(healthy)`).** 4건 수정 모두 실효 확인. admindb/Flyway 결함은 실제로는 안 터짐(볼륨 정상).
+- 수정 4건의 적용 형태: actuator=앱 코드(AuthorizationServerConfig) · LOG_DIR/업로드경로=env(compose+k8s hardening) · redis=build.gradle 모듈. **앞 3건(앱코드·LOG_DIR·redis모듈)은 같은 이미지라 kind 자동 적용**, 업로드경로는 compose env 로만 줬으므로 k8s 는 overlays 에서 별도 반영 필요(admin).
 
 ## 바로 다음 할 일 (Next)
-1. **compose 완전 그린 확인**: LOG_DIR 수정 재기동 후 user/admin `(healthy)` 확인 → prod 첫 Flyway(sidb/admindb) 통과 신호. 막히면 다음 후보(admindb 볼륨 stale → `down -v` / postgres `pg_isready` 가 init.sql 완료 전 healthy 레이스) 트리아지.
-2. **k8s `overlays/local` 정합 패치**(compose 와 동일 결함이라 kind 도 깨짐): ① admin-service DB 분리(admindb 또는 `spring.flyway.table`) ② auth-server prod Authenticator 주입 전략. **actuator-permit 은 이번 코드 수정으로 이미 해결**(같은 이미지라 프로브도 통과) — 별도 매니페스트 패치 불요.
+1. ✅ **compose 완전 그린 — 완료(2026-06-05).**
+2. **k8s `overlays/local` 정합 패치(다음 핵심)** — compose 에서 찾은 결함을 매니페스트에 반영. **이미 해결(같은 이미지/공통 패치)**: actuator permit(앱), LOG_DIR=/tmp(hardening), redis TokenStore(build.gradle). **아직 필요**: ⓐ admin-service DB 분리(`admindb` 또는 `spring.flyway.table` — overlays/local 은 둘 다 sidb) ⓑ auth-server prod Authenticator 주입 전략(또는 kind 도 local 데모 프로파일로) ⓒ admin-service 업로드 경로(`FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads` — admin 은 local+s3없음+readOnlyRootFilesystem 이라 k8s prod 도 동일 결함) ⓓ user-service 파일저장 결정(kind=local+업로드경로 / 실prod=s3+framework-file-s3 주석해제).
 3. 그 후 **kind 배포**: 이미지 빌드 → `kind load docker-image` → `kubectl apply -k deploy/k8s/overlays/local` → 스모크.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
