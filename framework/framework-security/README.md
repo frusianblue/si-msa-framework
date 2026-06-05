@@ -57,6 +57,85 @@ framework:
 
 > 모드 선택 가이드: 순수 API(모바일/외부 연계)는 JWT, 브라우저 중심(콘솔/SSR)은 세션. 결정·레시피는 [`../../docs/guide/AUTH_COMPOSITION_GUIDE.md`](../../docs/guide/AUTH_COMPOSITION_GUIDE.md) R7.
 
+## 실전 사용 예 (코드)
+
+개발자가 실제로 작성하는 코드는 **`Authenticator` 구현 하나**가 거의 전부다. 나머지(로그인 엔드포인트·토큰 발급·RBAC·잠금)는 프레임워크가 제공한다.
+
+### 1) 프로젝트가 구현하는 단 하나의 인증 계약 — `Authenticator`
+DB/LDAP/SSO/GPKI 등 방식이 달라도 이 인터페이스만 구현해 빈으로 등록하면 공통 로그인 흐름(JWT·세션 양쪽)이 동작한다(`AuthAutoConfiguration` 이 `@ConditionalOnBean(Authenticator.class)`).
+```java
+@Component
+public class DbAuthenticator implements Authenticator {
+
+    private final UserMapper userMapper;           // MyBatis 매퍼(예시)
+    private final PasswordEncoder passwordEncoder; // framework-security 가 빈 제공(BCrypt 등)
+
+    public DbAuthenticator(UserMapper userMapper, PasswordEncoder passwordEncoder) {
+        this.userMapper = userMapper;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    @Override
+    public AuthenticatedUser authenticate(LoginCommand command) {
+        UserRow row = userMapper.findByLoginId(command.loginId());
+        if (row == null || !passwordEncoder.matches(command.password(), row.getPasswordHash())) {
+            // 실패는 예외로 — 프레임워크가 잠금 카운트 증가/감사 이벤트 발행을 처리한다.
+            throw new BusinessException(ErrorCode.Common.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다.");
+        }
+        // roles 는 접두어 없이 넣어도 됨 — 프레임워크가 ROLE_ 을 보장한다(예: "ADMIN" → ROLE_ADMIN).
+        return new AuthenticatedUser(row.getUserId(), row.getName(), row.getRoles());
+        // 추가 클레임이 필요하면: new AuthenticatedUser(userId, name, roles, Map.of("deptCode", row.getDept()))
+    }
+}
+```
+
+### 2) 로그인 호출 (JWT 무상태 — 기본)
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"loginId":"alice","password":"secret"}'
+# 응답: { "data": { "accessToken": "...", "refreshToken": "..." }, ... }
+
+curl http://localhost:8080/api/v1/users/me -H 'Authorization: Bearer <accessToken>'
+```
+
+### 3) 컨트롤러에서 현재 사용자 꺼내기
+인증 주체는 표준 `@AuthenticationPrincipal` 로 주입된다(principal 의 username = userId, authorities = `ROLE_*`).
+```java
+@RestController
+@RequestMapping("/api/v1/orders")
+public class OrderController {
+
+    @GetMapping("/mine")
+    public ApiResponse<List<OrderDto>> myOrders(@AuthenticationPrincipal User principal) {
+        String userId = principal.getUsername();   // 인증 주체 = userId
+        return ApiResponse.ok(orderService.findByUser(userId));
+    }
+}
+```
+> 감사필드(created_by/updated_by)는 별도 코드 없이 `CurrentUserProvider` 가 자동으로 채운다(framework-mybatis 연동). 서비스 계층에서 userId 가 필요하면 `CurrentUserProvider#getCurrentUser()` 주입.
+
+### 4) 메서드 단위 인가 — `@PreAuthorize`
+URL↔권한 동적 매핑(RBAC)과 별개로 메서드 보안도 그대로 사용(`@EnableMethodSecurity` 활성).
+```java
+@PreAuthorize("hasRole('ADMIN')")                 // ROLE_ADMIN 보유자만
+public void deleteUser(String userId) { ... }
+
+@PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+public Report monthlyReport() { ... }
+```
+
+### 5) 세션 모드 로그인 (브라우저/콘솔 — `session.mode=session` 일 때)
+```bash
+# 세션 수립(토큰 없이 Set-Cookie: SESSION=...)
+curl -i -X POST http://localhost:8081/api/v1/auth/session/login \
+  -H 'Content-Type: application/json' -c cookies.txt \
+  -d '{"loginId":"admin","password":"secret"}'
+
+# 이후 쿠키로 호출. CSRF 켜져 있으면 XSRF-TOKEN 쿠키값을 X-XSRF-TOKEN 헤더로 동봉.
+curl http://localhost:8081/api/v1/admin/menus -b cookies.txt
+```
+
 
 ## 끄는 법
 `framework.security.enabled: false` 또는 의존성 미포함. 개발 우회는 프로파일 `local,local-noauth`(`dev-auth`) — **운영 금지**(`DevAuthSafetyGuard` 가 prod 차단).

@@ -28,6 +28,47 @@ framework:
 ## 쓰는 법
 직접 호출할 API 는 없다. 세션 로그인은 코어가 제공하는 `POST /api/v1/auth/session/login` 으로 수립되고(`Set-Cookie: SESSION=...`), 이후 요청은 세션 쿠키로 식별된다. 이 모듈을 추가하면 그 세션이 톰캣 메모리 대신 Redis 에 저장돼 모든 파드가 공유한다.
 
+## 실전 사용 예 (코드)
+
+### 1) 세션 로그인/로그아웃 흐름 (CSRF 포함)
+```bash
+# 로그인 → Set-Cookie: SESSION=... + Set-Cookie: XSRF-TOKEN=...
+curl -i -X POST http://localhost:8081/api/v1/auth/session/login \
+  -H 'Content-Type: application/json' -c cookies.txt \
+  -d '{"loginId":"admin","password":"secret"}'
+
+# 보호 자원 GET — 쿠키만으로 인증
+curl http://localhost:8081/api/v1/admin/menus -b cookies.txt
+
+# 상태 변경(POST/PUT/DELETE)은 CSRF 토큰 동봉 (csrf:true 기본)
+XSRF=$(grep XSRF-TOKEN cookies.txt | awk '{print $7}')
+curl -X POST http://localhost:8081/api/v1/admin/notice -b cookies.txt \
+  -H "X-XSRF-TOKEN: $XSRF" -H 'Content-Type: application/json' -d '{"title":"점검"}'
+
+# 로그아웃 → 세션 무효화
+curl -X POST http://localhost:8081/api/v1/auth/session/logout -b cookies.txt -H "X-XSRF-TOKEN: $XSRF"
+```
+
+### 2) 클러스터 공유가 실제로 되는지 검증
+```bash
+# 로그인 후 Redis 에 세션 키가 생겼는지 확인 (namespace = si:session 예시)
+redis-cli --scan --pattern 'si:session:*'
+# 파드 A 에서 받은 SESSION 쿠키로 파드 B 를 호출해도 동일 인증이 유지되면 공유 성공
+```
+
+### 3) (선택) JSON 직렬화로 교체 — 멀티앱 동일 Redis 공유 시 권장
+기본 Java 직렬화는 클래스 버전이 다른 앱끼리 같은 Redis 를 공유하면 역직렬화 충돌이 난다. JSON 직렬화 빈을 등록해 회피한다.
+```java
+@Configuration
+public class SessionSerializerConfig {
+    @Bean
+    public RedisSerializer<Object> springSessionDefaultRedisSerializer() {
+        return new GenericJackson2JsonRedisSerializer();   // Spring Session 이 이 빈 이름을 인식
+    }
+}
+```
+> 빈 이름 `springSessionDefaultRedisSerializer` 는 Spring Session 규약이다. 가드 빈(`SessionStoreSafetyGuard`)은 `@ConditionalOnMissingBean` 이라 프로젝트가 동명 빈을 등록하면 대체된다.
+
 ## 끄는 법
 - 의존성 미포함 → 세션은 톰캣 로컬(단일 인스턴스 전용, 파드 재시작/로드밸런싱 시 유실).
 - `framework.session.enabled=false` → 이 모듈의 가드 비활성(Spring Session 자체는 클래스패스 기준).
