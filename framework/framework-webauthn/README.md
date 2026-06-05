@@ -27,6 +27,7 @@ framework:
 ```
 - **전제(앱 제공)**: `http.webAuthn()` 은 assertion 검증 시 권한 적재에 `UserDetailsService` 빈을 **필수**로 요구한다(없으면 부팅 실패).
 - **HTTPS 필수**: WebAuthn 은 SecureContext 에서만 동작(localhost 예외). dev/prod 는 Ingress TLS 전제(`deploy/k8s/overlays/prod/ingress-prod.yaml`).
+- **멀티서비스 rpId/origin 일원화**: 전 서비스가 같은 `rp-id`(공통 상위 도메인)와 `allowed-origins` 를 공유해야 한 사용자의 패스키가 서비스 간 일관되게 동작한다(MFA WebAuthn 2차도 동일 RP 빈 재사용). 정책·토폴로지·설정 주입 방법은 [`docs/guide/WEBAUTHN_RPID_ORIGIN_POLICY.md`](../../docs/guide/WEBAUTHN_RPID_ORIGIN_POLICY.md). 기동 시 `WebAuthnRpSafetyGuard` 가 정합(rp-id↔origin 등록가능 도메인·prod https·localhost 오용)을 검사해 prod 미스컨피그는 부팅 실패, 비-prod 는 경고로 차단한다.
 
 ## 쓰는 법
 - 무상태(JWT) 주류 체인은 세션/CSRF 가 없어 ceremony 와 상충한다. 이 모듈은 `/webauthn/**`·`/login/webauthn`·`token-path` 에만 적용되는 **세션+CSRF 전용 SecurityFilterChain** 을 더 높은 우선순위로 자동 등록한다(메인 catch-all 체인과 공존).

@@ -174,7 +174,7 @@ spring:
 
 | 후보 | 무엇 | 신설 모듈(예) |
 |---|---|---|
-| ~~Passkey / WebAuthn~~ | ✅ **1차 구현됨(2026-06-05)** — `framework-webauthn`(SS7 네이티브 `http.webAuthn()` 래핑, 전용 세션+CSRF 체인 → 자체 JWT 교환). **+ 패스키 관리 UX(2026-06-05): 목록/삭제 엔드포인트.** **+ 2차 MFA factor 연계(2026-06-05): `framework-mfa` `webauthn.enabled`, 독립 등록형.** 사용 `framework/framework-webauthn/README.md`·`framework/framework-mfa/README.md`. (남은 후속: rpId/origin 멀티서비스 일원화 정책) | `framework-webauthn` · `framework-mfa` |
+| ~~Passkey / WebAuthn~~ | ✅ **1차 구현됨(2026-06-05)** — `framework-webauthn`(SS7 네이티브 `http.webAuthn()` 래핑, 전용 세션+CSRF 체인 → 자체 JWT 교환). **+ 패스키 관리 UX(2026-06-05): 목록/삭제 엔드포인트.** **+ 2차 MFA factor 연계(2026-06-05): `framework-mfa` `webauthn.enabled`, 독립 등록형.** **+ rpId/origin 멀티서비스 일원화 정책(2026-06-05): `WebAuthnRpSafetyGuard` 기동 검증 + `docs/guide/WEBAUTHN_RPID_ORIGIN_POLICY.md`.** 사용 `framework/framework-webauthn/README.md`·`framework/framework-mfa/README.md`. (A1 후속 ①②③ 완료) | `framework-webauthn` · `framework-mfa` |
 | ~~서버 세션 기반 인증~~ | ✅ **구현됨** — 코어 `session.mode=session`(단일) + `framework-session`(Redis 클러스터). R7 참고 | — |
 | Keycloak 전용 어댑터 | (현재는 OIDC/SAML 로 대체) | 보통 불필요 |
 | OP 확장 | Device Flow, 토큰 교환 등 | `auth-server` 확장 |

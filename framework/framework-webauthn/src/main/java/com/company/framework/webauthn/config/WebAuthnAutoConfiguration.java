@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -129,6 +130,16 @@ public class WebAuthnAutoConfiguration {
                 .build();
         return new Webauthn4JRelyingPartyOperations(
                 userEntities, userCredentials, rp, new LinkedHashSet<>(props.getAllowedOrigins()));
+    }
+
+    /**
+     * rpId/origin 일원화 정책 기동 검증(jwt-secret 가드와 동일). prod 에서 정합 위반이면 부팅 실패, 비-prod 는 경고.
+     * 멀티서비스에서 서비스별 미스컨피그(rp-id 불일치·origin 누락·http·rpId 무관 호스트)를 조기에 차단한다.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public WebAuthnRpSafetyGuard webAuthnRpSafetyGuard(WebAuthnProperties props, Environment env) {
+        return new WebAuthnRpSafetyGuard(props, env);
     }
 
     // ===================== 웹 계층: 전용 체인 + 토큰 교환 =====================
