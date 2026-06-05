@@ -144,6 +144,10 @@ services:
       AUTH_SERVER_JWKS_URI: http://auth-server:9000/oauth2/jwks
       RESOURCE_SERVER_ENABLED: "false"
       FILE_STORAGE_TYPE: local      # 로컬엔 S3 가 없으므로 local 로 덮음(base 는 s3)
+      # local FileStorage 는 기본경로 ./uploads(=/application/uploads)를 만드는데 컨테이너 WORKDIR 이
+      # root 소유 + 앱 비루트 → AccessDenied(k8s readOnlyRootFilesystem 도 동일). 쓰기 가능한 /tmp 하위로.
+      # relaxed-binding 정식 env(=framework.file.storage.base-path) → yml ${FILE_BASE_PATH} 보다 우선.
+      FRAMEWORK_FILE_STORAGE_BASE_PATH: /tmp/uploads
       # logback-common(FILE/AUDIT_FILE 롤링)이 기본 ./logs 에 쓰는데 컨테이너 WORKDIR(/application)은
       # root 소유 + 앱은 비루트(uid 1001)라 생성 불가 → 부팅 실패. k8s 는 readOnlyRootFilesystem+/tmp emptyDir.
       # 둘 다에서 쓰기 가능한 /tmp 로 LOG_DIR 을 덮는다(logback ${LOG_DIR} knob). auth-server/gateway 는
@@ -177,6 +181,8 @@ services:
       JWT_SECRET: *app-jwt-secret
       AES_SECRET: *aes-secret
       LOG_DIR: /tmp     # user-service 와 동일 사유(logback-common 파일 appender → 컨테이너 쓰기경로 /tmp)
+      # admin 도 framework-file 의존(s3 모듈 미포함) → 기본 local FileStorage 가 ./uploads 생성 시도 → 동일 AccessDenied.
+      FRAMEWORK_FILE_STORAGE_BASE_PATH: /tmp/uploads
     ports:
       - "8081:8081"
     healthcheck:
