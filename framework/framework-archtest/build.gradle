@@ -52,4 +52,5 @@ dependencies {
     testImplementation project(':framework:framework-file-batch')
     testImplementation project(':framework:framework-oauth-client')
     testImplementation project(':framework:framework-saml-sp')
+    testImplementation project(':framework:framework-webauthn')
 }

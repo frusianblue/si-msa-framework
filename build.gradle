@@ -280,6 +280,7 @@ dependencies {
     jacocoAggregation project(':framework:framework-archtest')
     jacocoAggregation project(':framework:framework-oauth-client')
     jacocoAggregation project(':framework:framework-saml-sp')
+    jacocoAggregation project(':framework:framework-webauthn')
     jacocoAggregation project(':services:gateway')
     jacocoAggregation project(':services:user-service')
     jacocoAggregation project(':services:admin-service')

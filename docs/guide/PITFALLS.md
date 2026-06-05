@@ -46,6 +46,7 @@
 - **[겪음] before-순서로 core 백오프 유도** — core 가 `matchIfMissing=true` 로 항상 등록하는 빈(CacheManager 등)을 대체하려면 `@AutoConfiguration(before=CacheAutoConfiguration)`. 동적 DataSource 는 `ImportBeanDefinitionRegistrar`(BDRPP 는 before-순서 못 지킴).
 - **[겪음] 선택 백엔드는 중첩 `@Configuration static` + 클래스레벨 `@ConditionalOnClass`** — 톱레벨 `@Bean` 파라미터가 `compileOnly` 타입이면 Spring 이 클래스 전체를 먼저 로드해 메서드레벨 가드보다 먼저 깨짐.
 - **[일반] 기능 모듈 토글 기본값 = OFF(opt-in)** — 대부분의 `framework.<x>.enabled` 는 `matchIfMissing` 없는 `havingValue="true"` 라 **명시 안 하면 비활성**(security 마스터만 `matchIfMissing=true`=ON 예외). README `끄는 법`/`켜는 법` 작성·문서화 시 이 기본값을 추측하지 말고 `@ConditionalOnProperty(matchIfMissing=?)` 로 확인. 3단 스토어 토글(`...store.type=memory|jdbc|redis`)은 redis 백엔드가 framework-redis 에 있을 때만 선택됨(`@ConditionalOnClass(StringRedisTemplate)` + `.imports`).
+- ★ **[겪음] 두 번째 `SecurityFilterChain` 빈이 메인 체인을 조용히 억제** — 증상: webauthn/saml 같은 모듈을 켜면 main 보안 체인이 사라져 전 경로 무인증/오작동. 원인: framework-security 메인 체인이 `@ConditionalOnMissingBean(SecurityFilterChain.class)` 가드 → **아무 체인이나 먼저 등록되면** 메인이 백오프. 해결: 추가 체인 모듈은 ① `@AutoConfiguration(after = SecurityAutoConfiguration.class)` 로 **메인이 먼저 등록**되게 하고 ② 추가 체인에는 `@ConditionalOnMissingBean` 을 **달지 않으며** ③ `@Order`(고우선순위, 예 `Ordered.HIGHEST_PRECEDENCE + 50`) + `securityMatcher(경로 한정)` 로 path-한정 체인 + 메인 catch-all 공존. (saml-sp·webauthn 동일 패턴.)
 
 ## 5. 보안 / 인증 / JWT  → 깊은 사례는 [`JWT_STATELESS_PITFALLS.md`](JWT_STATELESS_PITFALLS.md)
 
@@ -61,6 +62,11 @@
 - **[겪음/일반] 세션 모드 CSRF: SPA 는 XOR/BREACH 핸들러 대신 평문 핸들러** — SS6+ 기본 `XorCsrfTokenRequestAttributeHandler` 는 쿠키의 원시 토큰을 그대로 보내는 SPA 에서 403 유발. `CookieCsrfTokenRepository.withHttpOnlyFalse()` + `CsrfTokenRequestAttributeHandler`(평문) 조합. 로그인/로그아웃 경로는 `ignoringRequestMatchers("/api/*/auth/**")`.
 - **[겪음] 인증 모드 분기는 중첩 `@Configuration static` + 클래스레벨 `@ConditionalOnProperty`** — stateless/session 체인을 한 클래스의 메서드 가드로 가르면 양쪽 `SecurityFilterChain` 빈이 동시 introspect 되어 충돌 위험. 모드별 중첩 설정 클래스로 분리하고 `@ConditionalOnMissingBean(SecurityFilterChain.class)` 로 단일 체인 보장.
 - **[일반] 세션 모드 멀티 인스턴스는 세션 공유 필수** — 코어만으로는 세션이 인스턴스 로컬 → 라운드로빈 시 로그인 유실. `framework-session`(Spring Session Redis) 추가. 미스컨피그(모듈만 있고 `mode≠session`)는 `SessionStoreSafetyGuard` 가 기동 시 WARN.
+- ★ **[겪음] WebAuthn JDBC 영속 클래스는 `spring-security-webauthn` 아티팩트(코어 web 아님)** — `JdbcPublicKeyCredentialUserEntityRepository`/`JdbcUserCredentialRepository`/`WebAuthnRelyingPartyOperations`/`Map*Repository`/`PublicKeyCredentialRpEntity` 전부 이 모듈(`org.springframework.security.web.webauthn.{management,api}`)에 있음(공식 이슈 #18377, start.spring.io 엔 있으나 문서 의존성엔 누락). 이 의존 빠지면 `Jdbc*Repository` 컴파일 불가. 버전은 SS BOM 관리(핀 금지). WebAuthn4J(`com.webauthn4j:webauthn4j-core`)가 전이.
+- **[겪음] `http.webAuthn()` 은 `UserDetailsService` 빈을 필수로 요구** — 없으면 `IllegalStateException: Missing UserDetailsService Bean`(부팅 실패). assertion 검증 후 권한 적재를 `WebAuthnAuthenticationProvider(rpOperations, userDetailsService)` 가 함. 패스키 전용 앱도 최소 stub `UserDetailsService` 제공 필요.
+- **[겪음] WebAuthn ceremony ↔ 무상태(JWT) 체인 충돌** — ceremony 는 챌린지를 **세션**에 보관 + **CSRF** 필요 → CSRF off·STATELESS 인 주류 체인에 그대로 얹으면 ceremony 실패. 해결: `/webauthn/**`·`/login/webauthn`·token-path 에만 적용되는 세션+CSRF 전용 체인(IF_REQUIRED + `CookieCsrfTokenRepository.withHttpOnlyFalse()`)을 별도로 두고, 성공 후 토큰교환 엔드포인트가 자체 JWT 발급 → 이후 무상태. (webauthn DSL `WebAuthnConfigurer` 는 successHandler 미노출 → 세션→JWT 교환 컨트롤러로 접합.)
+- **[일반] WebAuthn 은 HTTPS(SecureContext)에서만 동작** — 브라우저가 HTTP origin 의 `navigator.credentials` 호출 거부(localhost 예외). dev/prod 는 Ingress TLS 전제. rpId(등록가능 도메인) ↔ origin(공개 URL) 불일치 = ceremony 거부 → 멀티서비스에서 정합 일원화.
+- **[겪음] WebAuthn JDBC 스키마 = SS 번들 리소스(BLOB)** — 원본 `classpath:org/springframework/security/user-{entities,credentials}-schema.sql`(H2/HSQLDB용 `BLOB`). **PostgreSQL 은 `BLOB`→`BYTEA` 치환 필요**(모듈 `db/webauthn-postgres.sql` 동봉). 컬럼명/구조는 SS 소스 그대로(추측 금지 — `webauthn/src/main/.../Jdbc*Repository` 의 `TABLE_NAME`/`COLUMN_NAMES` 확인).
 
 ## 6. MyBatis / DB
 

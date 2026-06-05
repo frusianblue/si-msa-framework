@@ -1,0 +1,29 @@
+// 선택형 모듈: 패스키/WebAuthn(FIDO2) 비밀번호 없는 강인증. 의존성 추가 + framework.webauthn.enabled=true 로만 활성.
+// 구현 본체는 Spring Security 7 네이티브 패스키 지원(http.webAuthn() DSL, 내부 WebAuthn4J)을 래핑한다. 우리는
+//   "프레임워크 정체성(자체 JWT/RBAC) 접합 + 영속 백엔드 선택 + 3단 토글"만 더한다.
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    // JwtProvider/TokenStore/AuthenticatedUser/TokenResponse(security), 그리고 webAuthn() DSL(spring-security-config 전이) 사용.
+    api project(':framework:framework-security')
+
+    // ⚠️ WebAuthn 영속 SPI/구현(WebAuthnRelyingPartyOperations, Map*/Jdbc* 리포지토리, PublicKeyCredentialRpEntity)은
+    //    spring-security-web 코어가 아니라 별도 아티팩트 spring-security-webauthn 에 있다(공식 이슈 #18377).
+    //    WebAuthn4J(com.webauthn4j:webauthn4j-core)가 이 아티팩트로 전이된다.
+    //    호스트 앱이 제공 → 라이브러리는 컴파일만(드래그인 방지). @ConditionalOnClass 가 런타임 미존재를 흡수.
+    compileOnly 'org.springframework.security:spring-security-webauthn'
+    // 전용 SecurityFilterChain(HttpSecurity)·토큰 교환 컨트롤러용 web, JDBC 영속 백엔드용 jdbc — 모두 앱이 제공.
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // 오토컨피그 로딩 테스트(ApplicationContextRunner)는 WebAuthnAutoConfiguration 을 리플렉션으로 introspect 하며
+    //   @Bean 메서드의 "모든" 파라미터 타입(WebAuthn SPI/JdbcTemplate)을 로드한다. @ConditionalOnClass 와 무관하게
+    //   main 의 compileOnly 의존을 test 에 그대로 다시 선언해야 컨텍스트가 뜬다 [PITFALLS §4: compileOnly→test 갭].
+    testImplementation 'org.springframework.security:spring-security-webauthn'
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+}
