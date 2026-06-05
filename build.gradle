@@ -249,6 +249,7 @@ dependencies {
     jacocoAggregation project(':framework:framework-security')
     jacocoAggregation project(':framework:framework-openapi')
     jacocoAggregation project(':framework:framework-redis')
+    jacocoAggregation project(':framework:framework-session')
     jacocoAggregation project(':framework:framework-commoncode')
     jacocoAggregation project(':framework:framework-file')
     jacocoAggregation project(':framework:framework-file-s3')

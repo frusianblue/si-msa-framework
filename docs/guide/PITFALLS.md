@@ -85,6 +85,10 @@
 - **[겪음] 작업환경 dash 셸은 brace expansion `{a,b}` 미동작** — `for` 루프로.
 - **[겪음] 블록 주석 안 `*/` 금지** — `RS*/ES*` 처럼 `*/` 가 주석을 닫아 컴파일 깨짐. `RS/ES 계열` 로. 점검: `grep -nE '\*/[^ ]'`.
 - **[겪음] spotless = Palantir(google 아님) + 설정캐시 충돌** — `lineEndings = UNIX` 고정, 루트에도 적용, `encoding 'UTF-8'`. 에러 후 `.gradle/configuration-cache` 비우기.
+- **[겪음/일반] SonarQube 는 배선만 돼 있고 서버가 없으면 안 돈다** — 플러그인·`sonar{}`·CI 스테이지 모두 존재. `SONAR_HOST_URL`/`SONAR_TOKEN`(env 자동 인식)만 주면 `./gradlew sonar` 동작. 사용법은 [`ops/SONARQUBE_GUIDE.md`](../ops/SONARQUBE_GUIDE.md).
+- **[일반] Sonar 커버리지 0% = JaCoCo XML 누락** — `sonar` 는 재컴파일 안 하고 산출물만 읽음. `test jacocoTestReport` 를 먼저(또는 같은 호출). `sonar.login`(구) → `sonar.token`.
+- **[일반] Sonar 가 분석을 올리되 머지를 안 막음** — 현재 CI 는 업로드만. 차단하려면 Gradle `-Dsonar.qualitygate.wait=true` 또는 Jenkins `waitForQualityGate abortPipeline:true`. 단 PR/브랜치 분석은 Server(Developer+)/Cloud 기능 — Community Build 는 main 만.
+- **[일반] 새 모듈은 jacocoAggregation 목록에도 추가** — `settings.gradle` include 만으로는 "전체 합산 1장" 커버리지에서 빠진다(루트 `build.gradle` 의 `jacocoAggregation project(...)` 목록에 한 줄). Sonar 글롭 수집은 별개라 안 놓치지만 집계 리포트는 누락됨.
 
 ---
 

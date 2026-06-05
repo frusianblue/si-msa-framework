@@ -74,6 +74,8 @@ ConfigMap(`<svc>-config`, 비밀 아님) + Secret(`<svc>-secret`, 비밀)으로 
 
 게이트(아키텍처/전 모듈 테스트/커버리지/OWASP/Sonar)는 **레포 전체 1회**, 이미지 빌드는 **서비스 매트릭스**, 배포는 **kustomize 1회**.
 
+> Sonar 게이트의 서버 기동·토큰·시크릿·Quality Gate 차단 설정은 [`SONARQUBE_GUIDE.md`](SONARQUBE_GUIDE.md) 참고(스테이지는 이미 배선됨, 시크릿만 넣으면 동작).
+
 **GitHub Actions** (`deploy/cicd/ci-cd.yml`)
 - `verify`(1회) → `build-and-push`(matrix: 4서비스 병렬, bootJar+docker 같은 잡) → `deploy`(kustomize prod + set image SHA).
 - 이미지 빌드는 `JAR_FILE=services/<svc>/build/libs/<svc>-1.0.0.jar` 를 Dockerfile 에 넘긴다(plain jar 비활성 안 했으므로 boot jar 경로 명시).

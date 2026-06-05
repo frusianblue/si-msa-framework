@@ -28,6 +28,7 @@
 2. [`ops/LOCAL_K8S_ENV_SETUP.md`](ops/LOCAL_K8S_ENV_SETUP.md) · [`ops/LOCAL_K8S_TEST.md`](ops/LOCAL_K8S_TEST.md) — kind 로 로컬 클러스터 검증
 3. [`ops/K8S_ADDONS.md`](ops/K8S_ADDONS.md) — 클러스터 애드온(metrics-server·Prometheus·Ingress·Secret 오퍼레이터)
 4. [`ops/K8S_CICD_MULTISERVICE.md`](ops/K8S_CICD_MULTISERVICE.md) — Kustomize base/overlay·4서비스 CI/CD
+5. [`ops/SONARQUBE_GUIDE.md`](ops/SONARQUBE_GUIDE.md) — 코드 품질·보안약점 게이트(SonarQube) 사용법(서버 기동·토큰·분석 실행·Quality Gate)
 
 ---
 

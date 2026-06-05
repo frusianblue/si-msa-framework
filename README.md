@@ -20,7 +20,7 @@ Spring Boot 4.0.6 / Java 21 / Spring Framework 7 / Spring Cloud 2025.1.1 (Oakwoo
 ## 모듈 구조 (요약)
 
 ```
-framework/   35개 공통 모듈 (core·mybatis·security 는 [코어] 항상 탑재, 나머지는 선택)
+framework/   36개 공통 모듈 (core·mybatis·security 는 [코어] 항상 탑재, 나머지는 선택)
 services/    gateway(8000) · auth-server(9000, OP) · user-service(8080) · admin-service(8081)
 deploy/      docker/ · k8s/(Kustomize base+overlay) · cicd/
 docs/        문서 (00_INDEX.md 진입점)

@@ -4,8 +4,6 @@
 > 공공·금융·일반 SI를 같은 코어로 커버한다. 기존 저장소의 오토컨피그 패턴(`@AutoConfiguration` + `.imports` +
 > `@ConditionalOnProperty` + `@ConditionalOnMissingBean`)을 그대로 확장한다.
 > 기준일: 2026-05-31
->
-> 📂 이 문서는 **카탈로그**(무엇이 있나)다. *무엇을 골라 어떻게 조합하나*는 [`00_INDEX.md`](00_INDEX.md) → `guide/`: 모듈 조합 [`MODULE_COMPOSITION`](guide/MODULE_COMPOSITION.md) · 인증 결정/레시피 [`AUTH_COMPOSITION_GUIDE`](guide/AUTH_COMPOSITION_GUIDE.md) · 함정 대장 [`PITFALLS`](guide/PITFALLS.md).
 
 ---
 
@@ -92,6 +90,7 @@ public class XxxAutoConfiguration {
 | framework-security | 인증추상화·JWT·TokenStore·RBAC·비번정책·로그인잠금 | `framework.security.*` | [코어] | 공통 |
 | framework-openapi | API 문서 | `framework.openapi.enabled` | [선택] | 공통 |
 | framework-redis | Redis TokenStore/LoginAttempt | `...type=redis` | [선택] | 공통 |
+| framework-session | **서버 세션 모드의 Redis 세션 클러스터링**(Spring Session). 세션 모드 전환 자체는 framework-security 코어(`security.session.mode=session`); 이 모듈은 멀티 인스턴스에서 HttpSession 외부화(공유)만 담당 — framework-redis 의 "세션 버전" | `framework.security.session.mode=session` + 모듈 추가(`framework.session.enabled` 기본 on) | [선택] | 공통 |
 | framework-commoncode | 공통코드 CRUD | `framework.commoncode.enabled` | [선택] | 공통 |
 | framework-file / -s3 | 파일 저장(로컬/NAS/S3) + **콘텐츠 타입 검증(Tika, 옵트인)·확장자↔MIME 정합·at-rest 암호화(AES)·HTTP Range 스트리밍·S3 presigned PUT/GET·안티바이러스(ClamAV INSTREAM)** | `framework.file.enabled`,`storage.type`,`storage.encrypt`,`validation.content-type-detection`,`validation.enforce-extension-match`,`scan.enabled`,`scan.type` | [선택] | 공통 |
 | framework-file-sftp | **SFTP(원격 SSH) 저장 백엔드** — `storage.type=sftp` 시 활성. Apache MINA SSHD 위임(순수 JDK SSH 불가 → BOM 밖 의존성, 모듈에만). `RangeReadableStorage`(부분 다운로드) 구현. 기본=연결마다 세션 개폐. **옵트인 연결 풀**(`BoundedObjectPool`: cap·LIFO 재사용·validate-on-borrow·maxIdle/maxLifetime)·**옵트인 키 회전**(`ReloadingSftpCredentialProvider`: 키 파일 변경 감지 재로드, 새 세션부터 적용). 호스트키 검증 기본 strict(known_hosts), 인증 password/private-key | `framework.file.storage.type=sftp` (+`sftp.{host,port,username,password,private-key-path,base-dir,strict-host-key-checking,pool.*,key-rotation.*,...}`) | [선택] | 공통 |
