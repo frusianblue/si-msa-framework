@@ -18,9 +18,8 @@
 - 진단 근거: framework-security `SecurityAutoConfiguration` L304/L372 의 `requestMatchers("/actuator/**", …).permitAll()` 규약 / k8s `common/deployment-hardening.yaml` 의 startup·liveness·readiness 프로브 경로(`/actuator/health{,/liveness,/readiness}`) / `Dockerfile.build` 런타임에 curl 설치 확인.
 
 ## 현재 상태 (적용/검증)
-- **정적 검토 ✅**(원인 1개로 수렴, 패턴은 framework-security 검증된 규약 복제). 작성환경 Maven Central 차단으로 빌드·기동 직접 실행 불가 → **받는 쪽에서 `spotlessApply` 후 재기동 확인 필요**.
-- 받는 쪽 확인 절차: `docker compose -f deploy/compose/docker-compose.yml up -d --build` → auth-server `Healthy` 되면 gateway/user-service 연쇄 기동. 단건 확인: `curl -i http://localhost:9000/actuator/health` 가 **200 + {"status":"UP"}** (이전엔 302/401).
-- ⚠️ user/admin **prod 첫 부팅·Flyway(authdb/sidb/admindb)** 는 이번에 미검증(auth-server 가 먼저 막혀 거기까지 못 감) — auth-server 그린 후 다음 에러 가능성 잔존(아래 Next).
+- **✅ 받는 쪽 검증 완료(2026-06-05)**: 수정 적용 후 재기동 → `[+] up 10/10`, auth-server `Healthy`. `curl -i …:9000/actuator/health` = **200 + {"groups":["liveness","readiness"],"status":"UP"}**(이전엔 302/401). 응답에 liveness/readiness 그룹이 떠 있어 **k8s 프로브도 동일 통과 확인**(같은 이미지/경로) → compose+kind 동시 해소.
+- ⚠️ 잔여 확인: admin/user/gateway 가 스샷 시점엔 `Started`(start_period 90s 창). `docker compose ps` 로 `(healthy)` 전환 확인 권장 — 이게 **이전 미검증 구간(user/admin prod 첫 Flyway on sidb/admindb)** 의 그린 신호. unhealthy 로 머물면 해당 서비스 로그 트리아지.
 
 ## 바로 다음 할 일 (Next)
 1. **compose 완전 그린 확인**: auth-server Healthy 후 gateway/user-service/admin-service prod 부팅·Flyway 통과 확인. 막히면 스샷 트리아지(유력 후보: postgres `pg_isready` 가 init.sql 완료 전 healthy → role/DB 레이스 / user·admin prod 첫 Flyway).
