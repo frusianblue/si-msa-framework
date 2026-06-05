@@ -17,6 +17,7 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  *     allowed-origins:                            # ceremony 를 허용할 공개 origin(게이트웨이 Ingress 호스트/TLS).
  *       - "https://app.example.com"
  *     token-path: "/api/v1/auth/webauthn/token"   # 패스키 인증 성공(세션) → 프레임워크 JWT 교환 엔드포인트.
+ *     credentials-path: "/api/v1/auth/webauthn/credentials" # 패스키 목록 조회/삭제(관리) 베이스 경로.
  *     store:
  *       type: memory                              # memory(개발) | jdbc(영속 — 재기동 후 자격증명 유지)
  * </pre>
@@ -41,6 +42,9 @@ public class WebAuthnProperties {
 
     /** 패스키 인증 성공(세션) 후 프레임워크 표준 JWT 로 교환하는 엔드포인트 경로. */
     private String tokenPath = "/api/v1/auth/webauthn/token";
+
+    /** 패스키 자격증명 관리(목록 조회/삭제) 엔드포인트의 베이스 경로. 삭제는 {@code {credentialsPath}/{credentialId}}. */
+    private String credentialsPath = "/api/v1/auth/webauthn/credentials";
 
     @NestedConfigurationProperty
     private Store store = new Store();
@@ -96,6 +100,14 @@ public class WebAuthnProperties {
 
     public void setTokenPath(String tokenPath) {
         this.tokenPath = tokenPath;
+    }
+
+    public String getCredentialsPath() {
+        return credentialsPath;
+    }
+
+    public void setCredentialsPath(String credentialsPath) {
+        this.credentialsPath = credentialsPath;
     }
 
     public Store getStore() {

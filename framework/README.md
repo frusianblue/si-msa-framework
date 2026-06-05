@@ -29,7 +29,7 @@
 | [framework-mfa](framework-mfa/README.md) | 2단계 인증(TOTP/OTP + ISMS-P 복구코드, 외부 의존성 0) |
 | [framework-oauth-client](framework-oauth-client/README.md) | 외부 IdP 소셜 로그인(OAuth2/OIDC **RP**) → 자체 JWT 발급 |
 | [framework-saml-sp](framework-saml-sp/README.md) | SAML 2.0 **SP**(외부 SAML IdP) → 자체 JWT. ⚠️ OpenSAML 전이(Shibboleth repo) |
-| [framework-webauthn](framework-webauthn/README.md) | 패스키/**WebAuthn**(FIDO2) 비밀번호 없는 강인증. SS7 네이티브 `http.webAuthn()` 래핑 → 자체 JWT. ⚠️ `spring-security-webauthn` 아티팩트 필요 |
+| [framework-webauthn](framework-webauthn/README.md) | 패스키/**WebAuthn**(FIDO2) 비밀번호 없는 강인증. SS7 네이티브 `http.webAuthn()` 래핑 → 자체 JWT. 패스키 목록/삭제 관리. ⚠️ `spring-security-webauthn` 아티팩트 필요 |
 | [framework-secure-web](framework-secure-web/README.md) | 웹 보안 필터(보안헤더·경로조작·인젝션·CSRF·레이트리밋) |
 
 ## 🗄️ 데이터·영속 (Data & Persistence)

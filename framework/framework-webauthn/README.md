@@ -41,6 +41,10 @@ framework:
 | 인증 옵션 | `POST /webauthn/authenticate/options` | permitAll |
 | 인증(assertion) | `POST /login/webauthn` | permitAll → 성공 시 세션 인증 수립 |
 | **JWT 교환** | `POST {token-path}` | 세션 인증 → `TokenResponse` 발급 |
+| **패스키 목록** | `GET {credentials-path}` | 세션 인증 → 내 패스키 요약 목록 |
+| **패스키 삭제** | `DELETE {credentials-path}/{credentialId}` | 세션 인증 + 소유권 검증(CSRF) |
+
+> **인증 컨텍스트(설계 경계)**: 등록·목록·삭제는 모두 위 **전용 세션 체인**의 `authenticated()` 로 보호된다. 즉 패스키 등록과 동일한 세션 인증 컨텍스트에서 동작하며, **무상태 JWT 주류만 가진(웹오슨 세션이 없는) 호출자는 관리 엔드포인트에 진입할 수 없다**. JWT 로그인 사용자가 패스키를 등록/관리하게 하려면 받는 앱이 이 전용 체인에 1차 인증(예: `formLogin` 또는 JWT 필터)을 추가해 세션을 수립해야 한다(향후 슬라이스). 삭제 소유권은 SS7 네이티브 `CredentialRecordOwnerAuthorizationManager` 로 검증하며, **소유 아님·미존재를 모두 404** 로 동일 응답해 자격증명 존재 여부를 노출하지 않는다.
 
 ## 실전 사용 예 (코드)
 
@@ -77,6 +81,19 @@ curl -X POST https://app.example.com/api/v1/auth/webauthn/token \
   -H "X-XSRF-TOKEN: <쿠키의 XSRF-TOKEN>" -b cookies.txt
 # → { "data": { "accessToken": "...", "refreshToken": "...", "tokenType": "Bearer", ... } }
 ```
+```bash
+# 패스키 관리 — 같은 세션 쿠키로 호출(전용 체인 authenticated).
+# 목록(GET 은 CSRF 토큰 불필요, XSRF-TOKEN 쿠키 수령 목적):
+curl https://app.example.com/api/v1/auth/webauthn/credentials -b cookies.txt -c cookies.txt
+# → { "data": [ { "credentialId": "AbCd...", "label": "iPhone", "type": "public-key",
+#               "transports": ["internal"], "backupEligible": true, "backupState": true,
+#               "created": "2026-06-01T00:00:00Z", "lastUsed": "2026-06-05T09:30:00Z" } ] }
+
+# 삭제(상태변경 → CSRF 토큰 필수). credentialId 는 목록 응답값을 그대로 경로에:
+curl -X DELETE https://app.example.com/api/v1/auth/webauthn/credentials/AbCd... \
+  -H "X-XSRF-TOKEN: <쿠키의 XSRF-TOKEN>" -b cookies.txt
+# → { "success": true }   (타인 소유/미존재는 404 — 존재 여부 비노출)
+```
 
 ### JDBC 영속 저장소
 `store.type=jdbc` 면 SS 의 `JdbcPublicKeyCredentialUserEntityRepository`/`JdbcUserCredentialRepository` 로 자격증명을 영속한다. DDL: `src/main/resources/db/webauthn-postgres.sql`(PG, BYTEA) / `webauthn-h2.sql`(H2, BLOB). Flyway 권장. (SS 원본 스키마는 `classpath:org/springframework/security/user-{entities,credentials}-schema.sql`)
@@ -90,6 +107,7 @@ curl -X POST https://app.example.com/api/v1/auth/webauthn/token \
 - `PublicKeyCredentialUserEntityRepository` / `UserCredentialRepository` — 저장소.
 - `WebAuthnTokenIssuer` — 토큰 발급(기본 `DirectWebAuthnTokenIssuer`=JwtProvider/TokenStore 직접). 동시로그인 제어·감사까지 묶으려면 LoginService 위임 구현으로 교체.
 - `WebAuthnAuthenticatedUserResolver` — `Authentication`→`AuthenticatedUser` 매핑.
+- `WebAuthnCredentialService` — 패스키 목록/삭제 로직. `CredentialRecordOwnerAuthorizationManager`(소유권 검증기)도 `@ConditionalOnMissingBean` 이라 프로젝트가 교체 가능.
 
 ## 버전 관리
 **신규 외부 의존성 0**(런타임은 앱이 `spring-security-webauthn` 제공). web/jdbc/spring-security-webauthn 은 `compileOnly` — 테스트는 재선언 필요(`@ConditionalOnClass` 무관하게 ApplicationContextRunner 가 로드) [PITFALLS §4]. 메인 체인 억제 회피를 위해 `@AutoConfiguration(after = SecurityAutoConfiguration.class)` + 전용 체인 무가드 `@Order` [PITFALLS: 다중 SecurityFilterChain 함정].

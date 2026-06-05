@@ -9,6 +9,8 @@ import com.company.framework.webauthn.token.DirectWebAuthnTokenIssuer;
 import com.company.framework.webauthn.token.WebAuthnTokenIssuer;
 import com.company.framework.webauthn.web.DefaultWebAuthnAuthenticatedUserResolver;
 import com.company.framework.webauthn.web.WebAuthnAuthenticatedUserResolver;
+import com.company.framework.webauthn.web.WebAuthnCredentialController;
+import com.company.framework.webauthn.web.WebAuthnCredentialService;
 import com.company.framework.webauthn.web.WebAuthnTokenController;
 import java.util.LinkedHashSet;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -31,6 +33,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.webauthn.api.PublicKeyCredentialRpEntity;
+import org.springframework.security.web.webauthn.management.CredentialRecordOwnerAuthorizationManager;
 import org.springframework.security.web.webauthn.management.JdbcPublicKeyCredentialUserEntityRepository;
 import org.springframework.security.web.webauthn.management.JdbcUserCredentialRepository;
 import org.springframework.security.web.webauthn.management.MapPublicKeyCredentialUserEntityRepository;
@@ -147,7 +150,12 @@ public class WebAuthnAutoConfiguration {
                 RestAuthenticationEntryPoint entryPoint,
                 RestAccessDeniedHandler accessDeniedHandler)
                 throws Exception {
-            http.securityMatcher("/webauthn/**", "/login/webauthn", props.getTokenPath())
+            http.securityMatcher(
+                            "/webauthn/**",
+                            "/login/webauthn",
+                            props.getTokenPath(),
+                            props.getCredentialsPath(),
+                            props.getCredentialsPath() + "/**")
                     // ceremony 는 세션에 챌린지/인증을 보관 → 무상태 불가. SPA 쿠키 더블서브밋(XSRF-TOKEN)로 CSRF 유지.
                     .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                             .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
@@ -188,6 +196,35 @@ public class WebAuthnAutoConfiguration {
         public WebAuthnTokenController webAuthnTokenController(
                 WebAuthnTokenIssuer tokenIssuer, WebAuthnAuthenticatedUserResolver userResolver) {
             return new WebAuthnTokenController(tokenIssuer, userResolver);
+        }
+
+        // ===================== 패스키 관리(목록/삭제) =====================
+
+        /**
+         * 삭제 소유권 검증기. 자체 비교 대신 SS7 네이티브 {@link CredentialRecordOwnerAuthorizationManager}(since 6.5.10)를
+         * 그대로 쓴다 — 인증 여부·credential 존재·소유(handle 일치)를 한 번에 판정하며, 소유 아님/미존재를 모두 deny 로
+         * 동일 처리해 존재 여부를 노출하지 않는다.
+         */
+        @Bean
+        @ConditionalOnMissingBean
+        public CredentialRecordOwnerAuthorizationManager webAuthnCredentialOwnerAuthorizationManager(
+                UserCredentialRepository userCredentials, PublicKeyCredentialUserEntityRepository userEntities) {
+            return new CredentialRecordOwnerAuthorizationManager(userCredentials, userEntities);
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        public WebAuthnCredentialService webAuthnCredentialService(
+                UserCredentialRepository userCredentials,
+                PublicKeyCredentialUserEntityRepository userEntities,
+                CredentialRecordOwnerAuthorizationManager ownerAuthorization) {
+            return new WebAuthnCredentialService(userCredentials, userEntities, ownerAuthorization);
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        public WebAuthnCredentialController webAuthnCredentialController(WebAuthnCredentialService credentialService) {
+            return new WebAuthnCredentialController(credentialService);
         }
     }
 }
