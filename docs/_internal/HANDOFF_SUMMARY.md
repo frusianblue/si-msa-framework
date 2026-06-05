@@ -6,38 +6,39 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**✅ 로컬 compose 풀 그린 달성(2026-06-05) — 6컨테이너(auth-server/gateway/user/admin/postgres/redis) 전부 `(healthy)`.** 받은 스샷들을 순차 트리아지해 배포정합 결함 4건을 발견·수정: ① auth-server actuator 가 자체 보안체인에 막힘(앱 1줄: `/actuator/**` permitAll) ② logback `./logs` 컨테이너 쓰기불가(`LOG_DIR=/tmp`) ③ local 업로드 `./uploads` 쓰기불가(`FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`) ④ prod `token-store.type=redis` 인데 `framework-redis` 미의존(build.gradle 모듈 추가). ②③은 비루트+읽기전용 루트FS 동근원, ④는 백엔드토글↔모듈 불일치. **전부 k8s 에도 동일 적용** → overlays 패치 시 반영하면 kind 도 통과 예상.
-
-## (이전) 한 줄 요약
-**로컬 compose `up -d` 트리아지 — auth-server 만 `unhealthy` 로 의존 서비스(gateway/user-service) 부팅 실패(2026-06-05).** 받은 스샷 판독: auth-server 앱은 **정상 기동**(`Tomcat started on port 9000`, `Started AuthServerApplication`)인데 compose 가 unhealthy 판정 → `dependency failed to start`. **근본 원인 = 보안 체인이 `/actuator/health` 를 막음**(앱 결함, 헬스체크/타이밍 문제 아님). `AuthorizationServerConfig` 의 `@Order(2) defaultSecurityFilterChain` 이 `anyRequest().authenticated()`+formLogin 이라 미인증 actuator 접근이 302(→`/login`)/401 → `curl -fsS … | grep -q UP` 영영 실패. framework-security 기본 체인은 `/actuator/**` permitAll(그래서 user/admin/gateway 정상)인데 AS 가 자체 체인으로 백오프시키며 이 규약이 누락. **같은 코드라 k8s startup/liveness/readiness 프로브도 동일 결함** → 앱 한 줄 수정으로 compose+kind 동시 해소(헬스체크 우회보다 정답). curl 은 런타임 이미지에 정상 설치(원인 아님) 확인. **그 후 user/admin 이 logback `./logs/*.log`(2차) → local FileStorage `./uploads`(3차) 컨테이너 쓰기불가로 연쇄 종료 → `LOG_DIR=/tmp`·`FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads` env 로 수정**(전부 소스/Dockerfile 무변경; 동근원=비루트+읽기전용 루트FS 에서 작업디렉터리 하위 쓰기). k8s readOnlyRootFilesystem 까지 정합. **그다음 user/admin 이 DB/Flyway(sidb/admindb)는 통과했으나 `TokenStore` 빈 부재로 종료 → prod `token-store.type=redis` 인데 `framework-redis` 미의존이 원인 → build.gradle 에 모듈 추가(4차, 유일하게 재빌드 필요).**
+**✅ 로컬 Docker Compose 풀 그린 달성(2026-06-05) → 현재 진행 트랙 = K8s(kind) 배포 테스트.** compose `up` 을 순차 트리아지하며 멀티서비스 배포정합 결함 4건을 발견·수정해 6컨테이너 전부 `(healthy)` 확인. **다음 섹션은 이 4건을 k8s `overlays/local` 에 반영(일부는 이미 자동 전파)한 뒤 kind 에 올리는 작업.** 트리아지 상세는 `HANDOFF.md` §6(누적 정본)·`PITFALLS.md` §9, 착수 순서는 `_internal/planning/NEXT_LOCAL_COMPOSE_AND_KIND.md` §3~§4.
 
 ## 최종 갱신
-- 일자: 2026-06-05 · 갱신자: compose 트리아지 세션
-- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SC 2025.1.1 / Jackson 3 — **스택·build.gradle 무변경**.
+- 일자: 2026-06-05 · 갱신자: compose 그린화 → K8s 배포 트랙 전환 세션
+- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SC 2025.1.1 / Jackson 3 — 스택 무변경.
 
-## 직전에 한 것 (Done)
-- **코드 수정 1건**: `services/auth-server/.../config/AuthorizationServerConfig.java` `@Order(2) defaultSecurityFilterChain` 에 `requestMatchers("/actuator/**").permitAll()` 추가(framework-security 규약과 동일). AS 프로토콜 체인(@Order(1))·formLogin·인증 위임은 무변경.
-- **문서 동반 갱신**: PITFALLS §9 신규 항목(actuator-AS보안 함정, ★) + 자가진단표 1행 · AUTH_SERVER.md §3 "actuator 미인증 허용" bullet · 본 HANDOFF_SUMMARY · HANDOFF §6 한 줄.
-- **코드 수정 2건째(LOG_DIR)**: user/admin 컨테이너 부팅 실패(logback `./logs/*.log` 못 씀) → **소스/Dockerfile 무변경**, `LOG_DIR=/tmp` env 로 해결. compose=user/admin env, k8s=`deployment-hardening.yaml` `app` 컨테이너 env 단일 정의(전 서비스, /tmp emptyDir 와 일치). 문서: PITFALLS §9 신항목(★)+자가진단표 1행 · compose README 주의절.
-- **수정 3건째(업로드 경로)**: user/admin 의 local `FileStorage` 가 `./uploads`(/application/uploads) 생성 실패(AccessDenied) → `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`(relaxed-binding 정식 env; admin 은 yml `${FILE_BASE_PATH}` 매핑 없어 이 형태 필수). 소스/Dockerfile 무변경. 문서: PITFALLS §9 신항목(★)+자가진단표 1행 · compose README.
-- **수정 4건째(redis 토큰스토어)**: user/admin prod `token-store.type=redis` + `framework-redis` 미의존 → `TokenStore` 빈 없음. `services/{user,admin}-service/build.gradle` 에 `implementation project(':framework:framework-redis')` 추가(api spring-data-redis 전이로 StringRedisTemplate 자동구성). **build.gradle 변경 → `up -d --build` 필요.** 문서: PITFALLS §9 신항목(★)+자가진단표 1행.
-- 진단 근거: framework-security `SecurityAutoConfiguration` L304/L372 의 `requestMatchers("/actuator/**", …).permitAll()` 규약 / k8s `common/deployment-hardening.yaml` 의 startup·liveness·readiness 프로브 경로(`/actuator/health{,/liveness,/readiness}`) / `Dockerfile.build` 런타임에 curl 설치 확인.
+## 직전에 한 것 (Done) — 배포정합 결함 4건(상세=PITFALLS §9)
+| # | 증상 | 원인 | 수정(적용 형태) | kind 전파 |
+|---|---|---|---|---|
+| 1 | auth-server 만 `unhealthy`→의존 서비스 부팅 실패 | AS 자체 보안체인이 `/actuator/**` permitAll 누락 → health 302/401 | `AuthorizationServerConfig` 1줄 permitAll (**앱 코드**) | ✅ 자동(같은 이미지) |
+| 2 | user/admin `FileNotFoundException: ./logs/*.log` | logback-common 파일 appender 가 비루트/읽기전용 컨테이너 `./logs` 못 씀 | `LOG_DIR=/tmp` (**env**: compose + k8s hardening) | ✅ 자동(hardening 공통 패치) |
+| 3 | user/admin `AccessDeniedException: /application/uploads` | local FileStorage 가 `./uploads` 생성 시도(동근원) | `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads` (**env**) | ⚠️ compose 만 — k8s 는 overlays 에서 admin 별도 |
+| 4 | user/admin `TokenStore` 빈 없음 | prod `token-store.type=redis` 인데 `framework-redis` 미의존(삼단 토글 위반) | `build.gradle` 에 `framework-redis` 추가 (**모듈**) | ✅ 자동(같은 이미지) |
+
+- 1·2·4 는 같은 이미지/공통 패치라 kind 자동 적용, 3 만 k8s overlays 에서 admin 에 별도 반영 필요.
+- 문서 동반 갱신: PITFALLS §9(4항목+자가진단표 4행)·compose README 주의절·AUTH_SERVER.md §3·HANDOFF §6.
 
 ## 현재 상태 (적용/검증)
-- **✅ 받는 쪽 검증 완료(2026-06-05)**: 수정 적용 후 재기동 → `[+] up 10/10`, auth-server `Healthy`. `curl -i …:9000/actuator/health` = **200 + {"groups":["liveness","readiness"],"status":"UP"}**(이전엔 302/401). 응답에 liveness/readiness 그룹이 떠 있어 **k8s 프로브도 동일 통과 확인**(같은 이미지/경로) → compose+kind 동시 해소.
-- **auth-server/gateway/postgres/redis = `(healthy)` 검증 완료.** user/admin 은 `prod` logback 파일경로 문제로 종료했었음(이번 LOG_DIR 수정 대상). 
-- **✅ compose 풀 그린 검증 완료(받는 쪽 `up -d --build` 후 `ps` 6컨테이너 전부 `(healthy)`).** 4건 수정 모두 실효 확인. admindb/Flyway 결함은 실제로는 안 터짐(볼륨 정상).
-- 수정 4건의 적용 형태: actuator=앱 코드(AuthorizationServerConfig) · LOG_DIR/업로드경로=env(compose+k8s hardening) · redis=build.gradle 모듈. **앞 3건(앱코드·LOG_DIR·redis모듈)은 같은 이미지라 kind 자동 적용**, 업로드경로는 compose env 로만 줬으므로 k8s 는 overlays 에서 별도 반영 필요(admin).
+- **✅ compose 풀 그린 검증 완료**: 받는 쪽 `up -d --build` 후 `docker compose ps` 6컨테이너(auth-server/gateway/user/admin/postgres/redis) 전부 `(healthy)`. user/admin 부팅 전 구간(logging→file storage→Flyway(sidb/admindb)→security TokenStore) 통과.
+- 작성환경 Maven Central 차단 — 코드 변경(1·4)은 받는 쪽 `spotlessApply`/재빌드로 검증함.
 
-## 바로 다음 할 일 (Next)
-1. ✅ **compose 완전 그린 — 완료(2026-06-05).**
-2. **k8s `overlays/local` 정합 패치(다음 핵심)** — compose 에서 찾은 결함을 매니페스트에 반영. **이미 해결(같은 이미지/공통 패치)**: actuator permit(앱), LOG_DIR=/tmp(hardening), redis TokenStore(build.gradle). **아직 필요**: ⓐ admin-service DB 분리(`admindb` 또는 `spring.flyway.table` — overlays/local 은 둘 다 sidb) ⓑ auth-server prod Authenticator 주입 전략(또는 kind 도 local 데모 프로파일로) ⓒ admin-service 업로드 경로(`FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads` — admin 은 local+s3없음+readOnlyRootFilesystem 이라 k8s prod 도 동일 결함) ⓓ user-service 파일저장 결정(kind=local+업로드경로 / 실prod=s3+framework-file-s3 주석해제).
-3. 그 후 **kind 배포**: 이미지 빌드 → `kind load docker-image` → `kubectl apply -k deploy/k8s/overlays/local` → 스모크.
+## 바로 다음 할 일 (Next) — K8s 배포 (상세 `_internal/planning/NEXT_LOCAL_COMPOSE_AND_KIND.md` §3~§4)
+1. **`overlays/local` 정합 패치** — compose 결함을 매니페스트에 반영. **이미 해결(자동 전파)**: actuator permit(앱)·LOG_DIR(hardening)·redis TokenStore(build.gradle). **아직 필요**:
+   - ⓐ admin-service **DB 분리** — overlays/local 은 user/admin 둘 다 `sidb` → Flyway 충돌. admin→`admindb`(initdb 추가 + admin `DB_URL` 패치) 또는 `spring.flyway.table` 분리.
+   - ⓑ auth-server **prod Authenticator 전략** — prod 엔 Authenticator 빈 없음(LocalDemo=@Profile local). kind 도 `local,local-postgres` 데모로 띄울지, 프로젝트 구현 주입 표준으로 둘지 결정.
+   - ⓒ admin-service **업로드 경로** — admin 은 local 파일저장(s3 모듈 없음)+readOnlyRootFilesystem 이라 k8s prod 도 동일 결함 → configmap 에 `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`.
+   - ⓓ user-service **파일저장 결정** — kind 테스트=local(+업로드경로) / 실prod=s3(`framework-file-s3` 주석 해제 + type=s3).
+2. **kind 배포** — 이미지 빌드 → `kind load docker-image si-msa/<svc>:local` → `kubectl apply -k deploy/k8s/overlays/local` → 스모크(`kubectl get pods`·프로브·`port-forward` 헬스). 애드온(metrics-server/ServiceMonitor 등)은 `ops/K8S_ADDONS.md`.
 
-## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것)
-- **AS 자체 SecurityFilterChain 정의 시 `/actuator/**` permitAll 을 직접 넣어야 함** — framework-security 기본 체인이 백오프되므로 actuator permit 규약도 함께 사라진다. 빠뜨리면 앱은 정상인데 K8s 프로브/compose healthcheck 가 영영 실패(302/401). 점검: `curl -i …:9000/actuator/health` 가 302/401 이면 이 함정 [PITFALLS §9].
-- **컨테이너 로그는 `LOG_DIR=/tmp`** — logback-common(user/admin)이 항상 `./logs/*.log` 파일을 쓰는데 컨테이너는 비루트+root소유 WORKDIR, k8s 는 readOnlyRootFilesystem(쓰기=`/tmp` emptyDir 뿐). 되돌리면 user/admin 이 logging init 에서 죽는다. 운영 로그/감사는 stdout 수집이 정석(파일은 보조) [PITFALLS §9].
-- **컨테이너 업로드 경로도 `/tmp`** — local FileStorage 기본 `./uploads` 도 logback 과 동근원으로 컨테이너 쓰기불가 → `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`. 일반 원칙: 비루트+하드닝 컨테이너에선 작업디렉터리 하위 쓰기경로(logs/uploads/임시) 전부 /tmp 로 [PITFALLS §9].
-- **백엔드 토글은 모듈 의존과 한 쌍** — `token-store.type=redis`(또는 임의 백엔드 선택)를 켜면 해당 구현을 제공하는 모듈(`framework-redis`)을 반드시 build.gradle 에 의존 추가해야 한다(삼단 토글 tier1). 설정만 바꾸고 모듈을 빼면 빈이 안 생겨 기동 실패 [PITFALLS §9].
-- **"앱 기동 로그 정상 ≠ 컨테이너 healthy"** — `Started …Application`/`Tomcat started` 가 찍혀도 healthcheck 명령(보안·포트·경로)이 틀리면 unhealthy. 헬스체크 실패는 앱 로그가 아니라 **healthcheck 가 때리는 경로의 응답**(302/401/connection)을 먼저 본다.
+## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것 — 전부 PITFALLS §9)
+- AS 가 자체 `SecurityFilterChain` 정의 시 `/actuator/**` permitAll 을 **직접** 넣어야 함(framework-security 백오프되며 규약 사라짐). 점검: `curl -i …/actuator/health` 302/401.
+- 비루트+하드닝(읽기전용 루트FS) 컨테이너에선 **작업디렉터리 하위 쓰기경로(logs/uploads/임시) 전부 `/tmp`(emptyDir)로** 리다이렉트. 운영 로그/감사는 stdout 수집이 정석.
+- **백엔드 토글은 모듈 의존과 한 쌍**: `token-store.type=redis`(임의 백엔드)를 켜면 그 구현 모듈(`framework-redis`)을 build.gradle 에 반드시 추가(삼단 토글 tier1). 설정만 바꾸면 빈 없어 기동 실패.
+- "앱 기동 로그 정상 ≠ 컨테이너 healthy" — healthcheck 실패는 앱 로그가 아니라 **healthcheck 가 때리는 경로의 응답**(302/401/connection)을 먼저 본다.
+- 핵심 교훈: 멀티서비스는 **실제 컨테이너로 한 번 띄워봐야** 드러나는 정합 결함이 있다(단위/슬라이스 테스트로는 안 잡힘). k8s 전 compose 게이트가 그 역할.
 <!-- 갱신 끝 -->
