@@ -35,6 +35,24 @@ mfa.disable(userId, MfaMethod.TOTP);
 ### JDBC 등록 저장소
 `src/main/resources/db/mfa-postgres.sql`. Flyway 권장.
 
+
+## 실전 사용 예 (코드)
+
+TOTP 등록·확인과 로그인 2차 인증(챌린지→검증)을 제공한다. 내장 컨트롤러(`/api/v1/mfa`, `/api/v1/auth/mfa`)로 바로 쓰거나 `MfaService` 를 직접 호출한다.
+```java
+// com.company.framework.mfa.core.MfaService
+MfaService.EnrollmentStart s = mfa.beginTotpEnrollment(userId, "alice@corp");  // s.otpauthUri() → QR
+mfa.confirmTotp(userId, "123456");                                             // 사용자 입력으로 확정
+
+String ticket = mfa.createChallenge(userId, roles, List.of("TOTP"));          // 로그인 1차 성공 후
+MfaService.MfaVerification v = mfa.verify(ticket, "TOTP", "654321", clientIp); // 2차 검증 통과 → 토큰 발급 진행
+```
+```bash
+curl -X POST http://localhost:8080/api/v1/mfa/enroll/totp -H 'Authorization: Bearer <t>'
+curl -X POST http://localhost:8080/api/v1/auth/mfa/verify \
+  -H 'Content-Type: application/json' -d '{"ticket":"...","method":"TOTP","code":"654321"}'
+```
+
 ## 끄는 법
 `framework.mfa.enabled: false`(또는 `policy: OFF`) 또는 의존성 미포함.
 

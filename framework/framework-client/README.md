@@ -37,6 +37,30 @@ PartnerDto get(String id) {
 - MDC `traceId` 가 `X-Trace-Id` 로 하위 호출에 전파됨(게이트웨이→서비스→외부 추적 일관).
 - 연계로그: `framework.client.integration` 로거에 `[OUT] METHOD URI -> status (ms)`.
 
+
+## 실전 사용 예 (코드)
+
+프레임워크가 설정한 `RestClient.Builder`(타임아웃·재시도·호스트별 서킷브레이커·`X-Trace-Id` 전파·연계로그 포함)를 주입해 외부 API 컴포넌트를 만든다.
+```java
+// 주입: 프레임워크 제공 RestClient.Builder
+@Component
+public class PartnerClient {
+    private final RestClient client;
+    public PartnerClient(RestClient.Builder frameworkRestClientBuilder) {
+        this.client = frameworkRestClientBuilder.baseUrl("https://api.partner.com").build();
+    }
+
+    public PartnerDto get(String id) {
+        return client.get().uri("/items/{id}", id).retrieve().body(PartnerDto.class);
+    }
+
+    public CreateResult create(CreateReq req) {
+        return client.post().uri("/items").body(req).retrieve().body(CreateResult.class);
+    }
+}
+```
+서킷이 열리면 `CircuitOpenException` 이 던져진다 — 폴백이 필요하면 호출부에서 잡는다. 동작 토글은 `framework.client.*`.
+
 ## 동작 상세
 - **인터셉터 순서**(바깥→안): Trace → CircuitBreaker → Retry → Logging.
   서킷이 재시도를 감싸므로 "논리적 1회 호출" 단위로 실패가 집계되고, OPEN 이면 재시도 전에 즉시 차단.

@@ -29,6 +29,24 @@ NotificationResult r = notifications.send(
 ```
 - SMS/알림톡 벤더 연동: `SmsClient`/`AlimtalkClient` 를 구현해 빈 등록(미구현 시 `Logging*Client` 로 로깅만).
 
+
+## 실전 사용 예 (코드)
+
+메일/SMS/알림톡을 단일 `NotificationService.send(...)` 로 보낸다. 요청은 채널별 정적 빌더로 만든다.
+```java
+// com.company.framework.notification.{NotificationService, NotificationRequest}
+private final NotificationService notifications;
+
+notifications.send(NotificationRequest.mail("user@corp.com", "가입 완료", "<b>환영합니다</b>")
+        .html(true).build());
+
+notifications.send(NotificationRequest.sms("01012345678", "[회사] 인증번호 123456").build());
+
+notifications.send(NotificationRequest.alimtalk("01012345678", "WELCOME_001")
+        .variable("name", "홍길동").build());   // 템플릿 변수
+```
+채널 구현(SMS/알림톡 클라이언트)은 미설정 시 로깅 구현으로 대체되어 개발 환경에서 안전하게 동작한다.
+
 ## 끄는 법
 `framework.notification.enabled: false` 또는 채널별 `enabled: false`, 또는 의존성 미포함.
 

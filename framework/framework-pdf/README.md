@@ -60,6 +60,28 @@ public void download(HttpServletResponse response, List<Tx> txList) throws IOExc
 - 표 헤더는 페이지가 넘어가도 자동 반복(`setHeaderRows`). 페이지 번호는 하단 중앙.
 - `null` 셀 값은 빈 문자열로 안전 처리.
 
+
+## 실전 사용 예 (코드)
+
+표 형식 리포트를 `PdfReport` 빌더로 선언하고 `PdfExporter.write(...)` 로 출력한다(한글 폰트 내장).
+```java
+// com.company.framework.pdf.{exporter.PdfExporter, model.PdfReport, model.PdfColumn}
+private final PdfExporter pdf;   // 빈 주입
+
+public void export(HttpServletResponse res, List<Tx> rows) throws IOException {
+    res.setContentType("application/pdf");
+    PdfReport<Tx> report = PdfReport.<Tx>builder()
+            .title("거래 내역")
+            .metaLine("기간: 2026-06")
+            .column(PdfColumn.of("일시", t -> t.getTime().toString()))
+            .column(PdfColumn.of("금액", t -> String.valueOf(t.getAmount()), 2f))
+            .rows(rows)
+            .footerNote("기밀")
+            .build();
+    pdf.write(res.getOutputStream(), report);
+}
+```
+
 ## 끄는 법
 - `framework.pdf.enabled: false` 또는 키 생략 → 빈 미등록, 런타임 비용 0.
 - 의존성을 빼면 OpenPDF 클래스가 사라져 오토컨피그가 `@ConditionalOnClass(Document)` 에서 탈락.

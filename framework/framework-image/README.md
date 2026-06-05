@@ -58,6 +58,26 @@ class AvatarService {
 }
 ```
 
+
+## 실전 사용 예 (코드)
+
+`ImageProcessor` 로 리사이즈/썸네일/메타조회를 한다(EXIF 회전 보정 포함).
+```java
+// com.company.framework.image.{ImageProcessor, ResizeSpec, ImageInfo, ImageFormat}
+private final ImageProcessor images;
+
+public byte[] makeThumb(byte[] original) {
+    return images.thumbnail(original, 200);   // 긴 변 200px 썸네일
+}
+public byte[] webOptimized(byte[] original) {
+    ResizeSpec spec = new ResizeSpec(1280, 1280, false, ImageFormat.JPEG, 0.8f, true);
+    return images.process(original, spec);    // 업스케일 금지 + 품질 0.8 + 방향보정
+}
+public void inspect(byte[] original) {
+    ImageInfo info = images.probe(original);  // info.width(), info.height(), info.formatName()
+}
+```
+
 ## 주의 / 함정
 
 - **메타 제거는 리인코딩의 부수효과**: ImageIO 디코드→재인코딩 시 EXIF/GPS 등이 보존되지 않으므로 별도 strip

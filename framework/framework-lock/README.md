@@ -89,6 +89,24 @@ if (lock.tryLock("job", token, Duration.ofMinutes(5))) {
 - **리스 기반**: 모든 락은 TTL 보유 → 보유 인스턴스가 죽어도 TTL 후 자동 해제(영구 교착 방지). TTL 은 보호 구간 예상 실행시간보다 넉넉히.
 - **소유자 토큰**: `unlock`/`keepUntil` 은 `token` 이 현재 소유자와 일치할 때만 동작 → "내 락이 TTL 로 만료된 뒤 다른 인스턴스가 재획득한 락을, 뒤늦게 끝난 내가 잘못 해제/연장"하는 사고를 막는다(Redis Lua CAS, JDBC `WHERE lock_owner=?`).
 
+
+## 실전 사용 예 (코드)
+
+**스케줄러 중복 실행 방지** — `@SchedulerLock` 한 줄(다중 인스턴스에서 한 노드만 실행).
+```java
+// com.company.framework.lock.SchedulerLock
+@Scheduled(cron = "0 0 * * * *")
+@SchedulerLock(name = "hourlySettlement", atMostFor = "PT10M")
+public void settle() { ... }
+```
+**임의 임계 구역** — `DistributedLock.runIfLocked` 로 락을 못 잡으면 건너뛴다(인메모리/JDBC/Redis 자동 선택).
+```java
+private final DistributedLock lock;
+boolean ran = lock.runIfLocked("close:" + accountId, Duration.ofSeconds(30), () -> {
+    accountService.close(accountId);   // 잡았을 때만 실행
+});
+```
+
 ## 끄는 법
 - `framework.lock.enabled: false` 또는 키 자체 생략 → 빈/애스펙트 미등록, 런타임 비용 0.
 - `framework.lock.scheduler.enabled: false` → `DistributedLock` SPI 는 살아있되 `@SchedulerLock` 애스펙트만 끔(애너테이션 무시).

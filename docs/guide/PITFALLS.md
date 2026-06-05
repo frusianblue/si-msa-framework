@@ -89,6 +89,7 @@
 - **[일반] Sonar 커버리지 0% = JaCoCo XML 누락** — `sonar` 는 재컴파일 안 하고 산출물만 읽음. `test jacocoTestReport` 를 먼저(또는 같은 호출). `sonar.login`(구) → `sonar.token`.
 - **[일반] Sonar 가 분석을 올리되 머지를 안 막음** — 현재 CI 는 업로드만. 차단하려면 Gradle `-Dsonar.qualitygate.wait=true` 또는 Jenkins `waitForQualityGate abortPipeline:true`. 단 PR/브랜치 분석은 Server(Developer+)/Cloud 기능 — Community Build 는 main 만.
 - **[일반] 새 모듈은 jacocoAggregation 목록에도 추가** — `settings.gradle` include 만으로는 "전체 합산 1장" 커버리지에서 빠진다(루트 `build.gradle` 의 `jacocoAggregation project(...)` 목록에 한 줄). Sonar 글롭 수집은 별개라 안 놓치지만 집계 리포트는 누락됨.
+- **[겪음] "완료로 기록" ≠ "레포에 반영"** — 핸드오프/NEXT 문서에 ✅ 완료로 적혀 있어도 실제 master 에 커밋이 안 됐을 수 있다(예: README 실전샘플 — 문서엔 security·redis·session 완료였으나 라이브 레포엔 security·session 만 존재, redis 는 다른 헤더). **세션 시작 시 "기록"이 아니라 "레포"를 기준으로 재검증**한다. 점검 한 줄: `for d in framework/framework-*; do grep -q '^## 실전 사용 예' "$d/README.md" || echo "$d 누락"; done`.
 
 ---
 

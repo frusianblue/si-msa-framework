@@ -59,6 +59,29 @@ RedisCacheConfiguration redisCacheConfiguration() {
 }
 ```
 
+
+## 실전 사용 예 (코드)
+
+이 모듈은 Spring Cache 매니저를 Redis 로 **교체만** 한다 — 코드는 표준 `@Cacheable`/`@CacheEvict` 그대로다(직렬화는 Jackson 3 규약 적용됨).
+```java
+@Service
+public class ProductService {
+    @Cacheable(cacheNames = "product", key = "#id")
+    public ProductDto get(Long id) { /* 미스일 때만 DB 조회 */ return mapper.findById(id); }
+
+    @CacheEvict(cacheNames = "product", key = "#dto.id")
+    public void update(ProductDto dto) { mapper.update(dto); }
+}
+```
+```yaml
+spring.cache.type: redis
+framework.cache.redis:
+  enabled: true
+  default-ttl: 10m
+  ttls: { product: 1h }   # 캐시별 TTL
+```
+확인: `redis-cli KEYS 'product*'` 로 키 생성 확인.
+
 ## 동작 매트릭스
 
 | `framework.cache.redis.enabled` | 호스트에 data-redis | 결과 |

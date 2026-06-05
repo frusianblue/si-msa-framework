@@ -38,6 +38,23 @@ outbox.publish("payment-topic", "Payment", paymentId, "PaymentApproved", payload
 ### Outbox 테이블
 `src/main/resources/db/messaging/outbox-postgres.sql`. Flyway 권장.
 
+
+## 실전 사용 예 (코드)
+
+DB 트랜잭션과 이벤트 발행을 원자적으로 묶는 **Transactional Outbox** — 같은 트랜잭션 안에서 `OutboxEventPublisher.publish(...)` 를 호출하면, 커밋 후 릴레이가 브로커로 전달한다.
+```java
+// com.company.framework.messaging.OutboxEventPublisher
+private final OutboxEventPublisher outbox;
+
+@Transactional
+public void placeOrder(Order o) {
+    orderMapper.insert(o);   // ① 도메인 변경
+    outbox.publish("order-events", "Order", o.getId().toString(),
+                   "OrderPlaced", o);   // ② 같은 TX 에 이벤트 적재 → 커밋 후 발행 보장
+}
+```
+소비 측은 `IdempotentEventProcessor` 로 중복 수신을 흡수한다(at-least-once 대비).
+
 ## 끄는 법
 `framework.messaging.enabled: false`(발행) / `consumer.enabled: false`(소비) 또는 의존성 미포함.
 

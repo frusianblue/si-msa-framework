@@ -69,6 +69,28 @@ public ApiResponse<Void> transfer(@RequestBody TransferRequest req) { ... }
 > 주의: 본문을 메모리 버퍼링하므로 **작은 JSON 응답**(전형적 `ApiResponse`)에 적합하다. 스트리밍/대용량 응답에는 부적합.
 > `store.type=jdbc|redis` 와 조합하면 다중 인스턴스/재기동 간에도 재생이 유지된다(`memory` 는 인스턴스 로컬).
 
+
+## 실전 사용 예 (코드)
+
+중복 제출을 막을 엔드포인트에 `@Idempotent` 를 붙이면, `Idempotency-Key` 헤더 기준으로 같은 키의 재요청은 저장된 응답을 재생한다(저장소: 인메모리/JDBC/Redis 자동 선택).
+```java
+// com.company.framework.idempotency.core.Idempotent
+@PostMapping("/api/v1/orders")
+@Idempotent
+public ApiResponse<OrderDto> place(@RequestBody OrderForm form) {
+    return ApiResponse.ok(orderService.place(form));
+}
+```
+```bash
+KEY=$(uuidgen)
+# 1회차: 실제 생성
+curl -X POST http://localhost:8080/api/v1/orders -H "Idempotency-Key: $KEY" \
+  -H 'Content-Type: application/json' -d '{"productId":1,"qty":2}'
+# 2회차(같은 키): 같은 응답 재생, 중복 생성 없음
+curl -X POST http://localhost:8080/api/v1/orders -H "Idempotency-Key: $KEY" \
+  -H 'Content-Type: application/json' -d '{"productId":1,"qty":2}'
+```
+
 ## 끄는 법
 - `framework.idempotency.enabled: false` 또는 키 자체 생략 → 빈/인터셉터 미등록, 런타임 비용 0.
 - 의존성을 빼면 클래스가 사라져 오토컨피그가 `@ConditionalOnClass` 에서 탈락.

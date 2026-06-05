@@ -26,6 +26,30 @@ framework:
 
 상세 흐름·프로바이더 설정은 [`../../docs/modules/OAUTH_CLIENT.md`](../../docs/modules/OAUTH_CLIENT.md), OIDC 강화는 [`../../docs/modules/OIDC_HARDENING.md`](../../docs/modules/OIDC_HARDENING.md), 통합 예시는 [`INTEGRATION.md`](INTEGRATION.md).
 
+
+## 실전 사용 예 (코드)
+
+소셜/외부 IdP 로그인(RP). 내장 컨트롤러가 `authorize → callback` 흐름을 처리하고, 콜백 성공 시 **자체 JWT** 를 발급해 돌려준다. 프로젝트는 IdP 사용자→내부 사용자 매핑인 `OAuthUserResolver` 만 구현한다.
+```java
+// com.company.framework.oauthclient.core.{OAuthUserResolver, OAuthUserInfo}
+@Component
+public class DbOAuthUserResolver implements OAuthUserResolver {
+    private final UserMapper users;
+    @Override public AuthenticatedUser resolve(OAuthUserInfo info) {
+        UserRow row = users.findByEmail(info.email());
+        if (row == null) row = users.autoProvision(info.email(), info.name());  // 최초 로그인 자동가입
+        return new AuthenticatedUser(row.getUserId(), row.getName(), row.getRoles());
+    }
+}
+```
+```bash
+# 1) 브라우저를 IdP 인가 페이지로 302
+curl -i http://localhost:8080/api/v1/auth/oauth/google/authorize
+# 2) IdP 가 code/state 로 콜백 → 자체 토큰(JSON) 반환
+#    GET /api/v1/auth/oauth/google/callback?code=...&state=...
+```
+> id_token 검증 실패 시 `IdTokenVerifier` 는 `BusinessException(UNAUTHORIZED)` 를 던진다(AS측 검증기의 `JwtException` 과 다름 — 테스트 단언 시 주의).
+
 ## 끄는 법
 `framework.oauth-client.enabled: false` 또는 의존성 미포함.
 

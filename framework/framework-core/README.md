@@ -40,6 +40,28 @@ PageResponse<UserDto> page = ...;   // PageRequest / SearchCondition 로 표준 
 
 > `AesCryptoService`(AES-GCM)는 다른 모듈(mybatis 타입핸들러 등)이 재사용한다. `util` 패키지(검증·마스킹·날짜/영업일·금액·한글·해시·JSON·CSV·고정폭전문·CP949)는 토글 없는 정적 유틸.
 
+
+## 실전 사용 예 (코드)
+
+**표준 예외** — 비즈니스 오류는 `BusinessException(ErrorCode, 메시지)` 로 던지면 `GlobalExceptionHandler` 가 표준 응답으로 변환한다.
+```java
+// com.company.framework.core.exception.{BusinessException, ErrorCode}
+if (balance < amount) {
+    throw new BusinessException(ErrorCode.Common.BAD_REQUEST, "잔액이 부족합니다.");
+}
+```
+**감사 로깅** — `@AuditLog(action=...)`:
+```java
+@AuditLog(action = "ACCOUNT_CLOSE", target = "account")
+public void close(Long accountId) { ... }
+```
+**대칭 암호화** — `AesCryptoService`(키는 `framework.crypto.*`):
+```java
+private final AesCryptoService crypto;
+String enc = crypto.encrypt("주민번호");   // 저장
+String raw = crypto.decrypt(enc);          // 복호
+```
+
 ## 끄는 법
 [코어]라 통째로 끄지 않는다. 개별 기능만 위 토글로 비활성(런타임 비용 제거).
 

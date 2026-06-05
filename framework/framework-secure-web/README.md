@@ -85,6 +85,27 @@ framework:
   `mode=block|log-only`.
 - **CSRF**(기본 off): 더블서브밋 쿠키. stateless JWT 면 보통 불필요.
 
+
+## 실전 사용 예 (코드)
+
+직접 노출되는 서비스에 보안 필터(주입 스크리닝·경로조작 차단·CSRF·보안헤더·레이트리밋)를 더한다. 보통 코드 변경 없이 토글로 켜고 **차단 동작은 curl 로 확인**한다.
+```yaml
+framework.secure-web:
+  enabled: true
+  injection: { mode: BLOCK }     # 의심 패턴 차단(LOG 로 관찰만도 가능)
+  path-traversal: { enabled: true }
+  rate-limit: { enabled: true, permits-per-minute: 120 }
+  headers: { enabled: true }
+```
+```bash
+# 주입 패턴 → 차단(400/403)
+curl -i "http://localhost:8080/api/v1/search?q=1';DROP%20TABLE%20users;--"
+# 경로조작 → 차단
+curl -i "http://localhost:8080/api/v1/files/..%2f..%2fetc%2fpasswd"
+# 레이트리밋 초과 → 429
+for i in $(seq 1 200); do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/v1/ping; done | sort | uniq -c
+```
+
 ## 의존성
 
 새 외부 의존성 0. CORS/RateLimit 모두 호스트가 제공하는 web 스택만 사용(`compileOnly` web).

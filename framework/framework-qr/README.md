@@ -81,6 +81,25 @@ public ResponseEntity<byte[]> qr(...) {
 }
 ```
 
+
+## 실전 사용 예 (코드)
+
+`QrGenerator` 로 QR PNG 바이트를 생성한다(ZXing, 옵트인). 보통 컨트롤러에서 이미지로 내려준다.
+```java
+// com.company.framework.qr.{QrGenerator, QrSpec, QrEccLevel}
+private final QrGenerator qr;
+
+@GetMapping(value = "/api/v1/qr", produces = MediaType.IMAGE_PNG_VALUE)
+public byte[] qr(@RequestParam String text) {
+    return qr.toPng(text);   // 기본 스펙 PNG
+}
+// 크기/오류정정 지정
+byte[] big = qr.generate("https://corp.com/pay/123", new QrSpec(512, QrEccLevel.H));
+```
+```bash
+curl 'http://localhost:8080/api/v1/qr?text=hello' -o qr.png
+```
+
 ## 설계 메모
 
 - **PNG 전용(JPEG 미지원)**: QR 은 흑백 경계가 날카로워야 인식된다. JPEG 같은 손실 압축은 경계에 잡음을 남겨

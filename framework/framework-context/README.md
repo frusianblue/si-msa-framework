@@ -54,6 +54,30 @@ executor.setTaskDecorator(contextTaskDecorator);
 RestClient.builder().requestInterceptor(contextPropagationInterceptor).build();
 ```
 
+
+## 실전 사용 예 (코드)
+
+요청 단위 컨텍스트(테넌트/사용자/로케일)는 어디서든 `ContextHolder.get()` 으로 읽는다(필터가 비동기·하위호출까지 전파).
+```java
+// com.company.framework.context.{ContextHolder, RequestContext}
+public List<Order> myTenantOrders() {
+    RequestContext ctx = ContextHolder.get();
+    String tenant = ctx.tenantId();          // 멀티테넌시 분기
+    String user   = ctx.userId();
+    return orderMapper.findByTenant(tenant);
+}
+```
+헤더 매핑이 아닌 커스텀 추출이 필요하면 `ContextResolver` 를 구현해 빈으로 등록(예: JWT 클레임에서 테넌트 추출):
+```java
+@Component
+public class JwtTenantContextResolver implements ContextResolver {
+    @Override public RequestContext resolve(HttpServletRequest req) {
+        String tenant = (String) req.getAttribute("jwt.tenant");
+        return RequestContext.builder().tenantId(tenant).build();
+    }
+}
+```
+
 ## 주의 / 함정
 
 - **상속형 ThreadLocal 을 쓰지 않는다.** 가상 스레드/풀에서 누수가 나므로 전파는 데코레이터·인터셉터로 명시한다.

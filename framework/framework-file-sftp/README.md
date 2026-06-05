@@ -72,6 +72,28 @@ framework:
 - 재로드가 실패하면(파일 일시적 오류 등) **기존 자격증명을 유지**하고 다음 주기에 재시도한다(가용성 우선).
 - `private-key-path` 가 없으면(비밀번호 인증만) 회전 대상이 없으므로 이 설정은 무시된다.
 
+
+## 실전 사용 예 (코드)
+
+SFTP 는 **투명 스토리지 백엔드**다 — 앱 코드는 `FileService` 그대로 쓰고, 활성화는 설정으로 한다. 키/비밀번호를 외부(Vault 등)에서 동적으로 주려면 `SftpCredentialProvider` 를 구현해 빈으로 등록한다.
+```java
+// com.company.framework.filesftp.SftpCredentialProvider
+@Component
+public class VaultSftpCredentialProvider implements SftpCredentialProvider {
+    private final VaultClient vault;
+    @Override public String privateKeyPem(String host) {
+        return vault.read("secret/sftp/" + host).get("private_key");  // 회전된 키 반환
+    }
+}
+```
+```yaml
+framework.file.storage.type: sftp
+framework.file.sftp:
+  host: files.example.com
+  port: 22
+  base-dir: /upload
+```
+
 ## 설계 메모
 
 - 순수 알고리즘(연결 풀 `pool/BoundedObjectPool`, 키 회전 결정 `cred/ReloadingSftpCredentialProvider`, 자격증명 홀더 `cred/SftpCredentials`)은 **SSHD 무의존**으로 분리되어 JDK 단독 단위테스트가 가능하다. SSHD 에 닿는 부분(`SftpKeyLoader`, `SftpFileStorage` 의 세션 개폐)은 내장 MINA SFTP 서버 왕복 테스트로 검증한다.

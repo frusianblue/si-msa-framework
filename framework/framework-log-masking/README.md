@@ -85,6 +85,25 @@ void audit(SomeDto dto) {
 
 > **계좌 규칙을 켤 때 주의**: `account` 정규식은 구분자(`-`)로 묶인 2~6자리 3그룹이면 매칭하므로, **구분자 있는 휴대폰 `010-1234-5678` 같은 비계좌 숫자열도 함께 가린다**(설계상 광범위 — 이것이 기본 off 인 이유). 운영에서 계좌만 정확히 가리려면, 로그에 휴대폰/코드가 계좌와 같은 dash-그룹 형태로 섞이는지 점검하고 필요하면 `custom-patterns` 로 더 좁은 패턴을 쓰는 편이 안전하다.
 
+
+## 실전 사용 예 (코드)
+
+로그에 남는 민감정보(주민번호/카드/계좌/이메일 등)는 Logback 컨버터가 자동 마스킹한다. 코드에서 직접 마스킹이 필요하면 `SensitiveDataMasker` 빈을 주입한다.
+```java
+// com.company.framework.logmask.mask.SensitiveDataMasker (빈 자동 등록)
+private final SensitiveDataMasker masker;
+
+public void auditDump(String payload) {
+    log.info("수신: {}", masker.mask(payload));   // 010-1234-5678 → 010-****-5678 등
+}
+```
+```yaml
+framework.log-masking:
+  enabled: true
+  strip-newlines: true   # 로그 인젝션 방지(개행 제거)
+  max-length: 2000
+```
+
 ## 한계 / 주의
 
 - **Boot 구조화 로깅(observability 모듈의 JSON 로그)** 은 `PatternLayout` 을 우회하므로 `%mmsg` 컨버터가 적용되지 않는다. 이 경우 **1차 경로(`SensitiveDataMasker` 빈 명시 호출)** 로 마스킹해야 한다.

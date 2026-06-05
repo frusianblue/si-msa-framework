@@ -119,6 +119,27 @@ Flyway 등은 `@Primary` DB 에만 자동 적용된다. **보조 DB 마이그레
 
 ---
 
+
+## 실전 사용 예 (코드)
+
+읽기/쓰기 라우팅은 `DataSourceContextHolder` 로 현재 스레드의 대상 DB 를 지정한다(지정 안 하면 기본 WRITE).
+```java
+// com.company.framework.datasource.routing.{DataSourceContextHolder, DataSourceType}
+public List<Stat> heavyReadReport() {
+    DataSourceContextHolder.set(DataSourceType.READ);   // 읽기 복제본으로
+    try {
+        return statMapper.aggregate();
+    } finally {
+        DataSourceContextHolder.clear();                 // 반드시 해제
+    }
+}
+```
+보조 DB(multi)는 해당 DB 의 트랜잭션 매니저를 명시해야 한다:
+```java
+@Transactional("secondaryTransactionManager")
+public void writeToSecondary(Log row) { secondaryMapper.insert(row); }
+```
+
 ## 일관 동작 (multi)
 
 각 독립 `SqlSessionFactory` 는 단일 DB MyBatis 기본값을 그대로 복제하고, 컨텍스트의 모든

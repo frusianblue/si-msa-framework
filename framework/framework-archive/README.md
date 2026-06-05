@@ -27,6 +27,30 @@ archiver.gunzip(in, out);
 ```
 한도 초과 시 `ArchiveErrorCode`(`ARC****`) 예외. `framework-file-batch` 의 압축 op 가 이 모듈에 위임.
 
+
+## 실전 사용 예 (코드)
+
+`Archiver` 빈을 주입해 메모리 스트림으로 zip 을 만들거나 풀어 쓴다.
+```java
+// com.company.framework.archive.{Archiver, ArchiveEntry}
+private final Archiver archiver;
+public ReportZipService(Archiver archiver) { this.archiver = archiver; }
+
+public void downloadZip(HttpServletResponse res, byte[] pdf, byte[] csv) throws IOException {
+    res.setContentType("application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=report.zip");
+    List<ArchiveEntry> entries = List.of(
+        new ArchiveEntry("report.pdf", () -> new ByteArrayInputStream(pdf)),  // ContentSupplier: 호출마다 새 스트림
+        new ArchiveEntry("data.csv",   () -> new ByteArrayInputStream(csv)));
+    archiver.zip(entries, res.getOutputStream());
+}
+```
+업로드된 zip 을 디렉터리로 풀거나 gzip 단건 처리:
+```java
+int count = archiver.unzipToDirectory(uploaded.getInputStream(), Path.of("/data/in"));
+archiver.gzip(Files.newInputStream(big), Files.newOutputStream(Path.of("big.gz")));
+```
+
 ## 끄는 법
 `framework.archive.enabled: false` 또는 의존성 미포함.
 

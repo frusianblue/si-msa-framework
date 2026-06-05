@@ -19,6 +19,32 @@ dependencies { implementation project(':framework:framework-mybatis') }
 
 **예외 변환** — `PersistenceExceptionHandler` 가 DB 예외를 표준 `ErrorCode` 로 정리.
 
+
+## 실전 사용 예 (코드)
+
+엔티티가 `BaseEntity` 를 상속하면 생성/수정자·일시가 `AuditFieldInterceptor` 에 의해 자동 주입된다(현재 사용자는 `CurrentUserProvider` 로 해석). 민감 컬럼은 `EncryptedStringTypeHandler` 로 투명 암복호.
+```java
+// com.company.framework.mybatis.support.BaseEntity 상속
+public class Member extends BaseEntity {   // createdAt/createdBy/updatedAt/updatedBy 자동
+    private Long id;
+    private String name;
+    private String rrn;   // 주민번호 — 암호화 대상
+}
+
+@Mapper
+public interface MemberMapper {
+    @Insert("INSERT INTO member(name, rrn) VALUES(#{name}, "
+          + "#{rrn, typeHandler=com.company.framework.mybatis.handler.EncryptedStringTypeHandler})")
+    void insert(Member m);   // 저장 시 자동 암호화, 조회 시 자동 복호
+}
+```
+현재 사용자 주입을 커스터마이즈하려면 `CurrentUserProvider` 빈을 등록(기본은 SecurityContext 기반):
+```java
+@Bean CurrentUserProvider currentUserProvider() {
+    return () -> Optional.ofNullable(ContextHolder.get().userId());
+}
+```
+
 ## 끄는 법
 [코어]라 토글로 끄지 않는다. DB 가 없는 서비스(gateway 등)는 이 모듈을 의존하지 않으면 된다.
 

@@ -37,6 +37,24 @@ S3 presigned 업로드는 `files.presignedStorageOrNull()` 후 `registerExternal
 
 REST 는 `FileController`(multipart 업로드/다운로드/메타/삭제).
 
+
+## 실전 사용 예 (코드)
+
+업로드/다운로드는 스토리지 구현(local/S3/SFTP)에 무관하게 `FileService` 한 곳으로 처리한다. 내장 `FileController`(`/api/v1/files`)도 제공된다.
+```java
+// com.company.framework.file.service.FileService
+@PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ApiResponse<FileMetaDto> upload(@RequestPart MultipartFile file) {
+    return ApiResponse.ok(fileService.upload(file));   // 스캔/타입검증/(옵션)암호화 후 저장
+}
+```
+```bash
+# 업로드
+curl -F 'file=@/path/photo.png' http://localhost:8080/api/v1/files
+# 다운로드(Range 지원 스토리지면 부분 요청도 가능)
+curl -H 'Range: bytes=0-1023' http://localhost:8080/api/v1/files/123 -o part.bin
+```
+
 ## 끄는 법
 `framework.file.enabled: false` 또는 의존성 미포함.
 

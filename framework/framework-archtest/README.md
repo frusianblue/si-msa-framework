@@ -22,6 +22,23 @@
 ## 쓰는 법
 규칙 위반 시 빌드(테스트) 실패로 드러난다. 새 규칙은 ArchUnit 테스트 클래스에 추가.
 
+
+## 실전 사용 예 (코드)
+
+이 모듈은 **테스트 전용**(`src/test`)이다. 새 아키텍처 규칙은 `FrameworkArchitectureTest` 패턴을 따라 `@ArchTest static final ArchRule` 필드 하나로 추가한다.
+```java
+// src/test/java/.../archtest/FrameworkArchitectureTest.java 에 필드 추가
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+
+/** 컨트롤러는 매퍼(영속)를 직접 의존하면 안 된다(서비스 경유 강제). */
+@ArchTest
+static final ArchRule controllers_must_not_touch_mappers = noClasses()
+        .that().haveSimpleNameEndingWith("Controller")
+        .should().dependOnClassesThat().haveSimpleNameEndingWith("Mapper")
+        .because("계층 경계: web → service → mapper");
+```
+확인: `./gradlew :framework:framework-archtest:test` (그린이면 전 모듈 main 바이트코드가 규칙을 통과).
+
 ## 끄는 법
 끄지 않는다(CI 게이트). 단, 산출물에는 포함되지 않으므로 런타임 영향 없음.
 

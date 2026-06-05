@@ -43,6 +43,28 @@ String msg = messages.get("user.welcome", userName);   // user.welcome=환영합
 
 **(3) 로케일 결정** — `Accept-Language` 헤더로 자동 선택, 없으면 `default-locale`.
 
+
+## 실전 사용 예 (코드)
+
+메시지 코드를 코드에서 해석할 땐 `MessageResolver`(현재 요청 로케일 적용)를 주입한다. 예외 메시지 자동 변환은 `ErrorMessageResolver` 가 담당한다.
+```java
+// com.company.framework.i18n.MessageResolver
+private final MessageResolver messages;
+
+public String greet(String name) {
+    return messages.get("greeting.hello", name);                 // messages_ko/en.properties 의 greeting.hello
+}
+public String label() {
+    return messages.getOrDefault("menu.dashboard", "대시보드");  // 없으면 기본값
+}
+```
+```properties
+# messages.properties (ko)
+greeting.hello=안녕하세요, {0}님
+# messages_en.properties
+greeting.hello=Hello, {0}
+```
+
 ## 끄기 / override
 - `framework.i18n.enabled: false` 또는 의존성 제거 → 빈 미등록, core 기본 동작으로 복귀.
 - 프로젝트가 `messageSource` / `localeResolver` 빈을 직접 등록하면 `@ConditionalOnMissingBean` 으로 양보.

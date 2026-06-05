@@ -21,36 +21,20 @@
 
 ---
 
-## 진행 현황 (2026-06-05 기준)
+## 진행 현황 (2026-06-05 — 전 모듈 완료)
 
-### ✅ 완료 (이번 섹션)
-- **framework-security** — Authenticator 구현·JWT 로그인 curl·@AuthenticationPrincipal·@PreAuthorize·세션 로그인 curl
-- **framework-redis** — framework-session 과의 관계(커넥션 공유/네임스페이스 분리)·StringRedisTemplate 직접 사용·커스텀 TokenStore 빈
-- **framework-session** — 세션 로그인/로그아웃+CSRF curl·클러스터 검증(redis-cli)·JSON 직렬화 빈 교체
+### ✅ 완료 — framework-* 36개 전부 `## 실전 사용 예 (코드)` 보유 (헤더 1개·코드펜스 짝수 검증)
+이번 일괄 작업으로 **남은 33개 모듈 + redis(표준 헤더 신설)** 을 모두 채웠다. 모든 샘플은 각 모듈 `src/main/java` 의 실제 공개 타입/메서드 시그니처를 읽고 작성(추측 금지 철칙 준수).
 
-### 🔴 우선순위 1 — Java 샘플 0개 + 개발자가 코드를 직접 작성하는 모듈
-| 모듈 | 넣을 샘플(예상) | 먼저 읽을 실제 타입 |
-|---|---|---|
-| framework-mybatis | 감사필드 자동주입 매퍼·암호화 타입핸들러 사용·CurrentUser | `support/*`, 타입핸들러, `@Mapper` 규약 |
-| framework-oauth-client | 소셜 로그인 콜백 핸들러/성공 후 자체 JWT 수령 흐름 | `OAuthLoginService`, 핸들러, 프로퍼티 |
-| framework-audit | 커스텀 감사 이벤트 발행·조회 API 호출 | 감사 이벤트/엔트리 타입, store SPI |
-| framework-observability | 커스텀 메트릭(Micrometer)·MDC 태그 추가 | 공통태그 커스터마이저, 로그 구조 |
-| framework-secure-web | 스크리닝 켜고 차단 동작 확인(curl)·예외 처리 | 필터/프로퍼티 |
+- **우선순위 1 (개발자 직접 작성)**: mybatis(BaseEntity·EncryptedStringTypeHandler·CurrentUserProvider)·oauth-client(OAuthUserResolver·authorize/callback)·audit(@AuditLog·AuditEventSink·AuditQueryService)·observability(MeterRegistry·MeterRegistryCustomizer)·secure-web(차단 curl 3종) — 완료
+- **우선순위 2**: file-s3(presigned)·file-sftp(SftpCredentialProvider)·saml-sp(SamlUserResolver·메타데이터)·openapi(@Tag/@Operation)·archtest(@ArchTest 규칙 추가법) — 완료
+- **우선순위 3 (1개 이상 보강)**: archive·batch·cache-redis·client·commoncode·context·core·datasource·excel·file·file-batch·i18n·idempotency·idgen·image·lock·log-masking·messaging·mfa·notification·pdf·qr·redis·saga — 완료
+- **기존 완료(유지)**: security·session
 
-### 🟠 우선순위 2 — Java 샘플 0개, 대부분 설정이지만 호출 예가 도움됨
-| 모듈 | 넣을 샘플(예상) |
-|---|---|
-| framework-file-s3 | 업로드/다운로드/Range·presigned URL 호출 |
-| framework-file-sftp | SFTP 저장/부분 다운로드 호출 |
-| framework-saml-sp | SP 메타데이터·로그인 진입 흐름(curl/리다이렉트) |
-| framework-openapi | 컨트롤러 springdoc 애너테이션 예 |
-| framework-archtest | 새 아키텍처 규칙 1개 추가하는 법(테스트 작성 예) |
+검증: `for d in framework/framework-*; do grep -c '^## 실전 사용 예' "$d/README.md"; done` → 전부 1, `grep -c '```'` 전부 짝수.
 
-### 🟡 우선순위 3 — Java 샘플 1개(최소) → 풍부화 검토
-archive, batch, cache-redis, client, commoncode, context, core, datasource, excel, file, file-batch, i18n, idempotency, idgen, image, lock, log-masking, messaging, mfa, notification, pdf, qr, saga
-→ 이미 1개씩 있음. 시간 여유 시 "실제 개발 시나리오" 스니펫 1~2개 보강(없으면 그대로 둬도 표준 충족).
-
----
+### 참고 — 발견된 함정(누적됨)
+- "문서엔 redis 완료" 였으나 라이브 레포엔 표준 헤더 부재 → `_internal/HANDOFF §6` / `guide/PITFALLS.md §8` 에 "완료 기록 ≠ 커밋됨" 항목 추가.
 
 ## 작업 절차 (모듈 1개당)
 1. `framework/<module>/src/main/java` 의 공개 타입(인터페이스/애너테이션/오토컨피그 빈) 확인 — **읽고 나서** 작성.

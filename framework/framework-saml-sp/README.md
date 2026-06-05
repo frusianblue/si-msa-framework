@@ -33,6 +33,33 @@ framework:
 
 멀티 파드는 `request-repository: REDIS` + HTTPS(상관 쿠키 `SameSite=None;Secure`). 상세는 [`../../docs/modules/SAML_SP.md`](../../docs/modules/SAML_SP.md).
 
+
+## 실전 사용 예 (코드)
+
+SAML 2.0 SP. 메타데이터/ACS/로그인 진입은 프레임워크가 처리하고, 프로젝트는 SAML 어서션→내부 사용자 매핑인 `SamlUserResolver` 만 구현한다.
+```java
+// com.company.framework.samlsp.core.SamlUserResolver
+@Component
+public class CorpSamlUserResolver implements SamlUserResolver {
+    @Override public AuthenticatedUser resolve(SamlUserInfo info) {
+        // info 의 NameID/속성 → 내부 사용자/권한 매핑
+        return new AuthenticatedUser(info.nameId(), info.displayName(), info.roles());
+    }
+}
+```
+```yaml
+framework.saml-sp:
+  enabled: true
+  registrations:
+    corp:
+      idp-metadata-uri: https://idp.corp.com/metadata
+```
+```bash
+# SP 메타데이터(IdP 등록용) / 로그인 진입(IdP 로 redirect)
+curl http://localhost:8080/saml2/service-provider-metadata/corp
+curl -i http://localhost:8080/saml2/authenticate/corp
+```
+
 ## 끄는 법
 `framework.saml-sp.enabled: false` 또는 의존성 미포함.
 

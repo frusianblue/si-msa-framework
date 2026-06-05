@@ -97,6 +97,26 @@ public void onReply(ConsumerRecord<String, String> record) {
 **6) 참여 서비스**는 커맨드 토픽을 소비해 처리 후, `x-saga-reply-topic` 으로 `x-saga-id/step/phase` 를
 그대로 싣고 `x-saga-outcome` 을 더해 회신한다(자신의 Outbox 로 발행 권장). `(saga-id, step)` 기준 멱등 필수.
 
+
+## 실전 사용 예 (코드)
+
+분산 트랜잭션은 오케스트레이션 사가로 단계를 선언하고(`SagaDefinition`), `SagaOrchestrator.start(...)` 로 시작한다. 응답은 상관관계 헤더로 매칭되어 `onReply` 가 다음 단계/보상을 진행한다.
+```java
+// com.company.framework.saga.{SagaDefinition, SagaRegistry, SagaOrchestrator}
+@Bean
+SagaDefinition orderSaga() {
+    return SagaDefinition.named("ORDER")
+            .step("reserveStock",  "stock-commands",   "ReserveStock")
+            .step("capturePay",    "payment-commands",  "CapturePayment")
+            .build();   // 각 단계는 커맨드 발행 → 응답 대기
+}
+
+// 시작 (contextJson 은 사가 컨텍스트)
+String sagaId = orchestrator.start("ORDER",
+        "{\"orderId\":123,\"amount\":50000}");
+```
+중단된 사가는 `findStuck(limit)` + 복구 릴레이가 재구동한다.
+
 ## 한계 / 다음 후보
 
 - 컨텍스트 병합은 단순 치환(리플라이가 컨텍스트를 주면 교체). 부분 병합은 앱 책임 또는 추후.

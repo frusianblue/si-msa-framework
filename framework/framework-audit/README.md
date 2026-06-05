@@ -26,6 +26,36 @@ framework:
 ### JDBC 스토어 — 테이블 생성
 `src/main/resources/db/audit-log-postgres.sql`. 운영은 Flyway 권장.
 
+
+## 실전 사용 예 (코드)
+
+**1) 선언적 감사** — 메서드에 `@AuditLog` 만 붙이면 `AuditTrailAspect` 가 성공/실패를 `AuditEventSink` 로 기록한다.
+```java
+// com.company.framework.core.annotation.AuditLog
+@AuditLog(action = "USER_ROLE_CHANGE", target = "user")
+public void changeRole(Long userId, String role) { ... }
+```
+**2) 직접 이벤트 발행** — 도메인 이벤트를 코드에서 남길 때 `AuditEventSink.save(AuditEvent)`:
+```java
+// com.company.framework.audit.{sink.AuditEventSink, model.AuditEvent}
+private final AuditEventSink sink;
+public void onLargeTransfer(String actor, long amount, String ip) {
+    sink.save(new AuditEvent(
+        Instant.now(), "MONEY_TRANSFER", actor, "TRANSFER", "account",
+        AuditEvent.RESULT_SUCCESS, ip, MDC.get("traceId"),
+        "amount=" + amount, null));
+}
+```
+**3) 조회** — 프로그램에서 `AuditQueryService`, 또는 내장 엔드포인트:
+```java
+PageResponse<AuditEvent> page = auditQueryService.search(
+    new AuditQuery("alice", null, null, from, to, PageRequest.of(0, 20)));
+```
+```bash
+curl "http://localhost:8081/api/v1/audit/logs?actor=alice&from=2026-06-01T00:00:00Z" \
+  -H 'Authorization: Bearer <admin-token>'
+```
+
 ## 끄는 법
 `framework.audit.enabled: false` 또는 의존성 미포함. `method-audit`/`login-audit` 개별 토글 가능.
 

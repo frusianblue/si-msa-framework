@@ -33,6 +33,27 @@ result.outcomes();   // 항목별 성공/실패 (부분실패 격리)
 
 > image/archive 는 `compileOnly`+`@ConditionalOnClass`/`@ConditionalOnBean` 백오프 — 없으면 그 op 만 비활성.
 
+
+## 실전 사용 예 (코드)
+
+다건 파일에 동일 작업(리네임/이동/변환 등)을 병렬·드라이런·충돌정책과 함께 적용한다. 작업은 `BatchFileOperation` 람다로.
+```java
+// com.company.framework.filebatch.{FileBatchProcessor, BatchItem, BatchFileOperation}
+private final FileBatchProcessor processor = new FileBatchProcessor();
+
+public BatchResult prefixAll(List<Path> paths) {
+    List<BatchItem> items = paths.stream().map(BatchItem::of).toList();
+    BatchFileOperation op = item -> {
+        Path renamed = item.sourcePath().resolveSibling("2026_" + item.name());
+        Files.move(item.sourcePath(), renamed);
+        return BatchItem.of(renamed);
+    };
+    BatchResult r = processor.run(items, op);
+    log.info("성공 {} / 실패 {} / 건너뜀 {}", r.succeeded(), r.failed(), r.skipped());
+    return r;
+}
+```
+
 ## 끄는 법
 `framework.file-batch.enabled: false` 또는 의존성 미포함.
 

@@ -35,6 +35,21 @@ String memberNo = codeGenerator.next("M");                 // M000123
 - `next(prefix, datePattern, pad)` 은 카운터 키에 일자를 포함해 **기간이 바뀌면 자동으로 1부터** 재시작한다.
 - 채번 테이블: `id_sequence(seq_key VARCHAR(100) PK, seq_value BIGINT)`. `initialize:true` 면 자동 생성.
 
+
+## 실전 사용 예 (코드)
+
+분산 환경 안전한 고유 ID 는 `IdGenerator`(Snowflake), 사람이 읽는 채번 코드는 `CodeGenerator` 를 주입해 쓴다.
+```java
+// com.company.framework.idgen.{core.IdGenerator, code.CodeGenerator}
+private final IdGenerator idGen;
+private final CodeGenerator codeGen;
+
+long pk        = idGen.nextLong();                    // 64bit 고유 ID
+String orderNo = codeGen.next("ORD", "yyyyMMdd", 6);  // 예: ORD-20260605-000123
+String simple  = codeGen.next("INV");                 // 접두어 + 시퀀스
+```
+운영 다중 인스턴스에서는 Snowflake `node-id` 충돌이 없도록 `framework.idgen.node-id` 를 인스턴스별로 다르게(또는 자동할당) 설정한다.
+
 ## 주의 (운영 다중 인스턴스)
 - Snowflake 의 유일성은 **인스턴스별 node-id 가 달라야** 보장된다. `node-id:-1` 은 `HOSTNAME` 해시로
   산출하므로 충돌 가능성이 0은 아니다. k8s 라면 StatefulSet 서수나 Downward API(`POD_NAME`)를

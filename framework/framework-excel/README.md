@@ -26,6 +26,30 @@ exporter.write(response.getOutputStream(), "사용자", cols, rows);   // Iterab
 ```
 **업로드(검증)** — `ExcelImporter` 가 행별로 타입/필수/패턴을 검증하고 `ExcelValidationError` 목록을 모아 반환(부분 오류 식별 가능). `ExcelCellType` 으로 컬럼 타입 선언.
 
+
+## 실전 사용 예 (코드)
+
+**내보내기** — 컬럼을 `ExcelColumn.of(헤더, 추출함수)` 로 선언하고 스트리밍으로 쓴다(대용량 안전, SXSSF).
+```java
+// com.company.framework.excel.{exporter.ExcelExporter, model.ExcelColumn}
+private final ExcelExporter exporter;   // 빈 주입
+
+public void export(HttpServletResponse res, List<Member> members) throws IOException {
+    res.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", "attachment; filename=members.xlsx");
+    List<ExcelColumn<Member>> cols = List.of(
+        ExcelColumn.of("이름", Member::getName),
+        ExcelColumn.of("나이", Member::getAge),
+        ExcelColumn.of("가입일", Member::getJoinedAt, 18));
+    exporter.write(res.getOutputStream(), "회원", cols, members);
+}
+```
+**가져오기** — 템플릿 검증과 함께 읽기:
+```java
+ExcelImportResult result = importer.readAndValidate(uploaded.getInputStream(), memberTemplate);
+if (result.hasErrors()) { /* 행/열 단위 오류 반환 */ }
+```
+
 ## 끄는 법
 `framework.excel.enabled: false` 또는 의존성 미포함.
 

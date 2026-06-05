@@ -54,6 +54,23 @@ public TokenStore customTokenStore(StringRedisTemplate redis) {
 }
 ```
 
+
+## 실전 사용 예 (코드)
+
+이 모듈은 **투명 백엔드**다 — `framework-security` 의 토큰 저장/로그인 실패 카운트가 자동으로 Redis 구현(`RedisTokenStore`, `RedisLoginAttemptService`)을 쓴다. 앱이 같은 커넥션으로 Redis 를 직접 쓰려면 `StringRedisTemplate` 를 주입한다.
+```java
+// org.springframework.data.redis.core.StringRedisTemplate (Spring Data Redis 가 제공)
+private final StringRedisTemplate redis;
+
+public void cacheNonce(String k, String v) {
+    redis.opsForValue().set("app:nonce:" + k, v, Duration.ofMinutes(5));  // 앱 전용 네임스페이스 권장
+}
+```
+토큰 저장 전략을 프로젝트가 직접 구현하려면 `TokenStore` 빈을 등록해 기본 `RedisTokenStore` 를 덮어쓴다(`@ConditionalOnMissingBean` 규약).
+```bash
+redis-cli KEYS 'framework:token:*'   # 프레임워크가 쓰는 키 확인
+```
+
 ## 끄는 법
 `type` 을 `memory`/`jdbc` 로 두거나 의존성 미포함. 그러면 security 기본(InMemory)/JDBC 구현이 쓰인다.
 

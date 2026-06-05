@@ -27,6 +27,26 @@ REST 는 `CommonCodeController`(조회 공개, 변경은 `@PreAuthorize` ADMIN).
 
 > 같은 그룹 2회 조회 시 2번째는 캐시 히트. 캐시는 core Caffeine(또는 framework-cache-redis 로 분산).
 
+
+## 실전 사용 예 (코드)
+
+`CommonCodeService` 로 그룹별 코드를 읽고 관리한다(드롭다운/공통분류 등). 내장 컨트롤러도 함께 제공된다.
+```java
+// com.company.framework.commoncode.service.CommonCodeService
+private final CommonCodeService commonCode;
+
+public List<CommonCodeDto> genders() {
+    return commonCode.getByGroup("GENDER");          // 그룹의 활성 코드 목록
+}
+public void addCode() {
+    commonCode.create(new CommonCodeForm("GENDER", "X", "선택안함", 30, true));
+}
+```
+```bash
+curl http://localhost:8081/api/v1/common-codes/GENDER          # 그룹 코드 조회
+curl http://localhost:8081/api/v1/common-codes/groups          # 전체 그룹
+```
+
 ## 끄는 법
 `framework.commoncode.enabled: false` 또는 의존성 미포함.
 
