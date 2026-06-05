@@ -71,16 +71,18 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      AUTH_SERVER_ISSUER: http://auth-server:9000
-      DB_URL: jdbc:postgresql://postgres:5432/authdb
+      # ⚠️ auth-server 의 prod 프로파일은 Authenticator 빈을 '의도적으로' 넣지 않는다(LocalDemo 가 @Profile("local")).
+      #    실배포 시 프로젝트가 자체 DB/LDAP Authenticator 를 주입하는 템플릿이므로, prod 로 그냥 띄우면
+      #    "required a bean of type ...Authenticator" 로 기동 실패한다.
+      #    로컬 통합 검증은 demo Authenticator(demo/demo)를 제공하는 local 프로파일로 띄우되,
+      #    local-postgres 오버레이로 실제 PostgreSQL 에 붙인다(H2 대신).
+      SPRING_PROFILES_ACTIVE: local,local-postgres
+      # local-postgres.yml 의 url 은 localhost:5432 하드코딩 → 컨테이너에선 잘못된 호스트라 env 로 덮는다.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/authdb
       DB_USER: authuser
       DB_PASSWORD: dev-authpass
-      FRAMEWORK_JWT_SECRET: *app-jwt-secret
       AES_SECRET: *aes-secret
-      LOCK_TYPE: jdbc
-      SIGNING_KEY_ROTATION_ENABLED: "true"
-      SIGNING_KEY_ENCRYPTION_ENABLED: "true"
+      AUTH_SERVER_ISSUER: http://auth-server:9000
     ports:
       - "9000:9000"
     healthcheck:
