@@ -19,7 +19,8 @@
 - **문서** — 모듈 README(켜기/쓰기/실전코드/끄기/덮어쓰기) · AUTH_COMPOSITION_GUIDE §0표·§7(🟡→🟢/✅) · PITFALLS §4(다중 SecurityFilterChain↔@ConditionalOnMissingBean 순서 함정) +§5(WebAuthn 5종: 아티팩트·UserDetailsService 필수·ceremony↔무상태·HTTPS/rpId·BLOB→BYTEA 스키마).
 
 ## 현재 상태 (적용/검증)
-- 작성환경 Maven Central 차단 → **컴파일/테스트/spotless/브라우저 ceremony 실서명은 받는 쪽 검증**. 본 세션은 SS 소스 대조 기반 정적 작성. 토글 테스트는 비-web ApplicationContextRunner(repos/RP 등록·백오프·jdbc 선택) — ceremony MockMvc 스모크는 받는 쪽 web 컨텍스트.
+- **✅ 받는 쪽 통과 확인(2026-06-05)**: `:framework:framework-webauthn:test`(토글 3/3 — enabled→RP+memory·disabled→백오프·store=jdbc→Jdbc* 선택) + `spotlessApply` + `:framework:framework-archtest:test` 모두 그린. (테스트 수정 1건 반영: jdbc 토글 테스트의 H2 임베디드 DataSource → mock DataSource. webauthn 모듈 test 클래스패스에 H2 부재 → 컨텍스트 기동 실패였음. JDBC 리포지토리 생성자는 DB 미접근이라 mock 으로 충분.)
+- 작성환경 Maven Central 차단으로 본 세션 코드는 SS 소스 대조 기반 정적 작성 → 컴파일/테스트는 위와 같이 받는 쪽 확인. **브라우저 ceremony 실서명(등록/인증 라운드트립)은 web 앱(`UserDetailsService`+`spring-security-webauthn`+HTTPS) 에서 검증 잔여.**
 
 ## 바로 다음 할 일 (Next)
 - 받는 쪽에서 `:framework:framework-webauthn:test` + `spotlessApply` + (web 앱) ceremony 라운드트립 확인.
