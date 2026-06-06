@@ -1,6 +1,14 @@
 # NEXT_KIND_AUTH_TOKEN_FLOW.md — kind 위 OAuth2 클라이언트 등록 → 토큰 플로우(DbAuthenticator 운영 경로 실증)
 
-> 상태: **A안 코드/테스트 전달 완료(2026-06-06) — 받는 쪽 검증 대기.** 전달물: `SmokeClientSeeder`(옵트인 시더) + `application-smoketest.yml` + `SmokeClientDbAuthFlowTest`(e2e) + overlays/local 플래그 + 문서. 작성환경 Central 차단으로 Gradle/kubectl 직접 실행 불가 → 받는 쪽이 `:services:auth-server:test`(`*SmokeClientDbAuthFlowTest`)와 kind 절차(§2)로 최종 마감.
+> # ✅✅ 완료 / ARCHIVED (2026-06-06) — 자동 테스트 + kind 실배포 모두 검증 끝
+> **이 스펙은 종료됐다.** A안(prod-안전 smoke 시더) 구현·검증 완료:
+> - `SmokeClientDbAuthFlowTest`(`@ActiveProfiles("smoketest")`) 통과 — `tester`(authdb `app_user`) 폼 로그인(DbAuthenticator) → authorization_code+PKCE → access/id_token, sub=`tester`.
+> - **kind 실배포 확인**: `SmokeClientSeeder`(`framework.auth.seed-smoke-client=true`, overlays/local)가 prod 프로파일 위에서 `demo-web`(authorization_code+refresh_token)·`demo-service`(client_credentials)를 `oauth2_registered_client` 에 등록(2 rows) — 즉 DbAuthenticator 운영 인증 경로의 마지막 한 칸이 닫혔다.
+> - 배포 트리아지로 드러난 **빌드/배포 함정 2건**(둘 다 코드 아님, 이미지 전달 문제) → `PITFALLS §1`(`.dockerignore` 부재 → stale jar)·`§9`(같은 `:local` 태그 + `IfNotPresent` → 노드 containerd 옛 digest 재사용). `.dockerignore` 신규 추가로 ①은 영구 해소.
+> **다음 섹션 = confidential `demo-rp` 전체 콜백 흐름** → `NEXT_RP_IDTOKEN_LINK.md` §B (`OAuthClient.exchangeCodeForTokens`, `client_secret_post`).
+> _이 파일은 `docs/_internal/archive/` 로 옮겨도 무방(housekeeping). 아래는 착수~완료 시점의 원본 기록(이력 보존)._
+
+> 상태: **✅ 완료(2026-06-06).** 전달물: `SmokeClientSeeder`(옵트인 시더) + `application-smoketest.yml` + `SmokeClientDbAuthFlowTest`(e2e) + overlays/local 플래그 + `.dockerignore` + 문서. 자동 테스트 통과 + kind 실배포 등록 2 rows 확인.
 > 선행: **kind 첫 배포 ✅ 완료**(2026-06-06, si-msa ns 6파드 `1/1 Running`). 이 문서는 그 위에서 **인증·토큰 플로우**를 닫는다.
 > 전체 맥락 `../HANDOFF.md` §6, 함정 `../../guide/PITFALLS.md` §9, kind 절차/트러블슈팅 `../../ops/LOCAL_K8S_TEST.md`,
 > 직전 완료 스펙 `NEXT_LOCAL_COMPOSE_AND_KIND.md`(ARCHIVED), RP 연계(완료) `NEXT_RP_IDTOKEN_LINK.md`.
