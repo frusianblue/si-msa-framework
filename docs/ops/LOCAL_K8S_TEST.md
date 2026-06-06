@@ -38,12 +38,15 @@ for svc in gateway auth-server user-service admin-service; do
   ./gradlew :services:$svc:bootJar
   docker build -f deploy/docker/Dockerfile \
     --build-arg JAR_FILE=services/$svc/build/libs/$svc-1.0.0.jar \
-    -t registry.example.com/si-msa/$svc:local .
-  kind load docker-image registry.example.com/si-msa/$svc:local --name si-msa
+    -t si-msa/$svc:local .
+  kind load docker-image si-msa/$svc:local --name si-msa
 done
 ```
 
-> minikube 면 `minikube image load registry.example.com/si-msa/$svc:local`.
+> **이미지명은 `si-msa/<svc>:local`(짧은 이름)** — local overlay 의 `images:` 가 `newName` 으로 가짜
+> `registry.example.com/` 접두어를 떼고 이 이름으로 렌더링한다. compose(`deploy/compose`)로 이미 빌드해 뒀다면
+> 같은 이름이므로 **재빌드 없이 그대로 `kind load docker-image si-msa/$svc:local` 만** 하면 된다.
+> minikube 면 `minikube image load si-msa/$svc:local`.
 > Docker Desktop 내장 k8s 면 같은 데몬이라 적재 단계가 아예 불필요(빌드만 하면 됨).
 
 ---
@@ -129,7 +132,7 @@ helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n
 
 ## 8. 트러블슈팅
 
-- **ImagePullBackOff** — 이미지 적재 누락. `kind load docker-image ...:local` 재실행(태그가 `:local` 인지 확인). 노드 적재 목록: `docker exec si-msa-control-plane crictl images | grep si-msa`.
+- **ImagePullBackOff** — 이미지 적재 누락 또는 **이름 불일치**. 노드 적재명과 렌더 이미지명이 똑같이 `si-msa/<svc>:local` 인지 확인(local overlay 의 `images.newName`). `kind load docker-image si-msa/<svc>:local --name si-msa` 재실행. 노드 적재 목록: `docker exec si-msa-control-plane crictl images | grep si-msa`. (렌더 확인: `kubectl -n si-msa get deploy -o jsonpath='{..image}'`.)
 - **Pod Pending(Insufficient cpu/memory)** — Docker 메모리 상향, 또는 일시적으로 서비스 수를 줄여 테스트. 요청값은 `base/common/deployment-hardening.yaml`(250m/512Mi).
 - **앱이 계속 CrashLoop(DB)** — postgres ready 확인(`kubectl -n si-msa logs deploy/postgres`), 비번 불일치면 `secrets-local.yaml` 의 DB_USER/DB_PASSWORD 와 `postgres.yaml` initdb 역할이 일치하는지 확인.
 - **앱이 부팅 차단(AES/JWT)** — prod 프로파일 가드. `secrets-local.yaml` 의 강한 값을 쓰는지(dev 시크릿을 잘못 끌어오지 않았는지) 확인.

@@ -21,13 +21,18 @@ replicas:
   - { name: user-service,  count: 1 }
   - { name: admin-service, count: 1 }
 
-# 로컬 빌드 이미지 태그(:local). :latest 가 아니므로 기본 imagePullPolicy=IfNotPresent →
+# 로컬 빌드 이미지(:local). :latest 가 아니므로 기본 imagePullPolicy=IfNotPresent →
 # kind load / minikube image load 로 노드에 적재된 이미지를 그대로 쓰고 레지스트리 접속을 시도하지 않는다.
+#   ⚠️ name 도 함께 바꾼다(newName): 로컬은 레지스트리가 없으므로 가짜 registry.example.com 접두어를 떼고
+#      compose 가 실제로 빌드하는 short name(si-msa/<svc>:local)에 맞춘다.
+#      newTag 만 바꾸면 name 은 registry.example.com/... 로 남아 노드에 적재된 si-msa/... 와 불일치 →
+#      IfNotPresent 가 노드에서 못 찾고 가짜 레지스트리로 pull 시도 → ImagePullBackOff.
+#      적재: kind load docker-image si-msa/<svc>:local --name si-msa  (compose 빌드 이미지 그대로 재사용 가능)
 images:
-  - { name: registry.example.com/si-msa/gateway,       newTag: local }
-  - { name: registry.example.com/si-msa/auth-server,   newTag: local }
-  - { name: registry.example.com/si-msa/user-service,  newTag: local }
-  - { name: registry.example.com/si-msa/admin-service, newTag: local }
+  - { name: registry.example.com/si-msa/gateway,       newName: si-msa/gateway,       newTag: local }
+  - { name: registry.example.com/si-msa/auth-server,   newName: si-msa/auth-server,   newTag: local }
+  - { name: registry.example.com/si-msa/user-service,  newName: si-msa/user-service,  newTag: local }
+  - { name: registry.example.com/si-msa/admin-service, newName: si-msa/admin-service, newTag: local }
 
 patches:
   # admin-service: 전용 DB(admindb) + 컨테이너 쓰기 가능한 업로드 경로(local 파일저장, readOnlyRootFilesystem).

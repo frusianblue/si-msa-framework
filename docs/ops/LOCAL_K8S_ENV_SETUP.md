@@ -142,8 +142,9 @@ kind create cluster --name si-msa --config kind-config.yaml
 
 **이미지 적재**가 kind 의 핵심 편의다 — 레지스트리 푸시 없이 로컬 빌드 이미지를 노드에 직접 넣는다:
 ```bash
-kind load docker-image registry.example.com/si-msa/gateway:local --name si-msa
+kind load docker-image si-msa/gateway:local --name si-msa
 ```
+> 이미지명은 `si-msa/<svc>:local`(local overlay `images.newName` 기준). 가짜 `registry.example.com/` 접두어는 로컬엔 없다.
 적재 목록 확인: `docker exec si-msa-control-plane crictl images | grep si-msa`.
 
 ---
