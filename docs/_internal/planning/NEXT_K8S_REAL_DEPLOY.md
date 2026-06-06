@@ -13,7 +13,7 @@
 | **S1 영속 postgres(PVC)** | ✅ **완료** | `components/postgres-persistent`(StatefulSet) apply → `data-postgres-0` **Bound**(5Gi/RWO/standard), `postgres-0` Running. Service 는 headless→**ClusterIP** 정정(clusterIP 불변 충돌 해소). |
 | **S2 Harbor + push** | ✅ **완료(ingress 경로)** | ingress-nginx(LoadBalancer, EXTERNAL-IP=localhost) + Harbor `expose.type=ingress`(`harbor.local`) + Windows/WSL hosts + insecure-registries. `si-msa` 프로젝트에 4서비스 × (`7e935d6`,`dev`) push 확인(포털). |
 | **S3 dev overlay apply** | ⛔ **Docker Desktop kind 에선 BLOCKED(노드 pull 구조적 한계) · standalone kind 트랙으로 전환** | 매니페스트는 완성·정적검증 통과(DB/admindb/파일저장/pull-secret). 그러나 **노드 containerd 가 모든 pull 을 내장 미러(`registry-mirror:1273`)로 가로채 `harbor.local` 직접 pull 이 500** → 외부 레지스트리 pull *실증 불가*(인증은 정상이었음). `:dev`(실재 태그)로도 동일. **결정: 레지스트리 pull 검증은 standalone kind 로(§S3').** dev overlay 핀은 stale `7e935d6`→`:dev` 로 정정(sha 핀은 CI 몫). |
-| **S3' standalone kind 트랙** | ▶ **진행 중(2단계 ✅ PASS)** | `kind` CLI 직접 생성(`containerdConfigPatches`+`certs.d` extraMounts)로 노드가 레지스트리 한정 이름 직접 pull. ① PITFALLS 못박기(완료) → ② **최소 pull sanity = ✅ PASS**(2026-06-06, node=sanity-worker, `reg.local/...` 직접 pull, Pulled 1건 — **메커니즘 실증**) → ③ **Harbor/ingress/postgres 재구축(진행: 첫 조각 = 인증 pull sanity `02-auth-pull-sanity.sh` 드롭)** → ④ push→**노드 pull(Pull>0)**→dev apply. |
+| **S3' standalone kind 트랙** | ▶ **진행 중(2단계 ✅ PASS, 3단계 ✅ PASS, 4단계 산출물 드롭)** | ① PITFALLS(완료) → ② 최소 pull sanity **✅ PASS** → ③ 인증 pull sanity `02` **✅ PASS**(node 가 harbor.local 비공개 레지스트리를 harbor-cred 로 pull) → **결정 B 확정**(인증 레지스트리로 충분, Harbor 제품 미설치) → ④ `03-dev-overlay-up.sh`(빌드→push→dev apply→6파드/DB/AS토큰) **드롭, 받는 쪽 실행 대기**. |
 | S4 애드온 | 대기 | metrics-server/HPA → kube-prometheus-stack → (ingress-nginx 는 S2 에서 선설치됨). |
 | S5 prod-rehearsal overlay | 대기 | prod 토폴로지 + 로컬 대역. |
 | S6 상위 흐름 스모크 | 대기 | OIDC RP·이중 발급기 우선. |
@@ -91,7 +91,10 @@ kubectl -n si-msa rollout restart deploy/auth-server
 2. **최소 pull sanity(먼저 검증, 이론 맹신 금지)** — ✅ **PASS(2026-06-06)**: `deploy/k8s/standalone-kind/01-pull-sanity.sh` 가 node=sanity-worker 에서 `reg.local/sanity/busybox:test`(레지스트리 한정 이름)을 직접 pull(Pulled 1건). **메커니즘 실증** — Docker Desktop kind 미러 인터셉트가 standalone 에선 없음.
    - 설계 결정 2(Windows 함정 회피, PITFALLS §9): 레지스트리 이름 점(.) 필수 · certs.d 콜론 금지. 선행: `kind` CLI 설치(DD 내장 kind ≠ standalone CLI).
 3. **Harbor/ingress/postgres 풀 재구축(스크립트화)** — 2 PASS 후 착수. **첫 조각 = 인증 pull sanity `02-auth-pull-sanity.sh`(드롭)**: htpasswd 비공개 레지스트리(harbor.local) + `harbor-cred`(imagePullSecrets) → 노드 pull. docker-desktop kind 에선 도달층에서 막혀 못 봤던 *인증 경로*를 끝까지 검증(secret/SA 부착은 맞았으나 pull 자체가 안 됐었음). PASS 면 dev overlay `pull-secret-dev.yaml` 경로가 standalone 에서 유효 + 이 레지스트리가 4단계 토대.
-   - ⚠️ **결정 필요(받는 쪽)**: 4단계 레지스트리를 **(A) 실제 Harbor 제품**(포털/RBAC/스캔 fidelity, compose 설치 후 프록시 컨테이너를 kind 네트워크에 연결)로 갈지, **(B) `02` 의 인증 레지스트리로 충분**(프레임워크 검증=DB/admindb/파일저장/AS 토큰이 목적이면 비공개+인증이면 족함 → 바로 dev overlay apply)로 갈지. 권장: 프레임워크 검증이 목적이면 (B)로 4단계 직행, Harbor 제품 자체 리허설이 필요하면 (A).
+   - ⚠️ **결정(받는 쪽) = B 확정**: 4단계 레지스트리는 `02` 의 인증 레지스트리(harbor.local)로 충분(프레임워크 검증=DB/admindb/파일저장/AS 토큰이 목적). Harbor 제품(포털/RBAC/스캔)은 미설치 — 필요 시 S4 이후 별도 트랙.
+4. **실 이미지 → push → dev overlay apply → 검증** — ✅ **산출물 드롭 `03-dev-overlay-up.sh`**(받는 쪽 실행 대기). 빌드(`docker compose build` = Dockerfile.build 컨테이너 Gradle) → `localhost:5443/si-msa/<svc>:dev` push(노드는 harbor.local pull) → `kubectl apply -k overlays/dev` → postgres/redis/4앱 rollout 대기 → 6파드 Ready + 앱 Pulled>0 + authdb/sidb/admindb 검증. `--smoke` 면 시드 클라이언트(`FRAMEWORK_AUTH_SEED_SMOKE_CLIENT=true`) + demo-service client_credentials access_token.
+   - ✅ **prod 프로파일 그린 전제 레포 확인됨**: `ProdAuthenticatorConfig.java`(auth-server, `@Profile("!local")`) · AS `/actuator/**` permitAll · user/admin `framework-redis` 의존 · REDIS_HOST=redis · DB_URL/admindb 패치 · 파일저장 /tmp/uploads 패치.
+   - ✅ **standalone kind = NetworkPolicy 비집행(kindnet)** → base default-deny 가 apps→postgres 를 막지 않음(docker-desktop kind 와 결정적 차이). postgres allow 규칙 불요(만약 Connect timed out/08001 이면 집행 CNI 신호 → allow-postgres 추가).
 3. **Harbor/ingress/postgres 풀 재구축**(스크립트화) — 2 통과 후.
 4. **push → 노드 pull(Harbor Pull>0) → dev overlay apply → DB/admindb/파일저장/AS 토큰**(S3 의 앱·토폴로지 검증 로직 재사용).
 
@@ -122,5 +125,5 @@ containerdConfigPatches:
 ## 4. 산출물 인벤토리 (이번까지)
 - `deploy/k8s/components/postgres-persistent/{postgres.yaml,kustomization.yaml}` (S1 ✅)
 - `deploy/cicd/harbor-push.sh` (S2, 양태그 push — 기본 `REGISTRY=harbor.local` 로 정정) · `docs/ops/K8S_INGRESS_HARBOR.md` (S2 ingress 경로 ✅) · `docs/ops/HARBOR_SETUP.md`(NodePort 전제 폐기, 포인터)
-- **S3'(2단계 ✅ PASS + 3단계 첫 조각)**: `deploy/k8s/standalone-kind/{kind-config.yaml, certs.d/reg.local/hosts.toml, certs.d/harbor.local/hosts.toml, 01-pull-sanity.sh(✅PASS), 02-auth-pull-sanity.sh, 00-cleanup.sh, README.md}` · `PITFALLS.md` §9 신규 3항(레지스트리 이름 점 필수 / certs.d 콜론 금지 / DD 내장 kind ≠ standalone CLI) · 이 문서 §S3' 정정.
+- **S3'(2·3단계 ✅ PASS + 4단계 드롭)**: `deploy/k8s/standalone-kind/{kind-config.yaml, certs.d/{reg.local,harbor.local}/hosts.toml, 01-pull-sanity.sh(✅), 02-auth-pull-sanity.sh(✅), 03-dev-overlay-up.sh, 00-cleanup.sh, README.md}` · `PITFALLS.md` §9 신규 3항 · 이 문서 §S3' 정정(B 결정·prod 그린 전제 레포 확인).
 - **S3(세션3 결과)**: `overlays/dev/kustomization.yaml`(DB→postgres + admin=admindb 정정 + 파일저장 /tmp/uploads + ServiceMonitor `$patch:delete` + postgres-persistent resources; **이미지 핀 stale `7e935d6`→`:dev` 로 정정**) · `overlays/dev/pull-secret-dev.yaml`(harbor-cred + default SA) · `PITFALLS.md`(Docker Desktop kind 미러 인터셉트=외부 pull 불가 항목 완성 + private-Harbor 예측 실측 정정) · **결론: Docker Desktop kind 노드 pull BLOCKED → standalone kind 트랙(§S3')으로 이관**.

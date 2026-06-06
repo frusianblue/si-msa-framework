@@ -37,6 +37,7 @@ chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind && kind --version
 | `certs.d/reg.local/hosts.toml` | 노드의 `reg.local` 해소 규칙 → `kind-registry:5000` 직접 pull |
 | `01-pull-sanity.sh` | 레지스트리1 + 더미 이미지(busybox) push → **노드 pull → 파드 Ready** 까지 검증(PASS/FAIL) |
 | `02-auth-pull-sanity.sh` | **비공개(Basic auth) 레지스트리** + `harbor-cred`(imagePullSecrets) → 노드 pull 검증. dev overlay 의 인증 경로 실증(3단계 첫 조각) |
+| `03-dev-overlay-up.sh` | **4단계**: 실 이미지 빌드(compose) → harbor.local push → `dev` overlay apply → 6파드 Ready/DB 검증(`--smoke` 시 AS 토큰) |
 | `certs.d/harbor.local/hosts.toml` | 노드의 `harbor.local` 해소 → `harbor-auth-reg:5000`(02 용) |
 | `00-cleanup.sh` | docker-desktop kind 잔여 디버그 파드 정리 + (옵션)standalone teardown |
 
@@ -53,6 +54,11 @@ bash deploy/k8s/standalone-kind/01-pull-sanity.sh
 bash deploy/k8s/standalone-kind/02-auth-pull-sanity.sh
 #   → "✅ PASS" 면 harbor-cred + imagePullSecrets 로 노드가 비공개 레지스트리 pull.
 #      이 레지스트리(harbor.local)가 곧 4단계(실 si-msa 이미지 push → dev overlay apply)의 토대.
+
+# 4단계 — 실 이미지 빌드 → push → dev overlay apply → 검증 (B 결정: 인증 레지스트리로 충분)
+bash deploy/k8s/standalone-kind/03-dev-overlay-up.sh          # 빌드+push+apply+6파드/DB 검증
+bash deploy/k8s/standalone-kind/03-dev-overlay-up.sh --smoke  # + AS 토큰(client_credentials) 스모크
+#   그린: 6파드 Ready + 앱 Pulled>0 + authdb/sidb/admindb + (--smoke) access_token.
 
 # 끝나면 정리
 bash deploy/k8s/standalone-kind/00-cleanup.sh --teardown-sanity
