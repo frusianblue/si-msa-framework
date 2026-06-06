@@ -21,6 +21,7 @@
 - **[겪음] BOM 밖 라이브러리는 버전 핀** — POI(`poi`)·OpenPDF(`openpdf` 2.0.2)·MINA SSHD(`sshd` 2.16.0)·Tika(`tika`)·ZXing(`zxing`)는 Spring BOM 밖 → `gradle/libs.versions.toml` 에 고정 + `implementation`(타입 비노출). 신규 추가 시 `STACK.md` 갱신.
 - **[겪음] OpenSAML 은 Maven Central 에 없음** — `spring-security-saml2-service-provider` 가 OpenSAML 을 전이로 끌어옴(버전도 SS 관리). 해결: 버전 **핀 금지**(SS 관리), 루트 repositories 에 Shibboleth(`build.shibboleth.net/maven/releases`)를 `org.opensaml`/`net.shibboleth` **그룹 한정** 추가.
 - **[겪음] SAS(인가서버)가 commons-logging 제외 → 런타임 `NoClassDefFoundError: LogFactory`** — 컴파일은 통과, 기동만 실패(SF7 은 spring-jcl 폐지). 해결: `implementation 'commons-logging:commons-logging:1.3.5'` 명시.
+- ★ **[겪음] `.dockerignore` 부재 → 호스트 `build/`·`.gradle/` 누수로 이미지에 stale jar 가 담김** — 증상: 소스엔 신규 클래스(예: `SmokeClientSeeder`)가 분명히 있고 `./gradlew test` 도 통과하는데, 컨테이너 이미지로 빌드하면 그 클래스가 jar 에 없다(`grep -ac <Class> /application/app.jar` = 0). 파드도 정상 기동(에러 없음)하지만 신규 기능이 동작 안 함(예: OAuth2 클라이언트 0건). 원인: `deploy/docker/Dockerfile.build` 의 `COPY . .` 가 `.dockerignore` 부재로 호스트의 `services/*/build/`·`.gradle/`(증분·구성/빌드 캐시 스냅샷)까지 컨텍스트에 포함 → 컨테이너 Gradle 이 복사돼 들어온 옛 산출물/스냅샷을 **up-to-date** 로 보고 재컴파일을 건너뜀 → Dockerfile 2단계가 `build/libs/*.jar`(옛 jar) 를 그대로 이미지에 cp. ⚠️ `docker build --no-cache` 는 Docker **레이어** 캐시만 무효화 — 복사돼 들어온 Gradle 상태는 못 막는다(그래서 --no-cache 로도 안 고쳐짐). 진단: ① `docker run --rm <img> sh -c 'grep -ac <Class> /application/app.jar'`(0=빌드가 옛 jar 담음, 1=이미지 정상→배포 전파 문제) ② `kubectl get pod … -o jsonpath='{..image}{..imageID}'`(파드가 쓰는 태그/digest). 해결: **리포 루트 `.dockerignore`** 로 `**/build/`·`.gradle/` 등 제외(이미지 빌드를 소스에서 클린 컴파일로 hermetic 하게) + 일회성으로 `./gradlew :services:<svc>:clean` 후 재빌드. 일반 원칙: **컨테이너 이미지 빌드는 호스트 빌드 상태에 의존하면 안 된다 — 항상 소스에서 클린 빌드.** [§9 멀티서비스 배포와 동근원 — \"이미지가 코드를 안 따라옴\"]
 
 ## 2. Jackson 3 / 직렬화
 
@@ -145,6 +146,7 @@
 | `FATAL: database "X" does not exist` / `SQLState 3D000` (특정 서비스만 CrashLoop) | §9 initdb 1회성 — 기존 PG 엔 미생성. 수동 `CREATE DATABASE` 또는 PG 재초기화 |
 | `docker exec desktop-worker` 안 됨 / `kind load` 안 먹음 | §9 Docker Desktop kind 모드 — 노드 비노출·kind CLI 무관, 이미지는 registry-mirror 가 자동 노출(적재 불필요) |
 | 인가요청 `invalid_client` / `oauth2_registered_client` 0 rows (prod) | §9 정상(설계) — LocalDemo `@Profile("local")`. 스모크 검증은 `SmokeClientSeeder`(`framework.auth.seed-smoke-client=true`) 옵트인, 운영 상시 등록은 프로젝트 책임 |
+| 소스/테스트엔 있는 신규 클래스가 이미지 jar 엔 없음(`grep -ac <Class> app.jar`=0, 앱은 정상 기동) | §1 `.dockerignore` 부재 → 호스트 `build/`·`.gradle/` 누수로 stale jar(--no-cache 로도 안 고쳐짐). `.dockerignore` 추가 + `clean` 후 재빌드 |
 | `Invalid bound statement` | §6 mapper-locations |
 | 기동 시 `NoClassDefFoundError: LogFactory` | §1 SAS commons-logging |
 | 한글 깨짐 | §7 콘솔 인코딩 3계층 |
