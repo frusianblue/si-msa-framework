@@ -112,6 +112,8 @@
 - **[일반] 새 모듈은 jacocoAggregation 목록에도 추가** — `settings.gradle` include 만으로는 "전체 합산 1장" 커버리지에서 빠진다(루트 `build.gradle` 의 `jacocoAggregation project(...)` 목록에 한 줄). Sonar 글롭 수집은 별개라 안 놓치지만 집계 리포트는 누락됨.
 - **[겪음] "완료로 기록" ≠ "레포에 반영"** — 핸드오프/NEXT 문서에 ✅ 완료로 적혀 있어도 실제 master 에 커밋이 안 됐을 수 있다(예: README 실전샘플 — 문서엔 security·redis·session 완료였으나 라이브 레포엔 security·session 만 존재, redis 는 다른 헤더). **세션 시작 시 "기록"이 아니라 "레포"를 기준으로 재검증**한다. 점검 한 줄: `for d in framework/framework-*; do grep -q '^## 실전 사용 예' "$d/README.md" || echo "$d 누락"; done`.
 
+- **[겪음] WSL 등에서 `openssl base64 -d -A` 가 긴 입력을 중간에서 잘라 디코드 깨짐 → JWT/base64url 디코드는 언어 내장으로** — 증상: 스모크 스크립트(`smoke-authcode-pkce.sh`)가 id_token payload 를 `tr '_-' '/+' | openssl base64 -d -A` 로 풀어 `python json` 에 넘기는데 `json.decoder.JSONDecodeError: Unterminated string starting at line 1 column 237 (char 236)`(출력이 특정 길이에서 잘림). 작성 환경 openssl 3.0.13 에선 재현 안 되나 사용자 WSL 에선 236자에서 잘림(환경 의존). 해결: openssl/tr/수동패딩 경로를 버리고 **`python3 -c 'import base64,json; seg=tok.split(".")[1]; seg+="="*(-len(seg)%4); json.loads(base64.urlsafe_b64decode(seg))'`** 한 방으로. **일반 원칙: 셸 스크립트의 base64url/JWT 디코드는 외부 바이너리(openssl)가 아니라 언어 내장 디코더를 쓴다(환경 편차·잘림 회피).** [§8 운영/환경]
+
 ## 9. 로컬 통합 실행(Docker Compose) · 멀티서비스 배포 정합
 
 > 2026-06-05 로컬 compose 스택(`deploy/compose/`, A안=소스부터 컨테이너 안 Gradle 빌드) 가져오며 발견. ①②는 **k8s `overlays/local` 에도 동일 결함**(kind 배포도 같은 자리에서 깨짐).

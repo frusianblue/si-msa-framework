@@ -1,6 +1,7 @@
 # NEXT_KIND_AUTH_TOKEN_FLOW.md — kind 위 OAuth2 클라이언트 등록 → 토큰 플로우(DbAuthenticator 운영 경로 실증)
 
 > # ✅✅ 완료 / ARCHIVED (2026-06-06) — 자동 테스트 + kind 실배포 모두 검증 끝
+> **(2026-06-06 추가)** 실클러스터 **authorization_code+PKCE+DbAuthenticator 전체 흐름** e2e 도 닫힘 — `deploy/k8s/standalone-kind/smoke-authcode-pkce.sh`(폼로그인→code→토큰→id_token **sub=tester**→jwks) standalone `kind-sanity` 통과. 위 "kind 실배포 확인"은 클라이언트 등록(2 rows)·client_credentials 까지였고, **사용자 인증(DbAuthenticator) 토큰 발급의 실클러스터 실증**이 이로써 완료.
 > **이 스펙은 종료됐다.** A안(prod-안전 smoke 시더) 구현·검증 완료:
 > - `SmokeClientDbAuthFlowTest`(`@ActiveProfiles("smoketest")`) 통과 — `tester`(authdb `app_user`) 폼 로그인(DbAuthenticator) → authorization_code+PKCE → access/id_token, sub=`tester`.
 > - **kind 실배포 확인**: `SmokeClientSeeder`(`framework.auth.seed-smoke-client=true`, overlays/local)가 prod 프로파일 위에서 `demo-web`(authorization_code+refresh_token)·`demo-service`(client_credentials)를 `oauth2_registered_client` 에 등록(2 rows) — 즉 DbAuthenticator 운영 인증 경로의 마지막 한 칸이 닫혔다.
