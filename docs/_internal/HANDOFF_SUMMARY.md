@@ -20,7 +20,8 @@
 | 결정 B 확정 | 4단계 레지스트리 = 02 의 인증 레지스트리로 충분(프레임워크 검증 목적). Harbor 제품 미설치. |
 | §S3' 4단계 드롭 | `03-dev-overlay-up.sh`(빌드 compose→push localhost:5443→dev apply→6파드/DB 검증, `--smoke`=AS 토큰). 정적검증 통과(bash -n). prod 그린 전제 레포 확인(ProdAuthenticatorConfig/actuator permitAll/framework-redis 등). |
 | 문서 동반 | NEXT(S3' B 결정·4단계·prod 그린 전제) · README(03 추가) · HANDOFF_SUMMARY. |
-| **4단계 실행 중 결함 수정** | dev apply 시 `serviceaccounts "default" already exists`(fresh ns 레이스) → harbor-cred 미부착 → 앱 ImagePullBackOff(401). **수정**: `pull-secret-dev.yaml` 의 default SA 변경 제거 + `kustomization.yaml` 에 imagePullSecrets 를 앱 파드 템플릿(component=service)에 직접 주입하는 patch 추가. PITFALLS §9 기록. |
+| **4단계 결함#2 수정(시크릿 가드)** | imagePullSecrets 수정 후 앱이 pull 성공→`CrashLoopBackOff`. `--previous` 로그=`[보안 차단] prod AES 마스터 키 placeholder`. 원인: dev overlay=prod 프로파일이라 AES/JWT 가드가 차단(경고 아님), secrets-dev 값에 change-me/change-this 포함. **수정**: `secrets-dev.yaml` 4서비스 AES/JWT 를 가드 통과값(placeholder 제거+길이)으로 교체, DB 비번 유지. 가드 전수 확인(AES/JWT만 차단). PITFALLS §9 기록. |
+| **4단계 결함#1 수정** | dev apply 시 `serviceaccounts "default" already exists`(fresh ns 레이스) → harbor-cred 미부착 → 앱 ImagePullBackOff(401). **수정**: `pull-secret-dev.yaml` 의 default SA 변경 제거 + `kustomization.yaml` 에 imagePullSecrets 를 앱 파드 템플릿(component=service)에 직접 주입하는 patch 추가. PITFALLS §9 기록. |
 
 ## 현재 상태 (적용/검증)
 - **클러스터**: standalone `kind-sanity` 3노드. 01·02 PASS. dev overlay 는 아직 미apply(받는 쪽 03 실행).
@@ -28,7 +29,7 @@
 - **이미지**: 실 si-msa/<svc>:dev 는 03 실행 시 빌드→push. dev overlay 핀=`:dev`.
 
 ## 바로 다음 할 일 (Next)
-1. **SA 수정본 재적용**: unzip 후 `bash deploy/k8s/standalone-kind/03-dev-overlay-up.sh --smoke` 재실행(imagePullSecrets 템플릿 패치 → apply 가 자동 rollout → 신규 파드가 harbor-cred 로 pull). 즉시 우회: `kubectl -n si-msa patch sa default -p '{"imagePullSecrets":[{"name":"harbor-cred"}]}'` + `rollout restart deploy/{gateway,auth-server,user-service,admin-service}`.
+1. **시크릿 수정본 적용**: unzip → `kubectl -n si-msa apply -k deploy/k8s/overlays/dev` → `kubectl -n si-msa rollout restart deploy/auth-server deploy/user-service deploy/admin-service deploy/gateway` → `get pods -w`. (Secret 변경은 자동 rollout 안 됨.) 그 뒤 6파드 Ready 면 DB(authdb/sidb/admindb)·AS 토큰(`03 --smoke` 또는 수동) 검증.
 2. **그린 확인**: 6파드 Ready + 앱 Pulled>0 + authdb/sidb/admindb + access_token. FAIL 시 PITFALLS §9 자가진단(initdb/redis/Authenticator 등).
 3. 그린이면 **S4 애드온**(metrics-server/HPA → kube-prometheus-stack) → S5 prod-rehearsal → S6 상위 흐름(OIDC RP·이중 발급기) → S7 Jenkins(sha 핀 자동 주입, `kustomize edit set image`).
 
