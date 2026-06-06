@@ -11,7 +11,7 @@
 | `ServiceMonitor`(관측) | Prometheus Operator CRD | **kube-prometheus-stack** (Helm) | 관측 볼 때(dev/prod, 선택 local) |
 | `HPA`(오토스케일, prod 오버레이) | **metrics-server** | metrics-server (Helm/매니페스트) | prod (HPA 쓰면) |
 | gateway 외부 노출 | Ingress Controller | **ingress-nginx** (선택) | 외부 접근 시(아니면 port-forward) |
-| `NetworkPolicy`(백엔드 인그레스 제한) | **집행하는 CNI**(Calico/Cilium/VPC CNI) | CNI 정책모드 | prod 권장(kind kindnet=무집행·inert) |
+| `NetworkPolicy`(백엔드 인그레스 제한) | **집행하는 CNI**(Calico/Cilium/VPC CNI) | CNI 정책모드 | prod 권장 · standalone kind(kindnet)=무집행 inert, **Docker Desktop kind 모드=집행함**(local 도 allow 규칙 필요) |
 | `PodDisruptionBudget`(드레인/롤링 가용성) | 없음(코어 API) | 기본 포함 | 전부(replicas≥2 서비스) |
 | prod 시크릿 주입 | 시크릿 오퍼레이터 | **External Secrets Operator** 또는 **Sealed Secrets** | prod |
 | DB(`authdb`/`sidb`) | PostgreSQL | local=동봉(`overlays/local`)·dev/prod=외부/매니지드 | 전부 |

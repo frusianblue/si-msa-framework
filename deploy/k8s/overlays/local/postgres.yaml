@@ -88,3 +88,26 @@ spec:
     app.kubernetes.io/name: postgres
   ports:
     - { name: postgres, port: 5432, targetPort: postgres }
+---
+# 인-클러스터 Postgres 수신 허용 — 앱(component=service)에서만 5432.
+#   base/common/networkpolicy.yaml 의 default-deny-ingress 가 ns 전체 수신을 막는데,
+#   postgres 는 local 오버레이 전용 파드라 base 엔 그 허용 규칙이 없다(redis 는 base 에 있음).
+#   → 이 규칙이 없으면 NetworkPolicy 를 '집행하는' CNI(예: Docker Desktop 의 kind 모드) 에서
+#     앱→postgres:5432 가 차단돼 Flyway 가 'Connect timed out'(SQLState 08001) 로 부팅 실패한다.
+#   (standalone kind 의 kindnet 은 비집행이라 무관했지만, Docker Desktop kind 는 집행한다.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-apps
+  labels: { app.kubernetes.io/part-of: si-msa }
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: service }
+      ports:
+        - { protocol: TCP, port: 5432 }

@@ -135,6 +135,7 @@ helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n
 - **ImagePullBackOff** — 이미지 적재 누락 또는 **이름 불일치**. 노드 적재명과 렌더 이미지명이 똑같이 `si-msa/<svc>:local` 인지 확인(local overlay 의 `images.newName`). `kind load docker-image si-msa/<svc>:local --name si-msa` 재실행. 노드 적재 목록: `docker exec si-msa-control-plane crictl images | grep si-msa`. (렌더 확인: `kubectl -n si-msa get deploy -o jsonpath='{..image}'`.)
 - **Pod Pending(Insufficient cpu/memory)** — Docker 메모리 상향, 또는 일시적으로 서비스 수를 줄여 테스트. 요청값은 `base/common/deployment-hardening.yaml`(250m/512Mi).
 - **앱이 계속 CrashLoop(DB)** — postgres ready 확인(`kubectl -n si-msa logs deploy/postgres`), 비번 불일치면 `secrets-local.yaml` 의 DB_USER/DB_PASSWORD 와 `postgres.yaml` initdb 역할이 일치하는지 확인.
+- **Flyway `Connect timed out` / `SQLState 08001`(앱만 CrashLoop, gateway 만 생존)** — NetworkPolicy 차단. **Docker Desktop 의 kind 모드는 standalone kind(kindnet)와 달리 NetworkPolicy 를 집행**하므로 `default-deny-ingress` 가 앱→postgres:5432 를 막는다. `kubectl -n si-msa get networkpolicy` 에 `allow-postgres-from-apps` 가 있는지 확인(없으면 구버전 overlay). 현재 `overlays/local/postgres.yaml` 이 이 규칙을 포함하므로 최신 overlay 로 재적용하면 해소. (증상이 `Connect timed out`/08001 이면 인증·DNS 가 아니라 L3/4 차단 신호.)
 - **앱이 부팅 차단(AES/JWT)** — prod 프로파일 가드. `secrets-local.yaml` 의 강한 값을 쓰는지(dev 시크릿을 잘못 끌어오지 않았는지) 확인.
 - **apply 시 `no matches for kind "ServiceMonitor"`** — SM 제거 패치가 적용 안 됨. local 오버레이로 배포했는지(`-k deploy/k8s/overlays/local`) 확인.
 

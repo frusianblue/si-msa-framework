@@ -46,4 +46,5 @@
 - "앱 기동 로그 정상 ≠ 컨테이너 healthy" — healthcheck 실패는 앱 로그가 아니라 **healthcheck 가 때리는 경로의 응답**(302/401/connection)을 먼저 본다.
 - 핵심 교훈: 멀티서비스는 **실제 컨테이너로 한 번 띄워봐야** 드러나는 정합 결함이 있다(단위/슬라이스 테스트로는 안 잡힘). k8s 전 compose 게이트가 그 역할.
 - **로컬(레지스트리 없는 kind/minikube) overlay 는 이미지 name 까지 노드 적재명과 1:1**: kustomize `images:` 는 `newTag` 만 주면 name(`registry.example.com/...`)이 그대로 남아 노드 적재 short name(`si-msa/...`)과 불일치 → `ImagePullBackOff`. `newName` 으로 가짜 접두어를 떼야 함. 점검: `kubectl -n si-msa get deploy -o jsonpath='{..image}'` vs `crictl images | grep si-msa`. (이번 세션 정적 점검 선포착.)
+- **Docker Desktop 의 kind 모드는 NetworkPolicy 를 집행한다**(standalone kind=kindnet 비집행과 다름): `default-deny-ingress` 가 앱→postgres:5432 를 막아 Flyway `Connect timed out`(08001) → auth/user/admin CrashLoop, gateway 만 생존. `overlays/local/postgres.yaml` 에 `allow-postgres-from-apps`(name=postgres, from component=service, TCP 5432) 추가로 해소. 증상이 `Connect timed out`/08001 이면 인증·DNS 가 아니라 L3/4 차단=NetworkPolicy. (이번 세션 kind 첫 배포 실배포에서 겪음.)
 <!-- 갱신 끝 -->
