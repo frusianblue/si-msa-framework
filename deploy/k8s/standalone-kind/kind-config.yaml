@@ -1,0 +1,31 @@
+# deploy/k8s/standalone-kind/kind-config.yaml
+# standalone kind(= `kind` CLI 직접 생성) — Docker Desktop kind 의 "노드 containerd 설정 입구 없음"(NEXT §0 락#6,
+#   PITFALLS §9 미러 인터셉트)을 우회하기 위한 클러스터.
+# 핵심: 클러스터 *생성 시* 노드 containerd 를 선언적으로 박는다(뜬 노드 손수정 아님).
+#   ① containerdConfigPatches 로 registry config_path = /etc/containerd/certs.d 활성
+#   ② extraMounts 로 호스트 ./certs.d 를 각 노드 /etc/containerd/certs.d 에 마운트
+#      → reg.local(레지스트리 한정 이름)을 노드가 kind-registry:5000 으로 직접 pull.
+# 노드 수: 현 docker-desktop kind(desktop-control-plane/worker/worker2)와 동일한 3노드 재현.
+#   (standalone = 단일노드 아님. 노드 수는 자유.)
+# ⚠️ extraMounts hostPath 는 `kind create` 를 실행한 작업디렉터리 기준 상대경로 → 01-pull-sanity.sh 가 이 폴더로 cd 한 뒤 생성.
+# ⚠️ Windows: ./certs.d 경로가 Docker Desktop 파일공유에 포함돼야 마운트됨(Settings > Resources > File sharing).
+# ⚠️ certs.d 하위 디렉터리명은 "이미지 참조의 레지스트리 부분"과 같아야 함 → reg.local(점 있음=레지스트리로 인식, 콜론 없음=NTFS 안전).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: ./certs.d
+        containerPath: /etc/containerd/certs.d
+  - role: worker
+    extraMounts:
+      - hostPath: ./certs.d
+        containerPath: /etc/containerd/certs.d
+  - role: worker
+    extraMounts:
+      - hostPath: ./certs.d
+        containerPath: /etc/containerd/certs.d

@@ -1,0 +1,9 @@
+# deploy/k8s/standalone-kind/certs.d/reg.local/hosts.toml
+# 노드 containerd 의 reg.local 레지스트리 해소 규칙(생성 시 extraMounts 로 노드에 마운트).
+# 디렉터리명 reg.local = "이미지 참조의 레지스트리 부분"(파드가 reg.local/<repo>:<tag> 를 당김).
+# 아래 host = 실제 도달 주소: kind 네트워크에 붙은 레지스트리 컨테이너(kind-registry)의 5000 포트.
+#   → 노드는 reg.local 을 DNS 로 풀 필요 없이, kind 네트워크 이름해소(kind-registry)로 직접 pull.
+#   → 이게 Docker Desktop kind 에선 불가능했던 "노드가 레지스트리 한정 이름을 직접 pull" 의 실증 지점.
+# http(평문): self-signed TLS 불필요. capabilities 는 pull + resolve(매니페스트 해소)만 필요.
+[host."http://kind-registry:5000"]
+  capabilities = ["pull", "resolve"]

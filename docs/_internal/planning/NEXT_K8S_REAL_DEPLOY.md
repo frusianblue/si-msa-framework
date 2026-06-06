@@ -13,7 +13,7 @@
 | **S1 영속 postgres(PVC)** | ✅ **완료** | `components/postgres-persistent`(StatefulSet) apply → `data-postgres-0` **Bound**(5Gi/RWO/standard), `postgres-0` Running. Service 는 headless→**ClusterIP** 정정(clusterIP 불변 충돌 해소). |
 | **S2 Harbor + push** | ✅ **완료(ingress 경로)** | ingress-nginx(LoadBalancer, EXTERNAL-IP=localhost) + Harbor `expose.type=ingress`(`harbor.local`) + Windows/WSL hosts + insecure-registries. `si-msa` 프로젝트에 4서비스 × (`7e935d6`,`dev`) push 확인(포털). |
 | **S3 dev overlay apply** | ⛔ **Docker Desktop kind 에선 BLOCKED(노드 pull 구조적 한계) · standalone kind 트랙으로 전환** | 매니페스트는 완성·정적검증 통과(DB/admindb/파일저장/pull-secret). 그러나 **노드 containerd 가 모든 pull 을 내장 미러(`registry-mirror:1273`)로 가로채 `harbor.local` 직접 pull 이 500** → 외부 레지스트리 pull *실증 불가*(인증은 정상이었음). `:dev`(실재 태그)로도 동일. **결정: 레지스트리 pull 검증은 standalone kind 로(§S3').** dev overlay 핀은 stale `7e935d6`→`:dev` 로 정정(sha 핀은 CI 몫). |
-| **S3' standalone kind 트랙** | ▶ **다음 섹션 시작점** | `kind` CLI 직접 생성(`containerdConfigPatches`+`certs.d/harbor.local/hosts.toml` extraMounts)로 노드가 harbor.local 직접 pull. 순서: ① PITFALLS 제약 못박기(완료) → ② **최소 pull sanity**(레지스트리1+더미 이미지) → ③ Harbor/ingress/postgres 풀 재구축 → ④ push→**노드 pull(Pull>0)**→dev apply. |
+| **S3' standalone kind 트랙** | ▶ **진행 중(2단계 산출물 드롭됨)** | `kind` CLI 직접 생성(`containerdConfigPatches`+`certs.d` extraMounts)로 노드가 레지스트리 한정 이름 직접 pull. 순서: ① PITFALLS 제약 못박기(완료) → ② **최소 pull sanity** = **✅ 산출물 드롭(`deploy/k8s/standalone-kind/`)**, 받는 쪽 실행 대기 → ③ Harbor/ingress/postgres 풀 재구축 → ④ push→**노드 pull(Pull>0)**→dev apply. |
 | S4 애드온 | 대기 | metrics-server/HPA → kube-prometheus-stack → (ingress-nginx 는 S2 에서 선설치됨). |
 | S5 prod-rehearsal overlay | 대기 | prod 토폴로지 + 로컬 대역. |
 | S6 상위 흐름 스모크 | 대기 | OIDC RP·이중 발급기 우선. |
@@ -88,35 +88,30 @@ kubectl -n si-msa rollout restart deploy/auth-server
 
 **합의 순서(이 순서로 진행)**:
 1. **PITFALLS 제약 못박기** — ✅ 완료(이 세션: §9 "Docker Desktop kind 미러 인터셉트 = 외부 pull 불가" + 자동노출 편의의 이면).
-2. **최소 pull sanity(먼저 검증, 이론 맹신 금지)** — standalone kind 1개 + 로컬 레지스트리 + 더미 이미지(busybox 등) push→**노드 pull 성공**까지 5분 검증. 통과해야 풀 재구축 착수.
+2. **최소 pull sanity(먼저 검증, 이론 맹신 금지)** — ✅ **산출물 드롭(`deploy/k8s/standalone-kind/`)**: standalone kind 1개 + 로컬 레지스트리 + 더미 이미지(busybox) push→**노드 pull 성공(파드 Ready)**까지 검증하는 `01-pull-sanity.sh`. **받는 쪽 실행 대기** — PASS 해야 풀 재구축 착수.
+   - 실행: `bash deploy/k8s/standalone-kind/01-pull-sanity.sh` (정리: `00-cleanup.sh --teardown-sanity`).
+   - ⚠️ 두 설계 결정(Windows/Docker Desktop 함정 회피, PITFALLS §9 신규 2항): **레지스트리 이름엔 점(.) 필수**(`reg.local`; 점 없으면 Docker Hub 폴백) · **certs.d 디렉터리엔 콜론 금지**(`localhost:5001` 은 NTFS 불가 → extraMounts 깨짐).
 3. **Harbor/ingress/postgres 풀 재구축**(스크립트화) — 2 통과 후.
 4. **push → 노드 pull(Harbor Pull>0) → dev overlay apply → DB/admindb/파일저장/AS 토큰**(S3 의 앱·토폴로지 검증 로직 재사용).
 
-**standalone kind 노드 설정(예시 — 노드에 손대지 않고 *생성 시 선언*)**:
+**standalone kind 노드 설정(실제 산출물 — `deploy/k8s/standalone-kind/`)**:
+`kind-config.yaml`(3노드 + `containerdConfigPatches`(config_path) + `certs.d` extraMounts) + `certs.d/reg.local/hosts.toml`(노드의 `reg.local` 해소 → `kind-registry:5000`). 상세·실행법은 그 폴더 `README.md`.
 ```yaml
-# kind-config.yaml — 노드 containerd 가 harbor.local 을 미러 우회·직접 pull
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
+# 요지(전문은 kind-config.yaml): 노드에 손대지 않고 *생성 시* 선언
 containerdConfigPatches:
   - |-
     [plugins."io.containerd.grpc.v1.cri".registry]
       config_path = "/etc/containerd/certs.d"
-nodes:                      # 노드 수는 자유(현 3노드 그대로 재현 — standalone=단일노드 아님)
-  - role: control-plane
-    extraMounts: [{ hostPath: ./certs.d, containerPath: /etc/containerd/certs.d }]
-  - role: worker
-    extraMounts: [{ hostPath: ./certs.d, containerPath: /etc/containerd/certs.d }]
-  - role: worker
-    extraMounts: [{ hostPath: ./certs.d, containerPath: /etc/containerd/certs.d }]
+# 각 노드 extraMounts: ./certs.d -> /etc/containerd/certs.d (3노드 재현)
 ```
 ```toml
-# ./certs.d/harbor.local/hosts.toml
-server = "http://harbor.local"
-[host."http://harbor.local"]
+# certs.d/reg.local/hosts.toml — 노드가 reg.local 을 kind-registry:5000 으로 직접 pull
+[host."http://kind-registry:5000"]
   capabilities = ["pull", "resolve"]
 ```
-> `harbor.local` 의 노드측 IP 해소는 hosts.toml server 를 ingress IP 로 두거나, **Harbor 를 클러스터 안에 두고 노드가 ClusterIP 로 닿게** 하면 호스트네임 문제 소거. 런북에서 확정.
-> ⚠️ **ArgoCD/GitOps 로도 이 문제는 안 풀린다** — CD 는 매니페스트 apply 만, 이미지 pull 은 언제나 노드 containerd. GitOps 는 노드 pull 정상 전제 위에 얹는 층(PITFALLS §9).
+> ⚠️ **레지스트리 이름엔 점(.) 필수**(`reg.local`) — 점 없는 이름(`kind-registry`)은 containerd 가 Docker Hub org 로 파싱(이름 규칙) → 노드 pull 테스트가 무의미. **certs.d 디렉터리엔 콜론 금지**(`localhost:5001` 은 NTFS 디렉터리 불가 → extraMounts 깨짐) → 포트 없는 `reg.local` 로 잡고 hosts.toml 안에서 `:5000` 리다이렉트. (PITFALLS §9 신규 2항)
+> `harbor.local` 의 노드측 해소는 sanity 통과 후 3단계에서 hosts.toml `[host."..."]` 를 ingress IP/ClusterIP 로 두는 식으로 확정.
+> ⚠️ **ArgoCD/GitOps 로도 이 문제는 안 풀린다** — CD 는 매니페스트 apply 만, 이미지 pull 은 언제나 노드 containerd(PITFALLS §9).
 
 ### S4 애드온 — metrics-server(HPA) → kube-prometheus-stack(SM). ingress-nginx 는 S2 에서 설치됨.
 ### S5 prod-rehearsal overlay — prod 토폴로지 + 로컬 대역(§2). HPA·TLS ingress·공개 issuer 까지.
@@ -126,4 +121,5 @@ server = "http://harbor.local"
 ## 4. 산출물 인벤토리 (이번까지)
 - `deploy/k8s/components/postgres-persistent/{postgres.yaml,kustomization.yaml}` (S1 ✅)
 - `deploy/cicd/harbor-push.sh` (S2, 양태그 push — 기본 `REGISTRY=harbor.local` 로 정정) · `docs/ops/K8S_INGRESS_HARBOR.md` (S2 ingress 경로 ✅) · `docs/ops/HARBOR_SETUP.md`(NodePort 전제 폐기, 포인터)
+- **S3'(이번 세션, 2단계 산출물)**: `deploy/k8s/standalone-kind/{kind-config.yaml, certs.d/reg.local/hosts.toml, 01-pull-sanity.sh, 00-cleanup.sh, README.md}`(최소 pull sanity — 받는 쪽 실행 대기) · `PITFALLS.md` §9 신규 2항(레지스트리 이름 점 필수 / certs.d 콜론 금지) · 이 문서 §S3' 정정(예시→실제 산출물 포인터, step 2 드롭 표기).
 - **S3(세션3 결과)**: `overlays/dev/kustomization.yaml`(DB→postgres + admin=admindb 정정 + 파일저장 /tmp/uploads + ServiceMonitor `$patch:delete` + postgres-persistent resources; **이미지 핀 stale `7e935d6`→`:dev` 로 정정**) · `overlays/dev/pull-secret-dev.yaml`(harbor-cred + default SA) · `PITFALLS.md`(Docker Desktop kind 미러 인터셉트=외부 pull 불가 항목 완성 + private-Harbor 예측 실측 정정) · **결론: Docker Desktop kind 노드 pull BLOCKED → standalone kind 트랙(§S3')으로 이관**.
