@@ -30,7 +30,7 @@
 services/auth-server
 ├─ config/AuthorizationServerConfig  # AS 체인 2개 + Jdbc 저장소 3종 + JWKSource + issuer + tokenCustomizer + PasswordEncoder
 ├─ config/AuthServerProperties       # issuer · jwkCacheTtl
-├─ config/LocalDemo (@Profile local) # demo 인증기 + demo 클라이언트 2종(데모 전용)
+├─ config/LocalDemo (@Profile local) # demo 인증기 + demo 클라이언트 3종(demo-web/demo-service/demo-rp, 데모 전용)
 ├─ jose/JdbcRotatingJwkSource        # DB 공유 + 회전 오버랩 JWKS (서명=최신 ACTIVE, 검증=ACTIVE+RETIRED) · cipher.reveal 로 개인키 복호
 ├─ jose/SigningKey(Mapper)           # 서명키 저장(MyBatis) · retireAllActive/deleteRetiredOlderThan 추가
 ├─ jose/SigningKeyCipher / AesSigningKeyCipher  # 개인키 컬럼 보호 추상 + AES-GCM 구현(마커 enc:) — framework-core 재사용

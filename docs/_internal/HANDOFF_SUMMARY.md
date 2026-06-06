@@ -29,8 +29,8 @@
 
 ## 바로 다음 할 일 (Next)
 1. **commit/push** — 이번 변경(demo-rp 2개 시드 + OidcRpFullCallbackTest + 문서 6건) + 이전 누적분(게이트웨이 런타임 점검 · smoke 시더).
-2. **모듈 README 샘플 코드 롤아웃**(`NEXT_README_SAMPLES.md`): security·redis·session 완료, 나머지 모듈 큐.
-- 백로그: CI 게이트 + 멀티모듈 Jacoco aggregate, SP-initiated SLO(6.2-B), WebAuthn(6.4), K8s addons(metrics-server/Prometheus/ingress).
+2. **모듈 README `## 실전 사용 예 (코드)` 롤아웃**(트래커 `docs/NEXT_README_SAMPLES.md` — 있으면 그곳; 없으면 신규): security·redis·session 완료, 나머지 프레임워크 모듈 큐. 실제 검증된 타입/SPI 명만, 날조 클래스명 금지.
+- 백로그: SP-initiated SLO(6.2-B), Passwordless/WebAuthn(6.4), K8s 배포 YAML/addons(metrics-server/Prometheus/ingress). (CI 게이트 + 멀티모듈 Jacoco 집계는 2026-06-04 완료.)
 
 ## 이번 세션에서 새로 박힌 함정/원칙 (되돌리지 말 것 — 전부 PITFALLS §5)
 - **RANDOM_PORT OIDC RP e2e: discovery·userinfo 가 죽은 issuer 포트(9000)를 친다** → authorization/token/jwks 를 라이브 명시 + discovery off(`ensureResolved` no-op) + `userInfoUri` 미설정(콜백이 검증된 id_token 클레임만으로 신원 구성, AS `/userinfo` resource-server 결합 제거). issuer 는 비우면 `IdTokenVerifier` 가 iss 체크 스킵 → `AuthorizationServerSettings.getIssuer()` 로 핀.
