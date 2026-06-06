@@ -6,6 +6,8 @@
 
 ---
 
+> **▶ 다음 세션 시작점(2026-06-06 종료 기준)**: ① **commit/push 먼저**(standalone-kind 6파일 + dev overlay 2수정 + PITFALLS/HANDOFF/NEXT 누적 uncommitted — 그린 박제). ② **AS 토큰 1줄 마감**: `pkill -f port-forward; kubectl -n si-msa port-forward svc/auth-server 9000:9000 & sleep 4; curl -s -u demo-service:demo-secret -d grant_type=client_credentials -d scope=api.read localhost:9000/oauth2/token` → `access_token` 확인. ③ **S4 애드온**(metrics-server/HPA → kube-prometheus-stack, dev overlay ServiceMonitor `$patch:delete` 해제). 클러스터=standalone `kind-sanity` 3노드(dev overlay apply 됨, 6파드 Running), harbor-auth-reg 유지·kind-registry 정리 가능.
+
 ## ⭐ 진행 현황 (2026-06-06 세션2)
 
 | 단계 | 상태 | 메모 |
@@ -13,7 +15,7 @@
 | **S1 영속 postgres(PVC)** | ✅ **완료** | `components/postgres-persistent`(StatefulSet) apply → `data-postgres-0` **Bound**(5Gi/RWO/standard), `postgres-0` Running. Service 는 headless→**ClusterIP** 정정(clusterIP 불변 충돌 해소). |
 | **S2 Harbor + push** | ✅ **완료(ingress 경로)** | ingress-nginx(LoadBalancer, EXTERNAL-IP=localhost) + Harbor `expose.type=ingress`(`harbor.local`) + Windows/WSL hosts + insecure-registries. `si-msa` 프로젝트에 4서비스 × (`7e935d6`,`dev`) push 확인(포털). |
 | **S3 dev overlay apply** | ⛔ **Docker Desktop kind 에선 BLOCKED(노드 pull 구조적 한계) · standalone kind 트랙으로 전환** | 매니페스트는 완성·정적검증 통과(DB/admindb/파일저장/pull-secret). 그러나 **노드 containerd 가 모든 pull 을 내장 미러(`registry-mirror:1273`)로 가로채 `harbor.local` 직접 pull 이 500** → 외부 레지스트리 pull *실증 불가*(인증은 정상이었음). `:dev`(실재 태그)로도 동일. **결정: 레지스트리 pull 검증은 standalone kind 로(§S3').** dev overlay 핀은 stale `7e935d6`→`:dev` 로 정정(sha 핀은 CI 몫). |
-| **S3' standalone kind 트랙** | ▶ **진행 중(2단계 ✅ PASS, 3단계 ✅ PASS, 4단계 산출물 드롭)** | ① PITFALLS(완료) → ② 최소 pull sanity **✅ PASS** → ③ 인증 pull sanity `02` **✅ PASS**(node 가 harbor.local 비공개 레지스트리를 harbor-cred 로 pull) → **결정 B 확정**(인증 레지스트리로 충분, Harbor 제품 미설치) → ④ `03-dev-overlay-up.sh`(빌드→push→dev apply→6파드/DB/AS토큰) **드롭, 받는 쪽 실행 대기**. |
+| **S3' standalone kind 트랙** | ✅ **본체 그린(6파드 Running) · AS 토큰 1줄만 잔여** | ②무인증 pull ✅ → ③인증 pull ✅(결정 B) → ④ `03-dev-overlay-up.sh` 실행: 빌드→push→`apply -k overlays/dev`→**6파드 1/1 Running RESTARTS 0** + authdb/sidb/admindb ✅. 결함3건 수정(default SA 레이스→imagePullSecrets 파드주입 / prod 프로파일 시크릿가드 차단→통과값 / gateway 생존단서). **잔여**: client_credentials access_token — wrong-secret→401 로 인증 메커니즘 정상 확인, 깨끗한 port-forward 로 1줄 확인만 남음(다음 세션 첫 항목). |
 | S4 애드온 | 대기 | metrics-server/HPA → kube-prometheus-stack → (ingress-nginx 는 S2 에서 선설치됨). |
 | S5 prod-rehearsal overlay | 대기 | prod 토폴로지 + 로컬 대역. |
 | S6 상위 흐름 스모크 | 대기 | OIDC RP·이중 발급기 우선. |
@@ -92,7 +94,7 @@ kubectl -n si-msa rollout restart deploy/auth-server
    - 설계 결정 2(Windows 함정 회피, PITFALLS §9): 레지스트리 이름 점(.) 필수 · certs.d 콜론 금지. 선행: `kind` CLI 설치(DD 내장 kind ≠ standalone CLI).
 3. **Harbor/ingress/postgres 풀 재구축(스크립트화)** — 2 PASS 후 착수. **첫 조각 = 인증 pull sanity `02-auth-pull-sanity.sh`(드롭)**: htpasswd 비공개 레지스트리(harbor.local) + `harbor-cred`(imagePullSecrets) → 노드 pull. docker-desktop kind 에선 도달층에서 막혀 못 봤던 *인증 경로*를 끝까지 검증(secret/SA 부착은 맞았으나 pull 자체가 안 됐었음). PASS 면 dev overlay `pull-secret-dev.yaml` 경로가 standalone 에서 유효 + 이 레지스트리가 4단계 토대.
    - ⚠️ **결정(받는 쪽) = B 확정**: 4단계 레지스트리는 `02` 의 인증 레지스트리(harbor.local)로 충분(프레임워크 검증=DB/admindb/파일저장/AS 토큰이 목적). Harbor 제품(포털/RBAC/스캔)은 미설치 — 필요 시 S4 이후 별도 트랙.
-4. **실 이미지 → push → dev overlay apply → 검증** — ✅ **산출물 드롭 `03-dev-overlay-up.sh`**(받는 쪽 실행 대기). 빌드(`docker compose build` = Dockerfile.build 컨테이너 Gradle) → `localhost:5443/si-msa/<svc>:dev` push(노드는 harbor.local pull) → `kubectl apply -k overlays/dev` → postgres/redis/4앱 rollout 대기 → 6파드 Ready + 앱 Pulled>0 + authdb/sidb/admindb 검증. `--smoke` 면 시드 클라이언트(`FRAMEWORK_AUTH_SEED_SMOKE_CLIENT=true`) + demo-service client_credentials access_token.
+4. **실 이미지 → push → dev overlay apply → 검증** — ✅ **실행·본체 그린**(`03-dev-overlay-up.sh`): 빌드→`localhost:5443/si-msa/<svc>:dev` push(노드는 harbor.local pull)→`apply -k overlays/dev`→**6파드 1/1 Running RESTARTS 0** + authdb/sidb/admindb 분리 확인. AS client_credentials access_token 만 잔여(wrong-secret→401=인증 정상, 깨끗한 port-forward 로 1줄 확인). 결함3건(default SA 레이스·prod 시크릿가드·gateway 단서) 수정 반영. **산출물 드롭 `03-dev-overlay-up.sh`**. 빌드(`docker compose build` = Dockerfile.build 컨테이너 Gradle) → `localhost:5443/si-msa/<svc>:dev` push(노드는 harbor.local pull) → `kubectl apply -k overlays/dev` → postgres/redis/4앱 rollout 대기 → 6파드 Ready + 앱 Pulled>0 + authdb/sidb/admindb 검증. `--smoke` 면 시드 클라이언트(`FRAMEWORK_AUTH_SEED_SMOKE_CLIENT=true`) + demo-service client_credentials access_token.
    - ✅ **prod 프로파일 그린 전제 레포 확인됨**: `ProdAuthenticatorConfig.java`(auth-server, `@Profile("!local")`) · AS `/actuator/**` permitAll · user/admin `framework-redis` 의존 · REDIS_HOST=redis · DB_URL/admindb 패치 · 파일저장 /tmp/uploads 패치.
    - ✅ **standalone kind = NetworkPolicy 비집행(kindnet)** → base default-deny 가 apps→postgres 를 막지 않음(docker-desktop kind 와 결정적 차이). postgres allow 규칙 불요(만약 Connect timed out/08001 이면 집행 CNI 신호 → allow-postgres 추가).
 3. **Harbor/ingress/postgres 풀 재구축**(스크립트화) — 2 통과 후.

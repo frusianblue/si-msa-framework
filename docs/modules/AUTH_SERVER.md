@@ -157,6 +157,8 @@ curl -s -u demo-service:demo-secret -d grant_type=client_credentials -d scope=ap
 
 > ✅ **검증 완료(2026-06-06)**: 위 절차로 kind 실배포에서 `demo-web`(authorization_code,refresh_token)·`demo-service`(client_credentials) 2 rows 등록 확인. 자동 테스트 `SmokeClientDbAuthFlowTest` 도 통과(sub=`tester`).
 
+> ⚠️ **client_credentials *토큰 발급* 은 standalone kind 에서 깨끗한 검증 잔여(2026-06-06)**: 위 "2 rows 등록 확인"·자동 테스트는 **등록 + authorization_code+PKCE(demo-web)** 경로다. client_credentials access_token 1줄은 standalone kind 리허설에서 stale port-forward 로 302(→/login) 아티팩트가 나왔고(wrong-secret→401 로 client_secret_basic 인증 메커니즘 자체는 정상 확인), 단일 port-forward 로 깨끗이 재요청해 `access_token` 을 확인하는 1줄만 남았다(NEXT_K8S_REAL_DEPLOY §S3' 잔여).
+
 > **자동 테스트 등가물**: `SmokeClientDbAuthFlowTest`(`@ActiveProfiles("smoketest")`)가 위 수동 절차를 그대로 — 스모크 시더 등록 + `tester` 폼 로그인(DbAuthenticator) + `authorization_code+PKCE` → `access/id_token`(sub=`tester`) — 단언한다. 운영 상시 클라이언트는 이 시더를 끄고(기본값) 프로젝트가 자체 등록 절차(예: 부팅 시 `RegisteredClientRepository.save()` 또는 관리 콘솔)로 둘 것.
 
 ## 7. 검증 상태
