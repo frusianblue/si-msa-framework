@@ -104,14 +104,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres                 # headless — StatefulSet serviceName 과 일치. DB_URL(postgres:5432) 해소.
-  labels:
-    app.kubernetes.io/name: postgres
+  name: postgres                 # ClusterIP — DB_URL(jdbc:postgresql://postgres:5432/...) 해소.
+  labels:                        #   단일 인스턴스라 headless 불요. 기존 local overlay Service(ClusterIP)와 동일 형태 →
+    app.kubernetes.io/name: postgres   #   재apply 시 clusterIP 불변 충돌 없음("unchanged").
     app.kubernetes.io/part-of: si-msa
 spec:
-  clusterIP: None
   selector:
-    app.kubernetes.io/name: postgres
+    app.kubernetes.io/name: postgres   # StatefulSet 파드 라벨과 일치 → postgres-0 으로 라우팅
   ports:
     - { name: postgres, port: 5432, targetPort: postgres }
 ---
