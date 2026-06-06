@@ -129,12 +129,17 @@ ok "access_token + id_token 발급"
 
 # ---------------------------------------------------------------------
 note "6) id_token payload 디코드 + 클레임 단언"
-PAYLOAD="$(printf '%s' "$IDTOK" | cut -d. -f2)"
-PAD=$(( (4 - ${#PAYLOAD} % 4) % 4 )); PAYLOAD="${PAYLOAD}$(printf '=%.0s' $(seq 1 $PAD))"
-CLAIMS="$(printf '%s' "$PAYLOAD" | tr '_-' '/+' | openssl base64 -d -A 2>/dev/null)"
-SUB="$(printf '%s' "$CLAIMS"   | jget sub)"
-ISS="$(printf '%s' "$CLAIMS"   | jget iss)"
-GOT_NONCE="$(printf '%s' "$CLAIMS" | jget nonce)"
+# 디코드는 환경의존적 openssl/tr 대신 파이썬 urlsafe_b64decode 한 방으로(WSL 등 openssl 잘림 회피).
+mapfile -t CLAIMVALS < <(python3 - "$IDTOK" <<'PY'
+import sys, base64, json
+seg = sys.argv[1].split('.')[1]
+seg += '=' * (-len(seg) % 4)              # base64url 패딩 복원
+d = json.loads(base64.urlsafe_b64decode(seg))
+for k in ('sub', 'iss', 'nonce'):
+    print(d.get(k, ''))
+PY
+)
+SUB="${CLAIMVALS[0]:-}"; ISS="${CLAIMVALS[1]:-}"; GOT_NONCE="${CLAIMVALS[2]:-}"
 [ "$SUB" = "$LOGIN_ID" ]   || fail "sub='${SUB}' ≠ '${LOGIN_ID}' — DbAuthenticator 경로가 아님(LocalDemo demo?)"
 [ "$GOT_NONCE" = "$NONCE" ] || fail "nonce 불일치(왕복 실패)"
 ok "sub=${SUB} · iss=${ISS} · nonce 왕복 ✅ (DbAuthenticator 경로 증명)"
