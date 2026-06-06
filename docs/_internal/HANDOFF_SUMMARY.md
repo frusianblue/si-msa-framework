@@ -5,43 +5,43 @@
 
 ---
 <!-- 갱신 시작 -->
+
 ## 이번 세션 한 줄 요약
-**✅ kind 첫 배포 풀 그린 달성(2026-06-06) — kind(=Docker Desktop kind 모드, 3노드 v1.34.3) 위에 4서비스+PG+Redis 를 prod 프로파일로 올려 6파드 전부 `1/1 Running`.** compose 까지였던 검증선이 **kind 까지 확장**됐다. 실배포를 순차 트리아지하며 정합 결함 **3건**(① 이미지명 `newName` ② NetworkPolicy postgres allow ③ admindb initdb 1회성)을 발견·수정. AS `/actuator/health/readiness` UP · OIDC discovery(issuer `http://auth-server:9000`) · authdb 전 Flyway 테이블(oauth2_*·auth_signing_key·app_user·roles·framework_lock) · `app_user` 에 `tester` seed 까지 확인. **다음 섹션 = OAuth2 클라이언트 등록 → authorization_code+PKCE 토큰 플로우(=DbAuthenticator 운영 인증 경로 실증).** prod 에 등록 클라이언트 0건은 **설계**(LocalDemo `@Profile("local")` → prod 비활성). 착수 스펙 = `_internal/planning/NEXT_KIND_AUTH_TOKEN_FLOW.md`, 함정 `PITFALLS.md §9`.
+**▶ kind "OAuth2 클라이언트 등록 → 토큰 플로우"(=DbAuthenticator 운영 인증 경로) A안 코드/테스트 전달(2026-06-06).** prod 클라이언트 0건(설계: LocalDemo `@Profile("local")`)을 깨지 않고, **프로파일 비의존 옵트인 시더** `SmokeClientSeeder`(`@ConditionalOnProperty framework.auth.seed-smoke-client`, 기본 false)를 추가 — 켜면 `demo-web`(public+PKCE)·`demo-service`(client_credentials)를 `repo.save()` 로 멱등 등록. **DbAuthenticator·프로파일 무변경.** overlays/local `auth-server-config` 가 플래그를 on(kind 검증용, dev/prod 미적용). 자동 검증 등가물 = `SmokeClientDbAuthFlowTest`(`@ActiveProfiles("smoketest")` = `!local` → DbAuthenticator 활성 + prod 하드닝 회피; `tester`/`Test1234!`(authdb `app_user`) 폼 로그인 → authorization_code+PKCE → access/id_token, **sub=`tester`** 단언). 작성환경 Central 차단 → **받는 쪽 검증 대기**(`:services:auth-server:test --tests '*SmokeClientDbAuthFlowTest'` + 이미지 재빌드→kind 절차). 스펙 `_internal/planning/NEXT_KIND_AUTH_TOKEN_FLOW.md`(A안 전달 완료), 함정 `PITFALLS §9`.
 
 ## 최종 갱신
-- 일자: 2026-06-06 · 갱신자: kind 첫 배포 검증 완료 세션
+- 일자: 2026-06-06 · 갱신자: smoke 시더 + DbAuthenticator 토큰 플로우 A안 전달 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SC 2025.1.1 / Jackson 3 — 스택 무변경.
 
 ## 직전에 한 것 (Done)
-**kind 첫 배포 실행 → 6파드 그린.** 실배포 트리아지 3건(상세=PITFALLS §9):
-| # | 증상 | 원인 | 수정(적용 형태) |
-|---|---|---|---|
-| 1 | `apply` 후 4앱 파드 `ImagePullBackOff` | `overlays/local` 의 `images:` 가 `newTag` 만 → 렌더명 `registry.example.com/...:local` 잔존(노드 적재명 `si-msa/...:local` 과 불일치) | `images.newName: si-msa/<svc>` (**overlay**) |
-| 2 | auth/user/admin `CrashLoop`, Flyway `Connect timed out`(SQLState 08001), gateway 만 생존 | **Docker Desktop kind 는 NetworkPolicy 집행** + `default-deny-ingress` 에 postgres 수신 허용 규칙 부재 | `overlays/local/postgres.yaml` 에 `allow-postgres-from-apps` (**overlay**) |
-| 3 | admin-service `CrashLoop`, `FATAL: database "admindb" does not exist`(3D000) | postgres initdb 는 **PGDATA 빈 최초 1회만** 실행 → admindb 줄 추가 전 떠 있던 PG 엔 미생성 | (즉시)`CREATE DATABASE admindb OWNER siuser` 또는 PG 재초기화. **신규 클러스터엔 initdb 가 자동 생성**(검증됨) |
+**A안(prod-안전 smoke 시더) 전달.** 변경 파일:
+| 파일 | 내용 |
+|---|---|
+| `services/auth-server/.../config/SmokeClientSeeder.java` (신규) | 옵트인 시더. `@ConditionalOnProperty(framework.auth.seed-smoke-client, havingValue=true)` 가드(기본 off, 삼단 토글 정신) + `ApplicationRunner` 가 `findByClientId==null` 일 때만 `repo.save()`(멱등). demo-web=public+PKCE+AC+RT+openid/profile, demo-service=client_secret_basic+client_credentials+api.read. LocalDemo 와 동일 식별자·설정. |
+| `services/auth-server/.../resources/application.yml` | `framework.auth.seed-smoke-client: ${FRAMEWORK_AUTH_SEED_SMOKE_CLIENT:false}` 노출(문서·바인딩). |
+| `services/auth-server/src/test/resources/application-smoketest.yml` (신규) | `!local` + 플래그 on + H2(`authdb_smoke`) — prod 하드닝 회피하며 DbAuthenticator 활성. |
+| `services/auth-server/src/test/.../e2e/SmokeClientDbAuthFlowTest.java` (신규) | 시더 등록 단언 + `tester` DbAuthenticator authorization_code+PKCE → access/id_token(sub=tester) + demo-service client_credentials. |
+| `deploy/k8s/overlays/local/kustomization.yaml` | `auth-server-config` ConfigMap 패치로 `FRAMEWORK_AUTH_SEED_SMOKE_CLIENT: "true"`(kind 검증용). |
+| 문서 | `AUTH_SERVER.md` §6.5(prod 등록/시더 절차) + §8 갱신 · `PITFALLS §9`(시더 = 옵트인 해소 경로) · 스펙 상태(A안 전달). |
 
-- **환경 정정(중요)**: 핸드오프의 "kind 3노드"는 실제론 **Docker Desktop 의 내장 kind 모드**(컨텍스트 `docker-desktop`, 노드 `desktop-control-plane/worker/worker2`). `kind` CLI/`kind load` **불사용** — 노드가 `docker ps` 에 안 보이고(노드명≠컨테이너명), 이미지는 `desktop-containerd-registry-mirror` 가 로컬 docker 이미지를 자동 노출(테스트 파드 `si-msa/gateway:local` 1/1 Running 으로 실증) → **적재 단계 자체가 불필요**.
-- 동반 문서 갱신: `PITFALLS §9`(+자가진단 행)·`LOCAL_K8S_TEST.md`(트러블슈팅)·`LOCAL_K8S_ENV_SETUP.md`·`K8S_ADDONS.md`(kind 집행 정정)·`base/common/networkpolicy.yaml` 주석·`overlays/local/postgres.yaml`/`kustomization.yaml`.
+- 정적 교차검증: 중괄호/괄호 균형 OK, `com.fasterxml` 0(Jackson 3), `ResourceServerJwtVerifier` 7-arg 생성자/`Verified(userId,jti,roles)` 일치, 시더 import 는 LocalDemo 와 동일(컴파일 검증된 패턴). 테스트는 확정 통과 중인 `OidcIdTokenIssuanceTest` 를 템플릿으로(MockMvc 폼로그인+openid auth_time 은 `FrameworkAuthenticationProvider` 의 FACTOR_PASSWORD 로 해소됨 — 동일 근거).
 
 ## 현재 상태 (적용/검증)
-- **✅ kind 첫 배포 = 받는 쪽 검증 완료**(이번 세션): si-msa ns 6파드(gateway/auth-server/user-service/admin-service/postgres/redis) 전부 `1/1 Running`, RESTARTS 0. AS readiness UP·discovery 정상·authdb Flyway 전 테이블·`app_user` `tester` 1행.
-- **✅ compose = 그린(회귀용)**.
-- **🟡 미실증 = OAuth2 클라이언트 등록 → 토큰 플로우**: prod 클라이언트 0건(LocalDemo `@Profile("local")`, **설계**)이라 authorization_code 진입 불가. DbAuthenticator 는 **데이터·부팅까지** 확인, **실 로그인(인증 경로)** 은 클라이언트 등록 후 검증 예정.
-- **현재 인프라**: Docker Desktop kind Active(3노드 `desktop-*`, v1.34.3), si-msa ns 6파드 Running. compose 정지 권장(8000/8080/8081/9000 포트 충돌 방지). 재현 한 방 = `kubectl delete -k … → apply -k …`(신규 PG 라 initdb 가 admindb 까지 자동 생성 — 검증됨).
+- **✅ kind 첫 배포 = 그린**(이전 세션): si-msa ns 6파드 `1/1 Running`.
+- **▶ smoke 시더 + DbAuthenticator 토큰 플로우 = 코드/테스트 전달, 받는 쪽 검증 대기**: 작성환경 Central 차단으로 Gradle/kubectl 직접 실행 불가.
 - 작성환경 Maven Central·릴리스 CDN 차단 → 빌드/kubectl 직접 실행 불가(정적 작성 + 받는 쪽 실행).
 
-## 바로 다음 할 일 (Next) — OAuth2 클라이언트 등록 → 토큰 플로우 (스펙 `_internal/planning/NEXT_KIND_AUTH_TOKEN_FLOW.md`)
-> prod 클라이언트 0건은 설계(프로젝트 책임). authorization_code 를 태우려면 클라이언트 등록이 선행.
-1. **(권장) prod-안전 smoke/demo 클라이언트 시더 추가** — `@Profile("local")` 아닌 별도 플래그(예: `framework.auth.seed-smoke-client`, 기본 false)로 가드 → **DbAuthenticator 불변**, `RegisteredClientRepository.save()` 로 public+PKCE 클라이언트 등록. ⚠️ **SQL INSERT 수동 등록 금지** — `client_settings`/`token_settings` 가 SAS 전용 Jackson(`@class` 타입 메타) JSON 이라 reader 가 역직렬화에서 깨진다. 반드시 `repo.save()`. 로드맵 `demo-rp`(confidential) 등록과 겹치므로 출발점으로 재사용.
-2. **(대안/빠른 확인) 클라이언트 없이 DbAuthenticator 만**: `/login` 폼 POST(CSRF 추출)로 `tester`/`Test1234!` 인증 302 확인(토큰 X, 인증 O).
-3. **스모크 마감**: authorization_code+PKCE → 토큰 → DbAuthenticator 운영 경로 실증. issuer 가 in-cluster 명(`http://auth-server:9000`)이라 브라우저 redirect 는 port-forward 기준 보정 필요.
-- 참고: kind 절차/트러블슈팅 `docs/ops/LOCAL_K8S_TEST.md` §8, 애드온(metrics-server/Prometheus/ingress) `docs/ops/K8S_ADDONS.md`, RP 연계(완료) `_internal/planning/NEXT_RP_IDTOKEN_LINK.md`.
+## 바로 다음 할 일 (Next)
+1. **받는 쪽 검증**: `./gradlew :services:auth-server:test --tests '*SmokeClientDbAuthFlowTest'`(스모크 시더+DbAuthenticator 자동 증명). 통과 시 토큰 플로우 Done.
+2. **kind 실배포 마감(선택)**: `docker compose -f deploy/compose/docker-compose.yml build auth-server` → `kubectl -n si-msa rollout restart deploy/auth-server` → §6.5 절차로 authorization_code+PKCE 수동 1회 확인.
+3. **commit/push**(게이트웨이 런타임 점검 + 이번 변경 누적).
+- 백로그: confidential `demo-rp` 전체 콜백 흐름(`NEXT_RP_IDTOKEN_LINK §B`), 모듈 README 샘플 코드, CI 게이트 + Jacoco aggregate, K8s addons.
 
-## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것 — 전부 PITFALLS §9)
-- **환경: 핸드오프 "kind" = Docker Desktop kind 모드.** 노드가 `docker ps` 에 안 보임(노드명≠컨테이너명) → `docker exec <node>`/`kind load` 불가. 이미지는 `desktop-containerd-registry-mirror` 가 호스트 docker 이미지를 자동 노출(테스트 파드로 확인) → 적재 불필요. `kind create cluster` 동시 사용 금지(충돌).
-- **로컬 overlay 는 이미지 name 까지 노드 적재명과 1:1**: `images:` `newTag` 만으론 name(`registry.example.com/...`) 잔존 → `ImagePullBackOff`. `newName` 으로 short name 통일. 점검: `kubectl -n si-msa get deploy -o jsonpath='{..image}'`.
-- **Docker Desktop kind 는 NetworkPolicy 집행**(standalone kindnet 비집행과 다름): 인-클러스터 의존(postgres 등)마다 `default-deny` 뚫는 allow 1:1 필요. 증상이 `Connect timed out`/08001 이면 인증·DNS 가 아니라 L3/4 차단 신호.
-- **initdb 는 PGDATA 빈 최초 1회만**: 기존 PG 에 DB/스키마 추가는 자동 반영 안 됨 → 재초기화(휘발 PG=`rollout restart`) 또는 수동 `CREATE`. `database "X" does not exist`(3D000)가 신호.
-- **prod 클라이언트 0건 = 정상**: `LocalDemo` `@Profile("local")`. prod OAuth2 클라이언트 등록은 프로젝트 책임(다음 섹션).
-- (이전 세션 유지) AS 자체 체인엔 `/actuator/**` permitAll 직접 / 하드닝 컨테이너 쓰기경로 `/tmp` / `token-store.type` 과 모듈 의존 쌍 / "앱 로그 정상 ≠ healthy" / 멀티서비스는 실제로 띄워봐야 정합 결함 드러남.
+## 이번 세션에서 새로 박힌 함정/원칙 (되돌리지 말 것)
+- **prod 클라이언트 0건은 설계 — 깨지 말고 옵트인 시더로 우회**: `SmokeClientSeeder`(`framework.auth.seed-smoke-client`, 기본 false)는 프로파일/DbAuthenticator 를 건드리지 않는 별도 플래그 가드. local 의 `LocalDemo`(@Profile("local")) 분리 유지.
+- **`oauth2_registered_client` SQL INSERT 금지**: `client_settings`/`token_settings` 가 SAS 전용 Jackson(`@class`) JSON → 반드시 `repo.save()`.
+- **DbAuthenticator 테스트는 `!local` 프로파일 필요**(local 은 LocalDemo demo/demo). prod 는 하드닝(DB env 필수)이라 깨짐 → 전용 `smoketest`(H2, 플래그 on, 하드닝 회피).
+- **플래그를 켜도 시더 클래스 포함 이미지 재빌드 1회 필요**(env 수정과 달리 코드 변경).
+- (이전 세션 유지) Docker Desktop kind = NetworkPolicy 집행 + registry-mirror 자동노출 / initdb 1회성 / local overlay `images.newName` / AS `/actuator/**` permitAll.
+
 <!-- 갱신 끝 -->

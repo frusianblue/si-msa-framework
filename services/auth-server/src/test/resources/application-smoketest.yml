@@ -1,0 +1,33 @@
+# =====================================================================
+# auth-server / smoketest : DbAuthenticator(@Profile("!local")) + SmokeClientSeeder 옵트인 e2e 전용(테스트 클래스패스)
+# ---------------------------------------------------------------------
+# 목적: prod 와 동일하게 LocalDemo(@Profile("local"))를 비활성화한 상태에서, smoke 시더가 등록한 demo-web 으로
+#       authdb app_user(tester) 기반 DbAuthenticator 인증 → authorization_code+PKCE 토큰이 발급되는지
+#       (= kind 의 "OAuth2 클라이언트 등록 → 토큰 플로우" Done 정의)를 자동 테스트로 닫는다.
+#       (kind 수동 curl 절차의 테스트 등가물 — AUTH_SERVER.md §6.5 / NEXT_KIND_AUTH_TOKEN_FLOW.md)
+#
+# 왜 prod 가 아니라 별도 smoketest 인가:
+#   - DbAuthenticator/ProdAuthenticatorConfig 는 @Profile("!local") → local 만 아니면 활성(smoketest 로 충분).
+#   - prod 프로파일은 하드닝(DB_URL/DB_USER/DB_PASSWORD 필수·기본값 없음, health 상세 비노출 등)이라 테스트가 깨진다.
+#   - 따라서 "!local 은 만족 + 하드닝은 회피"하는 전용 프로파일을 둔다. H2 인메모리라 Flyway 가 V1~V7
+#     (oauth2_* 스키마 · framework_lock · app_user + tester {bcrypt} seed)을 그대로 올린다.
+#
+# base application.yml 은 datasource 블록이 없다(로컬은 application-local* 오버레이에서 옴) → 여기서 H2 를 채운다.
+# DB 이름을 authdb_smoke 로 분리: 동일 JVM 내 다른 @SpringBootTest(local, authdb)와 메모리 DB 공유로 인한
+# Flyway 재실행/충돌을 피한다(DB_CLOSE_DELAY=-1 은 JVM 생존 동안 mem DB 를 이름으로 유지).
+# =====================================================================
+spring:
+  datasource:
+    url: jdbc:h2:mem:authdb_smoke;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+framework:
+  auth:
+    # SmokeClientSeeder(@ConditionalOnProperty) 활성 → demo-web(public+PKCE)/demo-service(client_credentials) repo.save() 등록.
+    seed-smoke-client: true
+
+logging:
+  level:
+    com.company.authserver: debug

@@ -1,6 +1,6 @@
 # NEXT_KIND_AUTH_TOKEN_FLOW.md — kind 위 OAuth2 클라이언트 등록 → 토큰 플로우(DbAuthenticator 운영 경로 실증)
 
-> 상태: **착수 전(설계 완료 — 바로 시작 가능).**
+> 상태: **A안 코드/테스트 전달 완료(2026-06-06) — 받는 쪽 검증 대기.** 전달물: `SmokeClientSeeder`(옵트인 시더) + `application-smoketest.yml` + `SmokeClientDbAuthFlowTest`(e2e) + overlays/local 플래그 + 문서. 작성환경 Central 차단으로 Gradle/kubectl 직접 실행 불가 → 받는 쪽이 `:services:auth-server:test`(`*SmokeClientDbAuthFlowTest`)와 kind 절차(§2)로 최종 마감.
 > 선행: **kind 첫 배포 ✅ 완료**(2026-06-06, si-msa ns 6파드 `1/1 Running`). 이 문서는 그 위에서 **인증·토큰 플로우**를 닫는다.
 > 전체 맥락 `../HANDOFF.md` §6, 함정 `../../guide/PITFALLS.md` §9, kind 절차/트러블슈팅 `../../ops/LOCAL_K8S_TEST.md`,
 > 직전 완료 스펙 `NEXT_LOCAL_COMPOSE_AND_KIND.md`(ARCHIVED), RP 연계(완료) `NEXT_RP_IDTOKEN_LINK.md`.
@@ -24,7 +24,7 @@ kind 배포는 그린이지만 **마지막 한 칸 = authorization_code+PKCE 토
 
 ## 1. 방안
 
-### A안 (권장) — prod-안전 smoke/demo 클라이언트 시더
+### A안 (권장) — prod-안전 smoke/demo 클라이언트 시더  ✅ **전달 완료(2026-06-06)**
 `@Profile("local")` 이 아닌 **별도 플래그**로 가드해 prod 에서도 옵트인 등록. **DbAuthenticator·인증 백엔드는 그대로** 둔다(프로파일을 건드리지 않으므로).
 
 - 신규(또는 LocalDemo 분리): `config/SmokeClientSeeder`
