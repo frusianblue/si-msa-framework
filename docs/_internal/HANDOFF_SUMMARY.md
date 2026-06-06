@@ -7,30 +7,32 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**🧹 문서 정합화 세션(2026-06-06) — master 트리 기준으로 SUMMARY·GAP_AUDIT·planning 분류를 재정렬하고, 보충 갭 목록을 코드 실측으로 확정.** 직전 SUMMARY/planning 이 master 트리보다 뒤처져 끝난 작업이 "다음 할 일"로 읽히던 꼬임을 정리. **보충 갭(A1~A9·B) 전수 코드 대조 결과: 완료=A1·A4·A9, 남은 실제 보충=A2·A3·A5·A6·A7·A8·B(7개).** kind "✅ 첫 배포"가 가리던 미실증 범위(dev/prod overlay·애드온·상위 흐름·운영 태그/볼륨)를 정직화하고, 다음 단계 = **실배포 검증 + 애드온**(신규 스펙 `NEXT_K8S_REAL_DEPLOY.md`).
+**🚀 운영 토폴로지 로컬 리허설 착수 — S1 영속 postgres(PVC) ✅ + S2 Harbor 이미지 푸시 ✅(2026-06-06 세션2).** 현재 Docker Desktop(`docker-desktop` 컨텍스트) 환경에서 운영 경로 전부를 리허설하는 트랙 시작. **S1**: `components/postgres-persistent`(StatefulSet, 기본 StorageClass 동적 PVC) → `data-postgres-0` Bound·`postgres-0` Running(Service headless→ClusterIP 정정). **S2**: NodePort 가 이 환경에서 호스트/데몬 비노출이라 **ingress-nginx(LoadBalancer)+Harbor `expose.type=ingress`(`harbor.local`)** 경로로 전환 → `si-msa` 프로젝트에 4서비스 × (`7e935d6`,`dev`) push 확인. **다음 = S3 dev overlay 실 apply(이미지=Harbor:7e935d6 + DB=인-클러스터 postgres + imagePullSecrets + pull 측 검증).** 또한 직전 세션의 문서 정합화(GAP_AUDIT 재감사: 보충 완료=A1·A4·A9, 남음=A2·A3·A5~A8·B) 반영됨.
 
 ## 최종 갱신
-- 일자: 2026-06-06 · 갱신자: 문서 정합화 세션
-- 대상 브랜치: master(`241e350`) · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SS7 / SC 2025.1.1 / Jackson 3 — 스택 무변경(문서만 변경).
+- 일자: 2026-06-06 · 갱신자: 운영 리허설 세션2(S1·S2)
+- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SS7 / SC 2025.1.1 / Jackson 3 — 스택 무변경(devops 매니페스트·문서만).
 
 ## 직전에 한 것 (Done)
-- **갭 목록 정합화** — `GAP_AUDIT.md` 상단에 `⭐ 2026-06-06 재감사(코드 실측)` 정본 블록 추가 + 본문 A1 마커를 완료로 보정. A1(WebAuthn) 완료 반영, A4·A9 완료 재확인, A2/A3/A5/A6/A7/A8/B 열림 확인.
-- **kind 검증범위 정직화** — `GAP_AUDIT §k8s 실배포 검증 범위`: 실증=`overlays/local` 6파드 + DbAuthenticator 토큰 플로우뿐. 미실증=dev/prod overlay·애드온(metrics-server/Prometheus/ingress)·상위 인증 흐름·운영 태그(`:local`+`IfNotPresent`)·볼륨(`/tmp` emptyDir).
-- **다음 단계 스펙 신설** — `planning/NEXT_K8S_REAL_DEPLOY.md`: ①불변 이미지 태그+실 레지스트리 ②볼륨/영속(PVC vs S3, 운영 DB/redis 외부화) ③dev/prod overlay 실 apply ④애드온 클러스터 실증 ⑤상위 흐름 port-forward 스모크.
-- **SUMMARY 재작성** — master 트리 기준 정합(이번 + 직전 세션).
+| 단계 | 산출/검증 |
+|---|---|
+| **S1 영속 postgres** ✅ | `deploy/k8s/components/postgres-persistent/{postgres.yaml,kustomization.yaml}`. apply → PVC `data-postgres-0` **Bound**(5Gi/RWO/`standard`/local-path), `postgres-0` Running. Service=ClusterIP(headless 시도 시 clusterIP 불변 충돌 → 정정). |
+| **S2 Harbor push** ✅ | `docs/ops/K8S_INGRESS_HARBOR.md`(ingress-nginx LoadBalancer + Harbor ingress `harbor.local`) + `deploy/cicd/harbor-push.sh`(양태그). 포털 `si-msa` 4×2 태그(`7e935d6`,`dev`) 확인. `HARBOR_SETUP.md` 는 NodePort 전제 폐기 배너+포인터로 정정. |
+| 스펙 갱신 | `NEXT_K8S_REAL_DEPLOY.md` 진행현황(S1·S2 ✅, S3 다음) + 세션2 함정 3건 기록. |
 
 ## 현재 상태 (적용/검증)
-- **master 트리 정합 확인됨**: `planning/` NEXT 스펙 7개 전부 구현 완료, 모듈 README 37/37(`실전 사용 예`, 펜스 균형 OK, Jackson 3 위반 0), k8s `deploy/`(kustomize base+overlays + ingress/networkpolicy/pdb/servicemonitor/hpa/hardening + docker/compose + Jenkinsfile/ci-cd.yml) 존재.
-- **보충 갭 코드 실측(이번)**: A1 `framework-webauthn`(11 java, 체크리스트 4종) · A4 `RedisConcurrentSessionService`(Lua) · A9 `GatewayAuthProperties.audiences`+`GatewayJwksTokenVerifier` = 완료. A2 IdP-initiated만(SP-initiated 부재) · A3 `AesSigningKeyCipher`만 · A5 `ZipArchiver`만 · A6 단순 putObject · A7 core 부재 · A8 모듈 0 · B LoginAttempt jdbc 부재 = 열림.
-- **문서 변경만**: 코드/스택 무변경.
+- **클러스터**: `docker-desktop`(노드 desktop-control-plane/worker×2, v1.34.3). ns `si-msa`(앱), `harbor`(Harbor), `ingress-nginx`(컨트롤러, EXTERNAL-IP=localhost).
+- **Harbor**: `harbor.local`(ingress, HTTP). admin/Harbor12345. project `si-msa`(비공개). 4서비스 push 완료, **Pull 수 0**(아직 클러스터 미당김 — S3 에서 >0 되면 pull 경로 실증).
+- **이미지 git-sha**: `7e935d6`. dev overlay 핀 대상.
 
 ## 바로 다음 할 일 (Next)
-1. **실배포 검증 + 애드온** — `NEXT_K8S_REAL_DEPLOY.md` 착수. 순서: 이미지 태그 정책(불변+레지스트리) → 볼륨/영속(PVC or S3) → dev/prod overlay 실 apply → 애드온(metrics-server/HPA → Prometheus → ingress) → 상위 흐름 스모크. **결정 필요**: 태그 소스(GIT_SHA vs semver)·레지스트리 좌표·업로드 영속(PVC vs S3)·운영 DB/redis 외부화 여부.
-2. **보충 갭(코드)** — 별도 트랙. 우선순위: A2(SP-initiated SLO)·A3(KMS/Vault) 각 독립 세션. A5~A8·B 선택 백로그.
-   - 1-B. **planning housekeeping(`git mv`)** — 완료 스펙 archive 이동: KIND_AUTH_TOKEN_FLOW·LOCAL_COMPOSE_AND_KIND·OIDC_ID_TOKEN·RP_IDTOKEN_LINK·SIGNING_KEY_ROTATION·**NEXT_WEBAUTHN(A1 완료)**. `NEXT_SSO`는 6.2-B(=A2) 보유로 planning 유지(또는 6.2-B 추출 후 archive).
+1. **(섹션 시작 시) 재부팅 검증** — Docker Desktop 껐다 켠 뒤 ingress/LB·Harbor·postgres PVC 자동 복귀 확인(= port-forward 졸업 확인).
+2. **S3 dev overlay 실 apply** — ① `overlays/dev` 이미지 핀 `harbor.local/si-msa/<svc>:7e935d6` ② DB_URL `dev-postgres.internal` → 인-클러스터 `postgres:5432`(auth=authdb·user=sidb·admin=admindb) + `resources` 에 `components/postgres-persistent` ③ `harbor-cred` 시크릿 + default SA 부착 ④ apply 후 **pull 트리아지**(노드 containerd 가 `harbor.local` 못 풀면 hosts.toml; 이 환경 자동노출로 생략될 수도 — `describe pod` Events 로 판단). 그린=6파드 Ready + Harbor Pull>0 + AS 토큰 스모크.
+- 이후: S4 애드온(metrics-server/HPA·kube-prometheus-stack) → S5 prod-rehearsal overlay → S6 상위 흐름 스모크 → S7 Jenkins.
 
-## 이번 세션 원칙 (되돌리지 말 것)
-- **상태 확정은 master 트리(파일 실재) 우선** — SUMMARY/planning 텍스트·배너는 lag 가능. 끝난 작업 재구현 금지.
-- **"kind ✅"는 `local`+auth 까지** — 운영 준비(dev/prod·애드온·불변태그·PVC)는 `NEXT_K8S_REAL_DEPLOY.md` 로 별도 검증.
-- **갭 정본은 `GAP_AUDIT.md` 상단 재감사 블록** — 붙여넣기로 떠도는 구버전 목록(A4·A9 미완 표기) 신뢰 금지.
+## 이번 세션 함정/원칙 (되돌리지 말 것)
+- **이 환경 NodePort=호스트/데몬 비노출, LoadBalancer 만 localhost 매핑.** `kubectl port-forward` 는 127.0.0.1 만 바인딩 → **Docker Desktop VM 데몬이 못 봐서** `docker login`/push timeout. 호스트 노출은 **LoadBalancer(ingress)** 로.
+- **Docker Desktop 데몬은 Windows hosts 를 참조** — `harbor.local` 은 **Windows hosts 필수**(WSL hosts 는 호스트 curl 전용).
+- **Service `clusterIP` 불변** — 기존 ClusterIP svc 를 headless 로 못 바꿈(S1 정정).
+- **상태는 master 트리/클러스터 실거동 우선** — 스펙 배너보다 `get pods`/`describe`/포털 실측.
 <!-- 갱신 끝 -->

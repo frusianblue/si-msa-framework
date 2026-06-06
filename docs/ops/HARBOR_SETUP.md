@@ -1,3 +1,5 @@
+> # ⚠️ 노출 방식 정정(2026-06-06 세션2) — 이 문서의 "NodePort + localhost 자동노출" 전제는 **이 환경(`docker-desktop`)에서 틀렸다.** NodePort 는 호스트/데몬 비노출. **Harbor 노출은 `K8S_INGRESS_HARBOR.md`(ingress-nginx LoadBalancer 경로)를 따른다.** 아래 §1 설치값(persistence/admin/project/imagePullSecrets/push 스크립트)·§5 pull 함정은 유효하므로 참고용 보존.
+
 # HARBOR_SETUP.md — 로컬 Harbor(NodePort) 설치 + 이미지 푸시 (S2)
 
 > 목적: 현재 Docker Desktop kind 환경에서 **실 레지스트리 경로(불변 태그 push → imagePullSecrets pull)**를 리허설.
