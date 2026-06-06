@@ -7,34 +7,34 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**✅ RP 전체 콜백 흐름(B안) 완료(2026-06-06) — OIDC 풀루프를 검증기 수준(A안)에 이어 풀루프로 마감.** confidential `demo-rp`(`CLIENT_SECRET_POST`+`requireProofKey(false)`+consent 미요구, secret=`demo-rp-secret`)를 `LocalDemo`·`SmokeClientSeeder` 양쪽에 등록하고, 우리 RP `OAuthLoginService.callback()` 이 **authorize→code→토큰교환(`client_secret_post`)→`IdTokenVerifier` 검증→자체 토큰** 전 구간을 실제 구동하는 `OidcRpFullCallbackTest`(양성 1 + 음성 3) 신규. build.gradle 무변경(A안의 `testImplementation project(':framework:framework-oauth-client')` 재사용). 새 함정 3건(PITFALLS §5): ① RANDOM_PORT e2e 에서 discovery·userinfo 가 죽은 issuer 포트(9000)를 침 → authorization/token/jwks 라이브 명시 + discovery off(no-op) + `userInfoUri` 미설정(검증된 id_token 클레임만으로 신원 구성) ② confidential RP 교환=`client_secret_post`+PKCE 불요 → AS 클라이언트도 `CLIENT_SECRET_POST`+`requireProofKey(false)`(builder 기본 true override) ③ `ProviderRegistry.require` 는 OIDC 라도 `user-name-attribute`(="sub") 요구. 스펙 `NEXT_RP_IDTOKEN_LINK` ✅✅ARCHIVED(A·B 모두 완료).
+**🔎 master 정합 점검 + SUMMARY 재작성(2026-06-06) — 직전 SUMMARY/planning 분류가 master 트리보다 뒤처져 있었음을 확인.** `241e350 추가` 커밋의 **트리**에는 그 커밋 자신의 HANDOFF_SUMMARY/planning 분류가 못 따라온 작업이 전부 들어 있었다: 게이트웨이 런타임 점검 · OIDC 풀루프(A+B) · SSO 전 갈래 · Authorization Server · 게이트웨이 이중 발급기 · 서명키 회전 · **compose + kind 첫 배포 + kind 토큰 플로우** · webauthn 모듈 · MFA webauthn factor · 모듈 README **37/37**(`실전 사용 예`). 결과: `planning/`의 NEXT 스펙 **7개 전부 구현 완료**, 명시적 미착수 설계 항목은 **6.2-B SP-initiated SLO 단 하나**. (직전 SUMMARY가 적은 "Next = commit/push · README 3/37"은 실제로는 커밋 완료 + 37/37 — stale.)
 
 ## 최종 갱신
-- 일자: 2026-06-06 · 갱신자: RP 전체 콜백 흐름(B안) 완료 세션
-- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SC 2025.1.1 / Jackson 3 — 스택 무변경.
+- 일자: 2026-06-06 · 갱신자: master 정합 점검 + SUMMARY 재작성 세션
+- 대상 브랜치: master(`241e350`) · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SS7 / SC 2025.1.1 / Jackson 3 — 스택 무변경.
 
-## 직전에 한 것 (Done)
-**B안(confidential demo-rp 전체 콜백 e2e) 구현 — ✅ 받는 쪽 통과 확인(2026-06-06, 양성 1 + 음성 3).** 변경 파일:
-| 파일 | 내용 |
+## 직전에 한 것 (Done) — master 트리 실재로 확인
+| 영역 | 트리 실재 |
 |---|---|
-| `services/auth-server/.../config/LocalDemo.java` | demo-rp confidential 클라이언트 추가(CLIENT_SECRET_POST, requireProofKey(false), AC+RT, openid/profile, redirect `…:8082/api/v1/auth/oauth/demo-rp/callback`). javadoc 3종으로 갱신. |
-| `services/auth-server/.../config/SmokeClientSeeder.java` | 동일 demo-rp 등록(local↔prod 스모크 자산 일치). javadoc(로드맵→등록완료). |
-| `services/auth-server/src/test/.../e2e/OidcRpFullCallbackTest.java` (신규) | `@SpringBootTest(RANDOM_PORT)` `@ActiveProfiles("local")`. RP 스택 수기 조립(ProviderRegistry/OAuthClient/InMemoryOAuthStateStore/포착 resolver/echo issuer/no-op OidcMetadataResolver/IdTokenVerifier) → `OAuthLoginService.callback()` 전 구간. 양성 1 + 음성 3(unknown-state·provider-mismatch·wrong-secret). |
-| 문서 | `AUTH_SERVER.md` §4·§6·§6.5·§8 · `OIDC_HARDENING.md` §7(B안 완료) · `PITFALLS §5`(+빠른참조 2행) · `HANDOFF §6` · 스펙 ✅✅ARCHIVED. |
+| 게이트웨이 런타임 점검 | `FallbackController` + `PrincipalKeyResolverTest`/`FallbackControllerTest`/`GatewayCorsPreflightTest` 커밋됨 |
+| OIDC 풀루프 | A안 검증기 e2e `OidcRpLinkageTest` + B안 `OidcRpFullCallbackTest`(confidential `demo-rp`, `client_secret_post`) + `demo-rp` 시드(LocalDemo·SmokeClientSeeder) — `NEXT_RP_IDTOKEN_LINK` ✅✅ |
+| **kind 라인(이번 지정 타깃)** | compose 풀 그린 + **kind 첫 배포 6파드 `1/1 Running`** + `SmokeClientSeeder`/`SmokeClientDbAuthFlowTest`로 DbAuthenticator 운영 인증 경로 kind 실증 — `NEXT_LOCAL_COMPOSE_AND_KIND`·`NEXT_KIND_AUTH_TOKEN_FLOW` ✅✅ |
+| SSO 전 갈래 | A 중앙 로그아웃/logout-all · B-OIDC RP 강화 · B-SAML SP(`framework-saml-sp` + redis AuthnRequest + IdP-initiated SLO) · C Authorization Server(`services/auth-server`) · 게이트웨이 이중 발급기 — 전부 ✅ |
+| 강인증/키 | 서명키 회전 스케줄러 ✅ · `framework-webauthn`(SS7 `http.webAuthn()` 래핑, 신규모듈 체크리스트 4종 충족) ✅ · MFA webauthn factor ✅ |
+| 문서/배포 | 모듈 README **37/37** `실전 사용 예 (코드)`(펜스 균형 OK, Jackson 3 위반 0) · k8s `deploy/`(kustomize base+overlays + ingress/networkpolicy/pdb/servicemonitor/hpa/hardening) · docker/compose · `deploy/cicd/Jenkinsfile`+`ci-cd.yml` |
 
 ## 현재 상태 (적용/검증)
-- **정적 교차검증 완료**: brace/paren 균형 OK · `com.fasterxml.jackson` 미사용 OK · SS7 API 권위 확인(`ClientAuthenticationMethod.CLIENT_SECRET_POST` 존재 · `ClientSettings.builder()` 기본 `requireProofKey(true)` → false override 정당) · RP SPI 시그니처 전부 실소스 대조.
-- **✅ 받는 쪽 통과 확인(2026-06-06)**: `:services:auth-server:test`(`OidcRpFullCallbackTest` 양성 1 + 음성 3) + `spotlessApply`. (작성환경 Maven Central·Gradle 배포서버 차단 → 실행은 Chae 측.)
-- **외부 결합 없음**: discovery off(no-op) + `userInfoUri` 미설정으로 콜백이 검증된 id_token 클레임만으로 신원을 구성(초안의 `/userinfo`/discovery 라이브 결합 → 받는 쪽 실행에서 콜백 `BusinessException` 확인 후 제거).
+- **master 트리 = 위 전부 반영.** SUMMARY/planning 분류만 lag 였음 — 이번에 SUMMARY 정합화.
+- **이번 정적 교차검증**: 모듈 README 펜스 37/37 균형 · `com.fasterxml.jackson` 위반 0(`archtest` 1건은 "금지 규약" 설명문) · `framework-webauthn` 신규모듈 체크리스트 4종(settings include · archtest testImpl · `.imports` · 가드 테스트 `WebAuthnAutoConfigurationTest`) 충족 · `FRAMEWORK_MODULES.md` ✅ 등재 확인.
+- **housekeeping**: 완료 스펙 5개를 `planning/ → archive/` 이동(아래 Next 1-B, `git mv` 블록 핸드오프 메시지 참조). `NEXT_SSO`는 6.2-B 미착수분 보유 → planning 유지. `NEXT_WEBAUTHN`은 구현 완료지만 배너가 "착수"라 배너 갱신 후 이동(결정 보류).
 
 ## 바로 다음 할 일 (Next)
-1. **commit/push** — 이번 변경(demo-rp 2개 시드 + OidcRpFullCallbackTest + 문서 6건) + 이전 누적분(게이트웨이 런타임 점검 · smoke 시더).
-2. **모듈 README `## 실전 사용 예 (코드)` 롤아웃**(트래커 `docs/NEXT_README_SAMPLES.md` — 있으면 그곳; 없으면 신규): security·redis·session 완료, 나머지 프레임워크 모듈 큐. 실제 검증된 타입/SPI 명만, 날조 클래스명 금지.
-- 백로그: SP-initiated SLO(6.2-B), Passwordless/WebAuthn(6.4), K8s 배포 YAML/addons(metrics-server/Prometheus/ingress). (CI 게이트 + 멀티모듈 Jacoco 집계는 2026-06-04 완료.)
+1. **6.2-B SP-initiated SLO** — 유일한 명시적 미착수 설계 항목(`NEXT_SSO §6.2-B`). 무상태 멀티파드: 로그인 시 SAML 로그아웃 주체(`{registrationId, nameId, sessionIndex}`)를 redis 영속(6.1 코덱 패턴) → 별도 브라우저 엔드포인트(`GET /saml2/logout`)에서 무상태 복원 후 IdP 로 `LogoutRequest`. **명시 착수 결정 시 진행.**
+   - 1-B. **planning housekeeping** — 완료 5스펙 archive 이동(`git mv`). `NEXT_SSO` 6.2-B 추출+archive 여부, `NEXT_WEBAUTHN` 배너 갱신+이동 여부 결정.
+2. (선택) README `실전 사용 예` 품질 2차 패스 — 37/37 섹션 존재·펜스 균형은 확인됨. 내용 정확도(타입/SPI 명) 표본 점검만 남음.
+- 백로그: SP-SLO 외 실질 잔여 거의 없음. (CI 게이트 + 멀티모듈 Jacoco 2026-06-04 완료 · k8s addons 반영됨.)
 
-## 이번 세션에서 새로 박힌 함정/원칙 (되돌리지 말 것 — 전부 PITFALLS §5)
-- **RANDOM_PORT OIDC RP e2e: discovery·userinfo 가 죽은 issuer 포트(9000)를 친다** → authorization/token/jwks 를 라이브 명시 + discovery off(`ensureResolved` no-op) + `userInfoUri` 미설정(콜백이 검증된 id_token 클레임만으로 신원 구성, AS `/userinfo` resource-server 결합 제거). issuer 는 비우면 `IdTokenVerifier` 가 iss 체크 스킵 → `AuthorizationServerSettings.getIssuer()` 로 핀.
-- **confidential RP 전체 콜백 = `client_secret_post`+PKCE 불요** → AS 클라이언트 `CLIENT_SECRET_POST`+`requireProofKey(false)`. `ClientSettings.builder()` 기본이 `requireProofKey(true)` 라 명시 override 필수.
-- **`ProviderRegistry.require` 는 OIDC 라도 `user-name-attribute` 요구** — 수기 Provider 구성 시 `userNameAttribute="sub"` 누락 주의.
-- **MockMvc-민 code ↔ 실HTTP 토큰교환 호환**: 둘 다 동일 컨텍스트의 공유 `JdbcOAuth2AuthorizationService`(H2)를 쓰므로 전송 방식이 달라도 code 가 조회된다(RANDOM_PORT 컨텍스트=임베디드 서버=MockMvc 컨텍스트).
+## 이번 세션 원칙 (되돌리지 말 것)
+- **HANDOFF_SUMMARY/planning 분류는 master 트리보다 뒤처질 수 있다.** 세션 시작 시 SUMMARY 텍스트가 아니라 **master 트리(파일 실재)**로 상태를 확정한다 — "Next" 항목을 그대로 믿고 끝난 작업을 재구현하지 말 것.
+- 완료 NEXT 스펙은 `archive/`로 이동(프로젝트 규칙). `planning/` 잔류 = "미정리"이지 "미완"이 아님 — **배너(✅✅ARCHIVED/완료) 확인이 1차 신호**, 본문 하위항목 상태가 2차 확인.
 <!-- 갱신 끝 -->
