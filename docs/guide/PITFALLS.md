@@ -151,6 +151,7 @@
 | `relation "users" already exists` / Flyway 체크섬 불일치 | §9 user↔admin DB 분리(admindb) |
 | `ImagePullBackOff` (로컬 kind/minikube, 4파드 전부) | §9 local overlay `images.newName` 미지정 → 노드 적재명(`si-msa/...`)과 렌더명(`registry.example.com/...`) 불일치 |
 | `ErrImagePull` / `unauthorized` (harbor.local, dev apply) | §9 비공개 Harbor → `imagePullSecrets`(harbor-cred)+default SA; 인증과 노드 이름해소 별개 |
+| `no matches for kind "ServiceMonitor"` (dev/local apply) | §9 Prometheus Operator CRD 미설치 → overlay 에서 ServiceMonitor `$patch: delete`(S4 설치 후 복원) |
 | Flyway `Connect timed out` / `SQLState 08001` (앱만 CrashLoop, gateway 만 생존) | §9 NetworkPolicy 집행 클러스터(Docker Desktop kind)에서 postgres 수신 허용 규칙(`allow-postgres-from-apps`) 누락 |
 | `FATAL: database "X" does not exist` / `SQLState 3D000` (특정 서비스만 CrashLoop) | §9 initdb 1회성 — 기존 PG 엔 미생성. 수동 `CREATE DATABASE` 또는 PG 재초기화 |
 | `docker exec desktop-worker` 안 됨 / `kind load` 안 먹음 | §9 Docker Desktop kind 모드 — 노드 비노출·kind CLI 무관, 이미지는 registry-mirror 가 자동 노출(적재 불필요) |
