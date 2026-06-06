@@ -20,6 +20,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.Customizer;
@@ -42,6 +43,7 @@ import org.springframework.security.oauth2.server.authorization.token.JwtEncodin
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
 /**
  * Authorization Server 핵심 설정.
@@ -88,8 +90,14 @@ public class AuthorizationServerConfig {
         http.securityMatcher(authorizationServer.getEndpointsMatcher())
                 .with(authorizationServer, as -> as.oidc(Customizer.withDefaults())) // OIDC 활성
                 .authorizeHttpRequests(a -> a.anyRequest().authenticated())
-                // 미인증 사용자 대면 요청은 우리 로그인 페이지로.
-                .exceptionHandling(e -> e.authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
+                // 로그인 폼 리다이렉트는 브라우저(text/html) 요청에만 한정한다(SS7 정본 멀티체인 샘플 패턴).
+                //   ⚠️ 무조건 authenticationEntryPoint(LoginUrl) 로 두면 ExceptionHandlingConfigurer 가 그 디폴트를
+                //      그대로 반환하면서, AS configurer.init() 이 토큰/introspection/revocation 엔드포인트에 심어둔
+                //      HttpStatusEntryPoint(401) 매처-매핑을 통째로 덮어쓴다 → /oauth2/token 등 API 가 401 대신
+                //      302(→/login) 로 응답(=client_credentials 토큰 발급이 로그인 폼으로 튕김). (PITFALLS §9)
+                .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
+                        new LoginUrlAuthenticationEntryPoint("/login"),
+                        new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
                 // /userinfo 등 보호 리소스는 자체 발급 JWT(access_token)로 인증.
                 .oauth2ResourceServer(rs -> rs.jwt(Customizer.withDefaults()));
         return http.build();
