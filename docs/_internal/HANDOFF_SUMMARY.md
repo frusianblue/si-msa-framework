@@ -6,45 +6,42 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**✅ 로컬 Docker Compose 풀 그린 달성(2026-06-05) → 현재 진행 트랙 = K8s(kind) 배포 테스트.** compose `up` 을 순차 트리아지하며 멀티서비스 배포정합 결함 4건을 발견·수정해 6컨테이너 전부 `(healthy)` 확인. **검증 완료 환경은 compose 까지.** 그 뒤 kind 배포를 위해 overlays/local 정합 패치(ⓐadmindb·ⓒⓓ파일경로) + auth-server 운영 인증기(`DbAuthenticator`) 를 **작성**했으나, **아직 빌드/배포/검증 0** — kind 클러스터는 떠 있지만(3 노드) 비어 있다. **다음 섹션 = 이 자산을 kind 에 처음 올려보는 단계.** ⊕ 이번 세션 추가: kind 첫 배포 전 정적 점검에서 **이미지명 정합 결함 1건 선포착·수정** — local overlay `images:` 가 tag만 바꿔 렌더명이 `registry.example.com/...:local` 로 남아 노드 적재명 `si-msa/...:local`(compose 빌드/HANDOFF 적재명)과 불일치 → 첫 `apply` 시 4파드 `ImagePullBackOff` 확정. `images.newName` 으로 short name 통일(검증: 변환기 재현으로 4서비스 전부 노드 적재명 일치 확인). 동반 문서 갱신: `LOCAL_K8S_TEST.md`·`LOCAL_K8S_ENV_SETUP.md`·`PITFALLS §9`(+자가진단 1행). 트리아지 상세는 `HANDOFF.md` §6(누적 정본)·`PITFALLS.md` §9, 착수 순서는 `_internal/planning/NEXT_LOCAL_COMPOSE_AND_KIND.md` §3~§4.
+**✅ kind 첫 배포 풀 그린 달성(2026-06-06) — kind(=Docker Desktop kind 모드, 3노드 v1.34.3) 위에 4서비스+PG+Redis 를 prod 프로파일로 올려 6파드 전부 `1/1 Running`.** compose 까지였던 검증선이 **kind 까지 확장**됐다. 실배포를 순차 트리아지하며 정합 결함 **3건**(① 이미지명 `newName` ② NetworkPolicy postgres allow ③ admindb initdb 1회성)을 발견·수정. AS `/actuator/health/readiness` UP · OIDC discovery(issuer `http://auth-server:9000`) · authdb 전 Flyway 테이블(oauth2_*·auth_signing_key·app_user·roles·framework_lock) · `app_user` 에 `tester` seed 까지 확인. **다음 섹션 = OAuth2 클라이언트 등록 → authorization_code+PKCE 토큰 플로우(=DbAuthenticator 운영 인증 경로 실증).** prod 에 등록 클라이언트 0건은 **설계**(LocalDemo `@Profile("local")` → prod 비활성). 착수 스펙 = `_internal/planning/NEXT_KIND_AUTH_TOKEN_FLOW.md`, 함정 `PITFALLS.md §9`.
 
 ## 최종 갱신
-- 일자: 2026-06-05 · 갱신자: compose 그린화 → K8s 배포 트랙 전환 세션 (⊕ 후속: kind 배포 전 이미지명 정합 정적 점검·수정)
+- 일자: 2026-06-06 · 갱신자: kind 첫 배포 검증 완료 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SC 2025.1.1 / Jackson 3 — 스택 무변경.
 
 ## 직전에 한 것 (Done)
-**compose 트리아지로 배포정합 결함 4건 발견·수정 → compose 풀 그린(받는 쪽 검증 ✅).** 표(상세=PITFALLS §9):
-| # | 증상 | 원인 | 수정(적용 형태) | kind 전파 |
-|---|---|---|---|---|
-| 1 | auth-server 만 `unhealthy`→의존 서비스 부팅 실패 | AS 자체 보안체인이 `/actuator/**` permitAll 누락 → health 302/401 | `AuthorizationServerConfig` 1줄 permitAll (**앱 코드**) | ✅ 자동(같은 이미지) |
-| 2 | user/admin `FileNotFoundException: ./logs/*.log` | logback-common 파일 appender 가 비루트/읽기전용 컨테이너 `./logs` 못 씀 | `LOG_DIR=/tmp` (**env**: compose + k8s hardening) | ✅ 자동(hardening 공통 패치) |
-| 3 | user/admin `AccessDeniedException: /application/uploads` | local FileStorage 가 `./uploads` 생성 시도(동근원) | `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads` (**env**) | ⚠️ compose 만 — k8s 는 overlays 에서 admin 별도 |
-| 4 | user/admin `TokenStore` 빈 없음 | prod `token-store.type=redis` 인데 `framework-redis` 미의존(삼단 토글 위반) | `build.gradle` 에 `framework-redis` 추가 (**모듈**) | ✅ 자동(같은 이미지) |
+**kind 첫 배포 실행 → 6파드 그린.** 실배포 트리아지 3건(상세=PITFALLS §9):
+| # | 증상 | 원인 | 수정(적용 형태) |
+|---|---|---|---|
+| 1 | `apply` 후 4앱 파드 `ImagePullBackOff` | `overlays/local` 의 `images:` 가 `newTag` 만 → 렌더명 `registry.example.com/...:local` 잔존(노드 적재명 `si-msa/...:local` 과 불일치) | `images.newName: si-msa/<svc>` (**overlay**) |
+| 2 | auth/user/admin `CrashLoop`, Flyway `Connect timed out`(SQLState 08001), gateway 만 생존 | **Docker Desktop kind 는 NetworkPolicy 집행** + `default-deny-ingress` 에 postgres 수신 허용 규칙 부재 | `overlays/local/postgres.yaml` 에 `allow-postgres-from-apps` (**overlay**) |
+| 3 | admin-service `CrashLoop`, `FATAL: database "admindb" does not exist`(3D000) | postgres initdb 는 **PGDATA 빈 최초 1회만** 실행 → admindb 줄 추가 전 떠 있던 PG 엔 미생성 | (즉시)`CREATE DATABASE admindb OWNER siuser` 또는 PG 재초기화. **신규 클러스터엔 initdb 가 자동 생성**(검증됨) |
 
-- 1·2·4 는 같은 이미지/공통 패치라 kind 자동 적용, 3 만 k8s overlays 에서 admin 에 별도 반영 필요.
-- 문서 동반 갱신: PITFALLS §9(5항목+자가진단표 5행)·compose README·AUTH_SERVER.md §3·HANDOFF §6.
-- **추가(2026-06-05, 작성/전달만 — 빌드·배포·테스트 미실행) — auth-server 운영 인증기**: prod 엔 Authenticator 빈이 없던 결함(②)을 `DbAuthenticator`(authdb `app_user`, `@Profile("!local")`+`@ConditionalOnMissingBean`)로 해소 → kind 를 **운영(prod)처럼** 띄워 실 인증 경로 검증 가능. V7 seed `tester/Test1234!`({bcrypt}). local=demo/demo(LocalDemo) 그대로. overlays/local 에 ⓐadmindb·ⓒadmin업로드·ⓓuser로컬저장 패치 동반. 신규/변경: V7·AppUser·AppUserMapper(+xml)·DbAuthenticator·ProdAuthenticatorConfig·@MapperScan·DbAuthenticatorTest·overlays(postgres/kustomization).
+- **환경 정정(중요)**: 핸드오프의 "kind 3노드"는 실제론 **Docker Desktop 의 내장 kind 모드**(컨텍스트 `docker-desktop`, 노드 `desktop-control-plane/worker/worker2`). `kind` CLI/`kind load` **불사용** — 노드가 `docker ps` 에 안 보이고(노드명≠컨테이너명), 이미지는 `desktop-containerd-registry-mirror` 가 로컬 docker 이미지를 자동 노출(테스트 파드 `si-msa/gateway:local` 1/1 Running 으로 실증) → **적재 단계 자체가 불필요**.
+- 동반 문서 갱신: `PITFALLS §9`(+자가진단 행)·`LOCAL_K8S_TEST.md`(트러블슈팅)·`LOCAL_K8S_ENV_SETUP.md`·`K8S_ADDONS.md`(kind 집행 정정)·`base/common/networkpolicy.yaml` 주석·`overlays/local/postgres.yaml`/`kustomization.yaml`.
 
 ## 현재 상태 (적용/검증)
-- **✅ compose = 받는 쪽 검증 완료**(유일하게 실제 검증된 환경): `up -d --build` 후 6컨테이너 전부 `(healthy)`. 부팅 전 구간(logging→file→Flyway(sidb/admindb)→security TokenStore) 통과.
-- **🟡 k8s 자산 = 작성/정적검사만, kind 미배포·미검증**: `deploy/k8s/base`+`overlays/local` 매니페스트는 이미 레포에 존재(이전 세션). 이번에 overlays/local 패치(ⓐadmindb·ⓒadmin업로드·ⓓuser로컬저장) + auth-server `DbAuthenticator`(V7 `app_user`+tester seed)를 **작성**. YAML/XML/brace/해시 정적검증만 했고 **빌드·`kind load`·`apply`·스모크는 전부 미실행**.
-- **🟡 auth-server 변경(V7·DbAuthenticator·@MapperScan·테스트) = 받는 쪽 빌드/테스트 미실행** — 마지막 zip 전달만 됨.
-- **현재 인프라**: compose 스택 정지(필요 시 재기동), **kind 클러스터 Active(3 노드, v1.34.3)·deployment/pod 0(빈 상태)**.
-- 작성환경 Maven Central·릴리스 CDN 차단 → 빌드/kind/kubectl 직접 실행 불가(정적 작성 + 받는 쪽 실행).
+- **✅ kind 첫 배포 = 받는 쪽 검증 완료**(이번 세션): si-msa ns 6파드(gateway/auth-server/user-service/admin-service/postgres/redis) 전부 `1/1 Running`, RESTARTS 0. AS readiness UP·discovery 정상·authdb Flyway 전 테이블·`app_user` `tester` 1행.
+- **✅ compose = 그린(회귀용)**.
+- **🟡 미실증 = OAuth2 클라이언트 등록 → 토큰 플로우**: prod 클라이언트 0건(LocalDemo `@Profile("local")`, **설계**)이라 authorization_code 진입 불가. DbAuthenticator 는 **데이터·부팅까지** 확인, **실 로그인(인증 경로)** 은 클라이언트 등록 후 검증 예정.
+- **현재 인프라**: Docker Desktop kind Active(3노드 `desktop-*`, v1.34.3), si-msa ns 6파드 Running. compose 정지 권장(8000/8080/8081/9000 포트 충돌 방지). 재현 한 방 = `kubectl delete -k … → apply -k …`(신규 PG 라 initdb 가 admindb 까지 자동 생성 — 검증됨).
+- 작성환경 Maven Central·릴리스 CDN 차단 → 빌드/kubectl 직접 실행 불가(정적 작성 + 받는 쪽 실행).
 
-## 바로 다음 할 일 (Next) — kind 첫 배포 (상세 `_internal/planning/NEXT_LOCAL_COMPOSE_AND_KIND.md` §3~§4)
-> 정합 자산은 **작성 끝(미검증)**. 다음 섹션은 이걸 kind 에 **처음 올려서 검증**하는 단계. compose 는 이미 그린이라 회귀용으로만.
-1. **받는 쪽 빌드/테스트** — 마지막 zip 적용 후 `:services:auth-server:test`(`DbAuthenticatorTest` 5건) + `spotlessApply`. 4서비스 이미지 재빌드(auth-server 는 V7/DbAuthenticator 로 필수).
-2. **kind 적재·배포** — (이미지명 정합 수정 반영) `kind load docker-image si-msa/<svc>:local`(4종, compose 빌드 이미지 **재빌드 없이 그대로 재사용 가능** — local overlay 가 `newName` 으로 short name 으로 렌더) → `kubectl apply -k deploy/k8s/overlays/local` → `kubectl -n si-msa get pods -w`. (overlays/local: ServiceMonitor 제거됨, 인-클러스터 postgres(authdb/sidb/admindb)+redis, `si-msa/<svc>:local` IfNotPresent.) ⚠️ kindnet 은 NetworkPolicy 비강제라 통과하지만, 강제 CNI(Calico/Cilium) 로 바꾸면 postgres 수신 허용 규칙 부재로 DB 차단됨(추후 `allow-postgres-from-apps` 추가 필요).
-3. **스모크** — 전 파드 Ready(프로브=actuator permit). AS 폼 로그인 **`tester`/`Test1234!`** → authorization_code+PKCE → 토큰(운영 인증기 DbAuthenticator 경로). admin=admindb Flyway 통과, user/admin 업로드 에러 없음. 막히면 `kubectl logs`/`describe` 스샷 트리아지.
-- 참고: kind 절차/트러블슈팅 `docs/ops/LOCAL_K8S_TEST.md`, 애드온(metrics-server/Prometheus/ingress) `docs/ops/K8S_ADDONS.md`.
+## 바로 다음 할 일 (Next) — OAuth2 클라이언트 등록 → 토큰 플로우 (스펙 `_internal/planning/NEXT_KIND_AUTH_TOKEN_FLOW.md`)
+> prod 클라이언트 0건은 설계(프로젝트 책임). authorization_code 를 태우려면 클라이언트 등록이 선행.
+1. **(권장) prod-안전 smoke/demo 클라이언트 시더 추가** — `@Profile("local")` 아닌 별도 플래그(예: `framework.auth.seed-smoke-client`, 기본 false)로 가드 → **DbAuthenticator 불변**, `RegisteredClientRepository.save()` 로 public+PKCE 클라이언트 등록. ⚠️ **SQL INSERT 수동 등록 금지** — `client_settings`/`token_settings` 가 SAS 전용 Jackson(`@class` 타입 메타) JSON 이라 reader 가 역직렬화에서 깨진다. 반드시 `repo.save()`. 로드맵 `demo-rp`(confidential) 등록과 겹치므로 출발점으로 재사용.
+2. **(대안/빠른 확인) 클라이언트 없이 DbAuthenticator 만**: `/login` 폼 POST(CSRF 추출)로 `tester`/`Test1234!` 인증 302 확인(토큰 X, 인증 O).
+3. **스모크 마감**: authorization_code+PKCE → 토큰 → DbAuthenticator 운영 경로 실증. issuer 가 in-cluster 명(`http://auth-server:9000`)이라 브라우저 redirect 는 port-forward 기준 보정 필요.
+- 참고: kind 절차/트러블슈팅 `docs/ops/LOCAL_K8S_TEST.md` §8, 애드온(metrics-server/Prometheus/ingress) `docs/ops/K8S_ADDONS.md`, RP 연계(완료) `_internal/planning/NEXT_RP_IDTOKEN_LINK.md`.
 
 ## 이번 세션에서 새로 박힌 함정 (되돌리지 말 것 — 전부 PITFALLS §9)
-- AS 가 자체 `SecurityFilterChain` 정의 시 `/actuator/**` permitAll 을 **직접** 넣어야 함(framework-security 백오프되며 규약 사라짐). 점검: `curl -i …/actuator/health` 302/401.
-- 비루트+하드닝(읽기전용 루트FS) 컨테이너에선 **작업디렉터리 하위 쓰기경로(logs/uploads/임시) 전부 `/tmp`(emptyDir)로** 리다이렉트. 운영 로그/감사는 stdout 수집이 정석.
-- **백엔드 토글은 모듈 의존과 한 쌍**: `token-store.type=redis`(임의 백엔드)를 켜면 그 구현 모듈(`framework-redis`)을 build.gradle 에 반드시 추가(삼단 토글 tier1). 설정만 바꾸면 빈 없어 기동 실패.
-- "앱 기동 로그 정상 ≠ 컨테이너 healthy" — healthcheck 실패는 앱 로그가 아니라 **healthcheck 가 때리는 경로의 응답**(302/401/connection)을 먼저 본다.
-- 핵심 교훈: 멀티서비스는 **실제 컨테이너로 한 번 띄워봐야** 드러나는 정합 결함이 있다(단위/슬라이스 테스트로는 안 잡힘). k8s 전 compose 게이트가 그 역할.
-- **로컬(레지스트리 없는 kind/minikube) overlay 는 이미지 name 까지 노드 적재명과 1:1**: kustomize `images:` 는 `newTag` 만 주면 name(`registry.example.com/...`)이 그대로 남아 노드 적재 short name(`si-msa/...`)과 불일치 → `ImagePullBackOff`. `newName` 으로 가짜 접두어를 떼야 함. 점검: `kubectl -n si-msa get deploy -o jsonpath='{..image}'` vs `crictl images | grep si-msa`. (이번 세션 정적 점검 선포착.)
-- **Docker Desktop 의 kind 모드는 NetworkPolicy 를 집행한다**(standalone kind=kindnet 비집행과 다름): `default-deny-ingress` 가 앱→postgres:5432 를 막아 Flyway `Connect timed out`(08001) → auth/user/admin CrashLoop, gateway 만 생존. `overlays/local/postgres.yaml` 에 `allow-postgres-from-apps`(name=postgres, from component=service, TCP 5432) 추가로 해소. 증상이 `Connect timed out`/08001 이면 인증·DNS 가 아니라 L3/4 차단=NetworkPolicy. (이번 세션 kind 첫 배포 실배포에서 겪음.)
+- **환경: 핸드오프 "kind" = Docker Desktop kind 모드.** 노드가 `docker ps` 에 안 보임(노드명≠컨테이너명) → `docker exec <node>`/`kind load` 불가. 이미지는 `desktop-containerd-registry-mirror` 가 호스트 docker 이미지를 자동 노출(테스트 파드로 확인) → 적재 불필요. `kind create cluster` 동시 사용 금지(충돌).
+- **로컬 overlay 는 이미지 name 까지 노드 적재명과 1:1**: `images:` `newTag` 만으론 name(`registry.example.com/...`) 잔존 → `ImagePullBackOff`. `newName` 으로 short name 통일. 점검: `kubectl -n si-msa get deploy -o jsonpath='{..image}'`.
+- **Docker Desktop kind 는 NetworkPolicy 집행**(standalone kindnet 비집행과 다름): 인-클러스터 의존(postgres 등)마다 `default-deny` 뚫는 allow 1:1 필요. 증상이 `Connect timed out`/08001 이면 인증·DNS 가 아니라 L3/4 차단 신호.
+- **initdb 는 PGDATA 빈 최초 1회만**: 기존 PG 에 DB/스키마 추가는 자동 반영 안 됨 → 재초기화(휘발 PG=`rollout restart`) 또는 수동 `CREATE`. `database "X" does not exist`(3D000)가 신호.
+- **prod 클라이언트 0건 = 정상**: `LocalDemo` `@Profile("local")`. prod OAuth2 클라이언트 등록은 프로젝트 책임(다음 섹션).
+- (이전 세션 유지) AS 자체 체인엔 `/actuator/**` permitAll 직접 / 하드닝 컨테이너 쓰기경로 `/tmp` / `token-store.type` 과 모듈 의존 쌍 / "앱 로그 정상 ≠ healthy" / 멀티서비스는 실제로 띄워봐야 정합 결함 드러남.
 <!-- 갱신 끝 -->

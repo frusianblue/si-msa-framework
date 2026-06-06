@@ -1,6 +1,12 @@
 # NEXT — compose 그린(✅ 완료) → k8s overlays/local 정합 → kind 배포
 
-> **현재 위치(2026-06-05): compose 풀 그린 ✅ 검증 완료(유일하게 검증된 환경). k8s overlays/local 정합 패치 + auth-server DbAuthenticator 는 _작성만_ 됨(아직 kind 미배포·미검증). kind 클러스터는 Active(3 노드)이나 pod 0(빈 상태). → 이 문서 §4(kind 첫 배포)부터.**
+> # ✅✅ 완료 / ARCHIVED (2026-06-06) — compose·kind 첫 배포 모두 검증 끝
+> **이 스펙은 종료됐다.** compose 풀 그린(2026-06-05) → **kind 첫 배포 풀 그린(2026-06-06, si-msa ns 6파드 `1/1 Running`).**
+> kind 실배포 트리아지로 정합 결함 3건(① 이미지명 `newName` ② NetworkPolicy `allow-postgres-from-apps` ③ admindb initdb 1회성) 발견·수정 — 상세는 `../../guide/PITFALLS.md §9` 와 `HANDOFF_SUMMARY.md`(이번 세션). 환경은 standalone kind 가 아니라 **Docker Desktop kind 모드**였음(노드 비노출·`kind load` 불요·registry-mirror 자동노출·NetworkPolicy 집행).
+> **다음 섹션은 이 문서가 아니라 → `NEXT_KIND_AUTH_TOKEN_FLOW.md`**(OAuth2 클라이언트 등록 → authorization_code+PKCE 토큰 플로우 = DbAuthenticator 운영 인증 경로 실증).
+> _이 파일은 `docs/_internal/archive/` 로 옮겨도 무방(housekeeping). 아래는 착수~완료 시점의 원본 기록(이력 보존)._
+
+> ~~현재 위치(2026-06-05): compose 풀 그린 ✅ … kind 미배포·미검증.~~ → **kind 배포까지 완료(2026-06-06).**
 > 전체 맥락 `../HANDOFF.md` §6, 함정 `../../guide/PITFALLS.md` §9, compose 사용법 `../../../deploy/compose/README.md`,
 > kind 절차 `../../ops/LOCAL_K8S_TEST.md`, 애드온 `../../ops/K8S_ADDONS.md`.
 
