@@ -7,39 +7,34 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**✅ kind "OAuth2 클라이언트 등록 → 토큰 플로우"(=DbAuthenticator 운영 인증 경로) 완료(2026-06-06).** prod 클라이언트 0건(설계: LocalDemo `@Profile("local")`)을 깨지 않는 **옵트인 시더** `SmokeClientSeeder`(`@ConditionalOnProperty framework.auth.seed-smoke-client`, 기본 false)로 `demo-web`(public+PKCE)·`demo-service`(client_credentials)를 `repo.save()` 등록. 자동 테스트 `SmokeClientDbAuthFlowTest`(`@ActiveProfiles("smoketest")` = `!local`→DbAuthenticator+prod 하드닝 회피) 통과(sub=`tester`) **+ kind 실배포에서 `oauth2_registered_client` 2 rows 등록 확인**. 배포 중 드러난 **빌드/배포 함정 2건(코드 아님, 이미지 전달 문제)**: ① `.dockerignore` 부재 → 호스트 `build/`·`.gradle/` 누수로 stale jar(`.dockerignore` 신규로 영구 해소) ② 같은 `:local` 태그 + `IfNotPresent` → 노드 containerd 옛 digest 재사용(유니크 태그 `:local-N` 우회). 스펙 `NEXT_KIND_AUTH_TOKEN_FLOW.md` ✅ARCHIVED. **다음 섹션 = confidential `demo-rp` 전체 콜백 흐름**(`NEXT_RP_IDTOKEN_LINK §B`).
+**✅ RP 전체 콜백 흐름(B안) 완료(2026-06-06) — OIDC 풀루프를 검증기 수준(A안)에 이어 풀루프로 마감.** confidential `demo-rp`(`CLIENT_SECRET_POST`+`requireProofKey(false)`+consent 미요구, secret=`demo-rp-secret`)를 `LocalDemo`·`SmokeClientSeeder` 양쪽에 등록하고, 우리 RP `OAuthLoginService.callback()` 이 **authorize→code→토큰교환(`client_secret_post`)→`IdTokenVerifier` 검증→자체 토큰** 전 구간을 실제 구동하는 `OidcRpFullCallbackTest`(양성 1 + 음성 3) 신규. build.gradle 무변경(A안의 `testImplementation project(':framework:framework-oauth-client')` 재사용). 새 함정 3건(PITFALLS §5): ① RANDOM_PORT e2e 에서 discovery·userinfo 가 죽은 issuer 포트(9000)를 침 → authorization/token/jwks 라이브 명시 + discovery off(no-op) + `userInfoUri` 미설정(검증된 id_token 클레임만으로 신원 구성) ② confidential RP 교환=`client_secret_post`+PKCE 불요 → AS 클라이언트도 `CLIENT_SECRET_POST`+`requireProofKey(false)`(builder 기본 true override) ③ `ProviderRegistry.require` 는 OIDC 라도 `user-name-attribute`(="sub") 요구. 스펙 `NEXT_RP_IDTOKEN_LINK` ✅✅ARCHIVED(A·B 모두 완료).
 
 ## 최종 갱신
-- 일자: 2026-06-06 · 갱신자: smoke 시더 + DbAuthenticator 토큰 플로우 완료 세션
+- 일자: 2026-06-06 · 갱신자: RP 전체 콜백 흐름(B안) 완료 세션
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SC 2025.1.1 / Jackson 3 — 스택 무변경.
 
 ## 직전에 한 것 (Done)
-**A안(prod-안전 smoke 시더) 구현 → 자동 테스트 + kind 실배포 검증 완료.** 변경 파일:
+**B안(confidential demo-rp 전체 콜백 e2e) 구현 — 정적 검증 완료, 받는 쪽 실행 대기.** 변경 파일:
 | 파일 | 내용 |
 |---|---|
-| `services/auth-server/.../config/SmokeClientSeeder.java` (신규) | 옵트인 시더. `@ConditionalOnProperty(framework.auth.seed-smoke-client, havingValue=true)`(기본 off) + `ApplicationRunner` 가 `findByClientId==null` 일 때만 `repo.save()`(멱등). demo-web=public+PKCE+AC+RT+openid/profile, demo-service=client_secret_basic+client_credentials+api.read. |
-| `services/auth-server/.../resources/application.yml` | `framework.auth.seed-smoke-client: ${FRAMEWORK_AUTH_SEED_SMOKE_CLIENT:false}` 노출. |
-| `services/auth-server/src/test/resources/application-smoketest.yml` (신규) | `!local`+플래그 on+H2(`authdb_smoke`) — prod 하드닝 회피하며 DbAuthenticator 활성. |
-| `services/auth-server/src/test/.../e2e/SmokeClientDbAuthFlowTest.java` (신규) | 시더 등록 단언 + `tester` DbAuthenticator authorization_code+PKCE → access/id_token(sub=tester) + demo-service client_credentials. **받는 쪽 통과 확인됨.** |
-| `deploy/k8s/overlays/local/kustomization.yaml` | `auth-server-config` ConfigMap 패치로 `FRAMEWORK_AUTH_SEED_SMOKE_CLIENT: "true"`. |
-| `.dockerignore` (신규) | `COPY . .` 가 호스트 `build/`·`.gradle/` 를 안 담도록 — 이미지 빌드 hermetic 화(stale jar 영구 차단). |
-| 문서 | `AUTH_SERVER.md` §6.5(절차 + apply-k/노드캐시 주의)·§8(검증 완료) · `PITFALLS §1`(.dockerignore)·`§9`(노드 캐시 함정·시더 옵트인) · 스펙 ✅ARCHIVED. |
+| `services/auth-server/.../config/LocalDemo.java` | demo-rp confidential 클라이언트 추가(CLIENT_SECRET_POST, requireProofKey(false), AC+RT, openid/profile, redirect `…:8082/api/v1/auth/oauth/demo-rp/callback`). javadoc 3종으로 갱신. |
+| `services/auth-server/.../config/SmokeClientSeeder.java` | 동일 demo-rp 등록(local↔prod 스모크 자산 일치). javadoc(로드맵→등록완료). |
+| `services/auth-server/src/test/.../e2e/OidcRpFullCallbackTest.java` (신규) | `@SpringBootTest(RANDOM_PORT)` `@ActiveProfiles("local")`. RP 스택 수기 조립(ProviderRegistry/OAuthClient/InMemoryOAuthStateStore/포착 resolver/echo issuer/no-op OidcMetadataResolver/IdTokenVerifier) → `OAuthLoginService.callback()` 전 구간. 양성 1 + 음성 3(unknown-state·provider-mismatch·wrong-secret). |
+| 문서 | `AUTH_SERVER.md` §4·§6·§6.5·§8 · `OIDC_HARDENING.md` §7(B안 완료) · `PITFALLS §5`(+빠른참조 2행) · `HANDOFF §6` · 스펙 ✅✅ARCHIVED. |
 
 ## 현재 상태 (적용/검증)
-- **✅ kind 실배포 = OAuth2 클라이언트 등록 + DbAuthenticator 토큰 플로우 검증 완료**: `oauth2_registered_client` 2 rows(demo-web/demo-service), 자동 테스트 통과.
-- **✅ kind 첫 배포 6파드 그린**(이전 세션) · **✅ compose 그린**(회귀용).
-- 현재 인프라: Docker Desktop kind, si-msa ns. auth-server 는 시더 포함 이미지(유니크 태그로 적재)로 기동 중.
-- 작성환경 Maven Central·릴리스 CDN 차단 → 빌드/kubectl 직접 실행 불가(정적 작성 + 받는 쪽 실행); 이번 검증은 받는 쪽(Chae) 실기동으로 완료.
+- **정적 교차검증 완료**: brace/paren 균형 OK · `com.fasterxml.jackson` 미사용 OK · SS7 API 권위 확인(`ClientAuthenticationMethod.CLIENT_SECRET_POST` 존재 · `ClientSettings.builder()` 기본 `requireProofKey(true)` → false override 정당) · RP SPI 시그니처 전부 실소스 대조.
+- **받는 쪽 실행 대기**: 작성환경 Maven Central·Gradle 배포서버 차단 → `:services:auth-server:test`/`spotlessApply` 는 Chae 측에서 실행.
+- **외부 결합 없음**: discovery off(no-op) + `userInfoUri` 미설정으로 콜백이 검증된 id_token 클레임만으로 신원을 구성(초안의 `/userinfo`/discovery 라이브 결합 → 받는 쪽 실행에서 콜백 `BusinessException` 확인 후 제거).
 
 ## 바로 다음 할 일 (Next)
-1. **commit/push** — 이번 변경(시더+.dockerignore+테스트+문서) + 이전 게이트웨이 런타임 점검 누적분.
-2. **다음 섹션 = confidential `demo-rp` 전체 콜백 흐름**(`NEXT_RP_IDTOKEN_LINK §B`): RP `OAuthClient.exchangeCodeForTokens`(`client_secret_post`). 이번 smoke 시더를 출발점으로 `demo-rp`(confidential) 등록 추가.
-- 백로그: 모듈 README 샘플 코드 롤아웃, CI 게이트 + Jacoco aggregate, SP-initiated SLO, WebAuthn, K8s addons(metrics-server/Prometheus/ingress).
+1. **commit/push** — 이번 변경(demo-rp 2개 시드 + OidcRpFullCallbackTest + 문서 6건) + 이전 누적분(게이트웨이 런타임 점검 · smoke 시더).
+2. **모듈 README 샘플 코드 롤아웃**(`NEXT_README_SAMPLES.md`): security·redis·session 완료, 나머지 모듈 큐.
+- 백로그: CI 게이트 + 멀티모듈 Jacoco aggregate, SP-initiated SLO(6.2-B), WebAuthn(6.4), K8s addons(metrics-server/Prometheus/ingress).
 
-## 이번 세션에서 새로 박힌 함정/원칙 (되돌리지 말 것 — 전부 PITFALLS)
-- **`.dockerignore` 부재 = 이미지 빌드 비결정 결함**(§1): `COPY . .` 가 호스트 `build/`·`.gradle/` 를 담아 컨테이너 Gradle 이 옛 산출물 up-to-date → stale jar. `--no-cache` 로도 안 고쳐짐(레이어 캐시만 무효화). → `.dockerignore` 로 hermetic. **컨테이너 이미지 빌드는 호스트 빌드 상태에 의존 금지 — 항상 소스 클린 빌드.**
-- **같은 `:local` 태그 재빌드 = 노드 캐시 함정**(§9): containerd 가 옛 digest 를 `IfNotPresent` 로 재사용 → `delete pod` 로도 안 바뀜. 진단=파드 imageID vs `docker images` digest 비교, 해결=유니크 태그(`:local-N`). 로컬 반복 빌드는 고정 태그보다 유니크 태그가 안전.
-- **이미지 검증은 `docker run --entrypoint sh <img> -c 'grep ...'`**(ENTRYPOINT 가 `java -jar` 라 `docker run <img> sh -c` 는 앱이 떠버림). `kubectl exec -- sh -c` 는 무관.
-- **ConfigMap 플래그는 `apply -k` 필요**: `rollout restart` 만으론 기존 ConfigMap 으로 떠서 새 env 안 들어감.
-- **prod 클라이언트 0건은 설계 — 옵트인 시더로 우회**(`framework.auth.seed-smoke-client`, 프로파일/DbAuthenticator 무변경). `oauth2_registered_client` SQL INSERT 금지(`repo.save()` 만).
+## 이번 세션에서 새로 박힌 함정/원칙 (되돌리지 말 것 — 전부 PITFALLS §5)
+- **RANDOM_PORT OIDC RP e2e: discovery·userinfo 가 죽은 issuer 포트(9000)를 친다** → authorization/token/jwks 를 라이브 명시 + discovery off(`ensureResolved` no-op) + `userInfoUri` 미설정(콜백이 검증된 id_token 클레임만으로 신원 구성, AS `/userinfo` resource-server 결합 제거). issuer 는 비우면 `IdTokenVerifier` 가 iss 체크 스킵 → `AuthorizationServerSettings.getIssuer()` 로 핀.
+- **confidential RP 전체 콜백 = `client_secret_post`+PKCE 불요** → AS 클라이언트 `CLIENT_SECRET_POST`+`requireProofKey(false)`. `ClientSettings.builder()` 기본이 `requireProofKey(true)` 라 명시 override 필수.
+- **`ProviderRegistry.require` 는 OIDC 라도 `user-name-attribute` 요구** — 수기 Provider 구성 시 `userNameAttribute="sub"` 누락 주의.
+- **MockMvc-민 code ↔ 실HTTP 토큰교환 호환**: 둘 다 동일 컨텍스트의 공유 `JdbcOAuth2AuthorizationService`(H2)를 쓰므로 전송 방식이 달라도 code 가 조회된다(RANDOM_PORT 컨텍스트=임베디드 서버=MockMvc 컨텍스트).
 <!-- 갱신 끝 -->

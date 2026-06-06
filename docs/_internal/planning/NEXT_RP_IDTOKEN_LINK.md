@@ -1,5 +1,17 @@
 # NEXT_RP_IDTOKEN_LINK.md — RP 연계(OIDC 풀루프 마감)
 
+> ## ✅✅ ARCHIVED (2026-06-06) — A안·B안 **모두 완료**
+> **B안(confidential `demo-rp` 전체 콜백 흐름) 완료(2026-06-06).** confidential `demo-rp`(`client_secret_post`, PKCE 불요)를
+> `LocalDemo`·`SmokeClientSeeder` 양쪽에 등록하고, 우리 RP `OAuthLoginService.callback()` 이 **authorize→code→토큰교환
+> (`client_secret_post`)→id_token 검증→자체 토큰** 전 구간을 실제로 돈다. 신규 `services/auth-server/.../e2e/
+> OidcRpFullCallbackTest`(양성 1 + 음성 3: unknown-state·provider-mismatch·wrong-secret). 새 함정(PITFALLS §5 등록):
+> RANDOM_PORT e2e 에서 `oidc.issuer` 만 두면 discovery 가 죽은 issuer 포트(9000)를 친다 → `oidc.discoveryUri`+엔드포인트
+> (authorization/token/jwks/userInfo)를 라이브 포트로 명시해 우회. confidential RP 교환은 `client_secret_post`+`requireProofKey(false)`.
+> _이로써 OIDC 전 구간(발급↔검증↔전체 콜백)이 검증기 수준(A)과 풀루프(B) 양쪽으로 닫혔다._
+>
+> ---
+
+
 > ## ✅ 완료 (2026-06-04, A안) — 받는 쪽 통과 확인
 > **A안(검증기 수준 풀루프) 구현 완료.** 우리 AS(`services/auth-server`)가 발급한 id_token 을 우리 RP 검증기
 > (`framework-oauth-client` 의 `IdTokenVerifier` + 실 `JwksKeyResolver`)가 그대로 검증 → **발급(AS)↔검증(RP)
@@ -99,7 +111,7 @@ RP 가 실제 authorize→callback 으로 AS 와 통신하는 충실한 e2e. **A
 - [x] 음성 3종(issuer/aud(clientId)/nonce 불일치)이 **`BusinessException(UNAUTHORIZED)`** 로 거부.
 - [x] 기존 `OidcIdTokenIssuanceTest`(2/2)·`TokenIssuanceRoundTripTest`(4/4) 회귀 유지.
 - [x] `spotlessApply` 적용(Palantir 포맷 게이트).
-- [ ] (선택/B안 — 백로그) confidential `demo-rp` 등록 + `OAuthLoginService` 전체 흐름 e2e.
+- [x] (B안 — 완료 2026-06-06) confidential `demo-rp` 등록 + `OAuthLoginService` 전체 콜백 흐름 e2e(`OidcRpFullCallbackTest`, 양성 1 + 음성 3).
 
 ---
 

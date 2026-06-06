@@ -38,10 +38,12 @@ import org.springframework.security.oauth2.server.authorization.settings.ClientS
  *       redirect_uri 는 RP 없이 curl 로 code 만 수령·토큰교환하는 kind 검증용 값(LocalDemo 와 동일 패턴).
  *   <li>{@code demo-service}: {@code client_secret_basic} + {@code client_credentials}(서버-서버 토큰 1줄 확인용 —
  *       단 이건 클라이언트 인증이지 {@code DbAuthenticator}(사용자 인증) 경로가 아니다).
+ *   <li>{@code demo-rp}: confidential + {@code client_secret_post} + {@code authorization_code}(+{@code refresh_token}),
+ *       scope {@code openid}/{@code profile}. 우리 RP({@code framework-oauth-client} 의 {@code OAuthLoginService})가
+ *       전체 콜백 흐름(authorize→code→토큰교환→id_token 검증)으로 연계되는 대상(NEXT_RP_IDTOKEN_LINK §B). PKCE 불요.
  * </ul>
  *
- * <p>로드맵 {@code demo-rp}(confidential, {@code client_secret_post}) 전체 콜백 흐름은 이 시더를 출발점으로 확장한다
- * (NEXT_RP_IDTOKEN_LINK §B).
+ * <p>{@link LocalDemo} 와 동일 식별자·설정으로 등록해 local 과 prod 의 스모크 자산을 일치시킨다.
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "framework.auth.seed-smoke-client", havingValue = "true")
@@ -75,6 +77,25 @@ public class SmokeClientSeeder {
                         .scope("api.read")
                         .build();
                 repo.save(svc);
+            }
+            // demo-rp: confidential + client_secret_post + authorization_code(+refresh). RP 전체 콜백 흐름 연계 대상.
+            //   PKCE 불요(requireProofKey false), consent 미요구. LocalDemo 의 demo-rp 와 동일 설정(local↔prod 스모크 자산 일치).
+            if (repo.findByClientId("demo-rp") == null) {
+                RegisteredClient rp = RegisteredClient.withId(UUID.randomUUID().toString())
+                        .clientId("demo-rp")
+                        .clientSecret(encoder.encode("demo-rp-secret"))
+                        .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
+                        .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                        .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
+                        .redirectUri("http://127.0.0.1:8082/api/v1/auth/oauth/demo-rp/callback")
+                        .scope(OidcScopes.OPENID)
+                        .scope(OidcScopes.PROFILE)
+                        .clientSettings(ClientSettings.builder()
+                                .requireProofKey(false)
+                                .requireAuthorizationConsent(false)
+                                .build())
+                        .build();
+                repo.save(rp);
             }
         };
     }

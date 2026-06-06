@@ -103,7 +103,7 @@ callback:   state 1회 소비(nonce 회수) → 토큰 교환(id_token 포함)
 - [ ] HS 서명 IdP 면 `client-secret` 길이 확인(HS256 ≥ 32 bytes)
 
 
-## 7. 사내 AS 와의 연계 검증 (✅ 완료, 2026-06-04)
+## 7. 사내 AS 와의 연계 검증 (✅ 완료 — A안 2026-06-04 · B안 2026-06-06)
 
 이 모듈의 `IdTokenVerifier` 는 외부 IdP 뿐 아니라 **우리 Authorization Server(`services/auth-server`)가 발급한
 id_token** 도 그대로 검증한다(JWKS RS256 · iss · aud⊇client-id · nonce · sub). **발급(AS)↔검증(RP) 양끝을 우리
@@ -116,6 +116,11 @@ roles(ROLE_USER)·nonce·auth_time + JWKS 캐시 히트) 2 + 음성(issuer/aud(c
 > ⚠️ 예외 타입: 이 모듈의 `IdTokenVerifier`/`JwksKeyResolver` 는 검증 실패를 `BusinessException(ErrorCode.Common.UNAUTHORIZED)`
 > 로 던진다 — AS 측 `ResourceServerJwtVerifier` 의 `io.jsonwebtoken.JwtException` 과 다르므로 음성 테스트 단언에서 혼동 금지.
 
-> 주의(전체 흐름 연계 시 = B안, 백로그): RP 의 코드 교환은 `client_secret`(client_secret_post) 방식이라, AS 의 public+PKCE
-> 클라이언트(`demo-web`)가 아니라 **confidential authorization_code 클라이언트**(`demo-rp`)가 필요하다. 검증기 수준
-> 연계(A안, 위 완료분)는 id_token 이 클라이언트 인증방식과 무관하므로 이 제약과 무관하다.
+> **✅ 전체 흐름 연계(B안) 완료(2026-06-06)**: RP 의 코드 교환은 `client_secret_post` 방식이라 AS 의 public+PKCE
+> 클라이언트(`demo-web`)가 아니라 **confidential authorization_code 클라이언트**(`demo-rp`, `CLIENT_SECRET_POST`+
+> `requireProofKey(false)`)가 필요하다. 이를 등록(`LocalDemo`·`SmokeClientSeeder`)하고, `services/auth-server` 의
+> `e2e/OidcRpFullCallbackTest` 가 이 모듈의 `OAuthLoginService.callback()` 으로 **authorize→code→토큰교환
+> (`client_secret_post`)→`IdTokenVerifier` 검증→자체 토큰** 전 구간을 실제 구동한다(양성 1 + 음성 3:
+> unknown-state·provider-mismatch·wrong-secret). RANDOM_PORT e2e 함정: discovery·userinfo 가 죽은 issuer 포트(9000)를
+> 치므로 endpoints 를 라이브 명시 + discovery off(no-op) + `userInfoUri` 미설정(검증된 id_token 클레임만으로 신원 구성,
+> AS `/userinfo` 결합 제거)(PITFALLS §5). 검증기 수준 연계(A안)는 id_token 이 클라이언트 인증방식과 무관하므로 이 제약과 무관하다.

@@ -59,6 +59,9 @@
 - **[겪음] JWT/AES 시크릿 prod 가드** — placeholder·약한키면 기동 실패(`JwtSecretSafetyGuard`/`AesMasterKeySafetyGuard`). 운영은 강한 키 env 주입.
 - **[겪음] SAML SP-initiated SLO ↔ 무상태 충돌** — IdP-initiated 우선, NameID 무상태 추출은 디코더 확장 필요.
 - **[겪음] 세션 모드: 컨트롤러 로그인은 세션 고정(fixation) 수동 회전 필요** — 인증 필터가 아닌 `SessionAuthService` 에서 로그인하므로 SS 의 자동 `changeSessionId` 가 안 걸림. 성공 직후 `request.changeSessionId()` 직접 호출(고정 공격 방어).
+- ★ **[겪음] RANDOM_PORT OIDC RP e2e: discovery·userinfo 가 죽은 issuer 포트를 친다 → discovery off + userinfo 미사용** — 증상: `OAuthLoginService.authorizeUrl()`(discovery) 또는 `callback()`(userinfo)에서 `BusinessException`. 원인: id_token 의 `iss` 는 설정 issuer(`AUTH_SERVER_ISSUER`, 기본 `http://localhost:9000`)인데 `@SpringBootTest(RANDOM_PORT)` 서버는 랜덤 포트에 뜬다. (a) `oidc.issuer` 만 두면 `OidcMetadataResolver` 가 `issuer + /.well-known/...`(=죽은 9000)로 discovery 를 친다(issuer 가 set 이면 항상 트리거). (b) discovery 를 라이브로 돌려도 discovery 문서의 엔드포인트는 issuer-host(9000) 기준이라 빈 칸(특히 `userInfoUri`)을 **죽은 URL 로 back-fill** → 콜백의 userinfo 페치가 죽는다. 해결: authorization/token/jwks 를 **라이브 포트로 명시**하고 discovery 는 **끈다**(테스트는 `OidcMetadataResolver.ensureResolved` 를 no-op 으로 오버라이드 = 엔드포인트 명시 모드). 그리고 **`userInfoUri` 를 설정하지 않아** 콜백이 검증된 id_token 클레임(sub·roles·nonce·auth_time)만으로 신원을 구성하게 한다(AS `/userinfo` resource-server 결합 제거 — userinfo 가 단언에 더하는 값 없음). `oidc.issuer` 는 `AuthorizationServerSettings.getIssuer()` 로 런타임 핀(비우면 `IdTokenVerifier` 가 iss 검사를 스킵 = 검증 약화).
+- **[겪음] confidential RP 전체 콜백 = `client_secret_post` + PKCE 불요 → AS 클라이언트도 그에 맞춰야** — 우리 RP `OAuthClient.exchangeCodeForTokens` 는 `client_id`+`client_secret` 을 **본문(client_secret_post)** 으로 보내고 `code_verifier` 를 쓰지 않는다. 따라서 AS 의 대응 클라이언트(`demo-rp`)는 `ClientAuthenticationMethod.CLIENT_SECRET_POST` + `ClientSettings.builder().requireProofKey(false)` 로 등록해야 한다(`demo-web` 의 `NONE`+PKCE 와 대비). ⚠️ `ClientSettings.builder()` 의 기본은 `requireProofKey(true)` 라 confidential 도 명시적으로 `false` 로 꺼야 PKCE 없는 코드 교환이 통과한다.
+- **[일반] `ProviderRegistry.require` 는 OIDC 라도 `user-name-attribute` 를 요구** — OIDC 는 id_token 의 `sub` 로 신원을 구성하지만 `require()` 의 초기 가드가 `client-id`+`user-name-attribute` 누락을 먼저 막는다. RP Provider 에 `userNameAttribute="sub"` 를 반드시 세팅(프리셋 경로를 안 타는 수기 구성 시 누락 주의).
 - **[겪음] 세션 모드: `SecurityContextRepository` 명시 공유** — 컨트롤러에서 컨텍스트를 쓰는 측과 필터 체인이 읽는 측이 **같은 repo**(`HttpSessionSecurityContextRepository`)를 봐야 함. 체인 `securityContext().securityContextRepository(repo)` + 서비스의 `saveContext(...)` 가 동일 빈을 공유하도록 배선. 안 맞으면 로그인 직후 익명 취급.
 - **[겪음/일반] 세션 모드 CSRF: SPA 는 XOR/BREACH 핸들러 대신 평문 핸들러** — SS6+ 기본 `XorCsrfTokenRequestAttributeHandler` 는 쿠키의 원시 토큰을 그대로 보내는 SPA 에서 403 유발. `CookieCsrfTokenRepository.withHttpOnlyFalse()` + `CsrfTokenRequestAttributeHandler`(평문) 조합. 로그인/로그아웃 경로는 `ignoringRequestMatchers("/api/*/auth/**")`.
 - **[겪음] 인증 모드 분기는 중첩 `@Configuration static` + 클래스레벨 `@ConditionalOnProperty`** — stateless/session 체인을 한 클래스의 메서드 가드로 가르면 양쪽 `SecurityFilterChain` 빈이 동시 introspect 되어 충돌 위험. 모드별 중첩 설정 클래스로 분리하고 `@ConditionalOnMissingBean(SecurityFilterChain.class)` 로 단일 체인 보장.
@@ -134,6 +137,8 @@
 | 토글했는데 기능 안 켜짐 | §4 `.imports` 등록 / §7 배선 |
 | 멀티 파드에서 잠금/로그아웃 샘 | §5 memory→redis |
 | OIDC `authenticationTime cannot be null` | §5 FactorGrantedAuthority |
+| RP `authorizeUrl()`/`callback()` 에서 discovery·userinfo 가 죽은 9000 침(RANDOM_PORT e2e) | §5 엔드포인트 라이브 명시 + discovery off(no-op) + userInfoUri 미설정(id_token 만으로 신원) |
+| confidential RP 코드 교환이 `invalid_client`/PKCE 요구 | §5 `client_secret_post`+`requireProofKey(false)` 로 AS 클라이언트 등록 |
 | `ClassNotFoundException: …loader.launch.JarLauncher` | §9 로컬은 팻JAR `java -jar` |
 | `required a bean of type …Authenticator` | §9 auth-server 는 local 데모 프로파일 |
 | auth-server 앱은 떴는데 compose `unhealthy`/k8s pod Ready 안 됨 | §9 actuator 가 AS 보안 체인에 막힘(`/actuator/**` permitAll) |
