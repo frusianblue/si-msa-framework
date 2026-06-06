@@ -1,0 +1,8 @@
+# deploy/k8s/components/postgres-persistent/kustomization.yaml
+# 영속 인-클러스터 postgres 리소스 묶음. prod-rehearsal overlay 가 resources 로 include.
+#   사용:  overlays/prod-rehearsal/kustomization.yaml 의 resources 에
+#          - ../../components/postgres-persistent
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - postgres.yaml
