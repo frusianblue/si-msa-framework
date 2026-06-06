@@ -1,0 +1,6 @@
+# deploy/k8s/standalone-kind/certs.d/harbor.local/hosts.toml
+# 비공개(인증) 레지스트리용 — 노드의 harbor.local 해소 → kind 네트워크의 harbor-auth-reg:5000.
+# reg.local(01, 무인증)과 같은 메커니즘. 인증(Basic)은 imagePullSecrets(harbor-cred)로 kubelet 이 주입.
+# ./certs.d 는 extraMounts 로 노드에 바인드마운트(라이브 반영)되므로 클러스터 재생성 없이도 노드가 읽는다.
+[host."http://harbor-auth-reg:5000"]
+  capabilities = ["pull", "resolve"]

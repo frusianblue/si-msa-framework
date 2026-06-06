@@ -30,7 +30,8 @@ if [ "${1:-}" = "--teardown-sanity" ]; then
   echo "== B) standalone sanity teardown =="
   kind delete cluster --name "${CLUSTER}" 2>/dev/null || true
   docker rm -f "${REG_NAME}" 2>/dev/null || true
-  echo "  클러스터(${CLUSTER})·레지스트리(${REG_NAME}) 제거."
+  docker rm -f "${AUTH_REG_NAME:-harbor-auth-reg}" 2>/dev/null || true
+  echo "  클러스터(${CLUSTER})·레지스트리(${REG_NAME}, ${AUTH_REG_NAME:-harbor-auth-reg}) 제거."
 else
   echo "== B) (standalone teardown 생략 — 필요하면 --teardown-sanity) =="
 fi

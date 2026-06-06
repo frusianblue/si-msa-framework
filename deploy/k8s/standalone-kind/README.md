@@ -5,6 +5,21 @@
 > Docker Desktop 의 "Modify Kubernetes Cluster" GUI 에도 노드 containerd 를 박을 입구가 없다(Advanced Settings 는
 > "Show system containers" 가시성 토글뿐). → **`kind` CLI 로 직접 생성하면 생성 시점에 노드 containerd 를 선언적으로 박을 수 있다.**
 
+## 선행 (설치) — Docker Desktop 내장 kind ≠ standalone kind CLI
+Docker Desktop 의 "Kubernetes(kind 모드)" 는 **자기 내부에서만** kind 를 돌려 standalone `kind` 바이너리를 PATH 에 깔지 않는다.
+→ 이 트랙은 `kind` CLI 가 별도로 필요(없으면 `01-pull-sanity.sh` 가 `FAIL: 'kind' 가 PATH 에 없음`).
+**Docker Desktop 의 Kubernetes 토글은 꺼도 무방**(끄면 오히려 내장 k8s 와 충돌 없음) — Docker *엔진*은 그대로라 standalone kind 가 그 위에 노드를 띄운다.
+```bash
+# 0) 엔진/클라이언트 확인 (WSL)
+docker ps                         # 에러면 Docker Desktop > Settings > Resources > WSL Integration 활성화
+kubectl version --client          # 보통 이미 설치돼 있음
+
+# 1) kind 설치 (Linux/amd64, 최신 릴리스)
+curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/latest/download/kind-linux-amd64
+chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind && kind --version
+# (버전 고정이 필요하면: https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64)
+```
+
 ## 무엇을 증명하나 (단 하나)
 **standalone kind 의 노드 containerd 가 레지스트리 한정 이름(`reg.local/...`)을 *직접* pull 한다.**
 = Docker Desktop kind 에서 막혔던 바로 그 동작. 이게 되면 "빌드→push→**노드 pull**"(Harbor 깐 목적)을 닫을 수 있다.
@@ -21,6 +36,8 @@
 | `kind-config.yaml` | 3노드(현 토폴로지 재현) + `containerdConfigPatches`(config_path) + `certs.d` extraMounts |
 | `certs.d/reg.local/hosts.toml` | 노드의 `reg.local` 해소 규칙 → `kind-registry:5000` 직접 pull |
 | `01-pull-sanity.sh` | 레지스트리1 + 더미 이미지(busybox) push → **노드 pull → 파드 Ready** 까지 검증(PASS/FAIL) |
+| `02-auth-pull-sanity.sh` | **비공개(Basic auth) 레지스트리** + `harbor-cred`(imagePullSecrets) → 노드 pull 검증. dev overlay 의 인증 경로 실증(3단계 첫 조각) |
+| `certs.d/harbor.local/hosts.toml` | 노드의 `harbor.local` 해소 → `harbor-auth-reg:5000`(02 용) |
 | `00-cleanup.sh` | docker-desktop kind 잔여 디버그 파드 정리 + (옵션)standalone teardown |
 
 ## 쓰는 법
@@ -28,10 +45,14 @@
 # (선택) 현 docker-desktop kind 잔여 디버그 파드 먼저 정리
 bash deploy/k8s/standalone-kind/00-cleanup.sh
 
-# 최소 pull sanity (5분)
+# 최소 pull sanity (5분) — ✅ 2026-06-06 PASS(node=sanity-worker, reg.local 직접 pull)
 bash deploy/k8s/standalone-kind/01-pull-sanity.sh
-#   → "✅ PASS" 면 노드 pull 유효 → 3단계로.
-#   → "❌ FAIL" 이면 스크립트가 트리아지 힌트 출력(certs.d 마운트/이름규칙/네트워크).
+#   → "✅ PASS" 면 노드 pull 유효 → 다음.
+
+# 비공개(인증) 레지스트리 pull sanity — 3단계 첫 조각(dev overlay 인증 경로 실증)
+bash deploy/k8s/standalone-kind/02-auth-pull-sanity.sh
+#   → "✅ PASS" 면 harbor-cred + imagePullSecrets 로 노드가 비공개 레지스트리 pull.
+#      이 레지스트리(harbor.local)가 곧 4단계(실 si-msa 이미지 push → dev overlay apply)의 토대.
 
 # 끝나면 정리
 bash deploy/k8s/standalone-kind/00-cleanup.sh --teardown-sanity

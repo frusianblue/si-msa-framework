@@ -7,37 +7,37 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**🔀 §S3' standalone kind 트랙 2단계(최소 pull sanity) 산출물 드롭 — 받는 쪽 실행 대기(2026-06-06 세션4).** Docker Desktop kind 미러 인터셉트로 BLOCKED 된 "외부 레지스트리→노드 직접 pull" 을, `kind` CLI 직접 생성 클러스터에서 *생성 시 선언*(containerdConfigPatches+certs.d extraMounts)으로 닫는 트랙의 첫 실증 스텝. **Docker Desktop "Modify Kubernetes Cluster" GUI 확인 결과 노드 containerd 설정 입구 없음 재확인**(Advanced Settings=Show system containers 가시성 토글뿐) → standalone 전환 결정 재확정. **산출물**: `deploy/k8s/standalone-kind/`(`kind-config.yaml` 3노드+config_path+extraMounts, `certs.d/reg.local/hosts.toml`→kind-registry:5000, `01-pull-sanity.sh` 레지스트리+busybox push→**노드 pull→파드 Ready** PASS/FAIL, `00-cleanup.sh` 잔여파드+teardown, `README.md`). **설계 결정 2(Windows 함정 회피)**: ① 레지스트리 이름엔 **점(.) 필수**(`reg.local`; 점 없으면 containerd 가 Docker Hub org 로 파싱) ② certs.d 디렉터리엔 **콜론 금지**(`localhost:5001` 은 NTFS 불가→extraMounts 깨짐) → 포트 없는 이름+hosts.toml 안에서 `:5000` 리다이렉트. push(localhost:5001)≠pull(reg.local)이나 리포지토리 경로 동일=같은 블롭. **다음**: 받는 쪽이 `01-pull-sanity.sh` 실행 → PASS 면 §S3' 3) Harbor/ingress/postgres 풀 재구축 → 4) push→노드 pull(Pull>0)→dev overlay apply.
+**✅ §S3' 2단계(최소 pull sanity) PASS — standalone kind 노드가 레지스트리 한정 이름 직접 pull 실증(2026-06-06 세션5).** `01-pull-sanity.sh` → node=sanity-worker 가 `reg.local/sanity/busybox:test` 를 Pulled 1건으로 직접 pull. **= Docker Desktop kind 에서 미러 인터셉트 500 으로 막혔던 동작이 standalone 에선 됨**(설계 가정 3개 성립: 점 있는 이름=레지스트리 인식 / certs.d extraMounts 노드 마운트 / push≠pull 이나 리포지토리 경로 동일=같은 블롭). 선행으로 **kind CLI 설치**(DD 내장 kind≠standalone CLI), **DD k8s 토글 OFF 무방**(엔진은 동작) 확인. **3단계 첫 조각 드롭**: `02-auth-pull-sanity.sh` — htpasswd 비공개 레지스트리(harbor.local) + `harbor-cred`(imagePullSecrets) → 노드 pull. docker-desktop kind 에선 도달층에서 막혀 못 봤던 *인증 경로*를 끝까지 검증(secret/SA 부착은 맞았으나 pull 자체가 안 됐었음). **결정 필요(받는 쪽)**: 4단계 레지스트리를 (A) 실제 Harbor 제품 vs (B) 02 의 인증 레지스트리로 충분(프레임워크 검증이 목적이면 바로 dev overlay apply) — 권장 (B).
 
 ## 최종 갱신
-- 일자: 2026-06-06 · 갱신자: 운영 리허설 세션4(§S3' 2단계 산출물·GUI 한계 재확인·문서 동반)
-- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SS7 / SC 2025.1.1 / Jackson 3 — 스택 무변경(devops 매니페스트/스크립트·문서만).
+- 일자: 2026-06-06 · 갱신자: 운영 리허설 세션5(pull sanity PASS·kind 설치·인증 sanity 드롭·4단계 레지스트리 fork)
+- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SS7 / SC 2025.1.1 / Jackson 3 — 스택 무변경(devops 스크립트/문서만).
 
 ## 직전에 한 것 (Done)
 | 단계 | 산출/검증 |
 |---|---|
-| GUI 한계 재확인 | Docker Desktop "Modify Kubernetes Cluster" 다이얼로그엔 containerd/registry 설정 입구 없음(Advanced=Show system containers 가시성뿐). standalone 전환(§0 락#6) 재확정. |
-| §S3' 2단계 산출물 | `deploy/k8s/standalone-kind/` 신규: kind-config(3노드+config_path+certs.d extraMounts)·hosts.toml(reg.local→kind-registry:5000)·01-pull-sanity.sh·00-cleanup.sh·README. 정적검증 통과(bash -n, yaml/toml parse). |
-| 문서 동반 | `NEXT_K8S_REAL_DEPLOY.md`(§S3' 예시→실제 산출물 포인터, step2 드롭 표기, 인벤토리) · `PITFALLS.md` §9 신규 2항(레지스트리 이름 점 필수 / certs.d 콜론 금지)+자가진단 2행. |
+| kind CLI 설치 | DD 내장 kind 가 standalone CLI 미설치 → `kind` 직접 설치(releases/latest). DD k8s OFF 무방(엔진 동작) 확인. |
+| §S3' 2단계 PASS | `01-pull-sanity.sh` 실행 → ✅ node=sanity-worker, `reg.local/...` 직접 pull, Pulled 1건. 메커니즘 실증. |
+| §S3' 3단계 첫 조각 | `02-auth-pull-sanity.sh`(htpasswd 비공개 레지스트리 harbor.local + harbor-cred imagePullSecrets→노드 pull) + `certs.d/harbor.local/hosts.toml` 드롭. 정적검증 통과(bash -n, toml parse). |
+| 문서 동반 | `NEXT_K8S_REAL_DEPLOY.md`(2단계 PASS·3단계 첫 조각·4단계 fork) · `PITFALLS.md` §9 신규 3항 · `README.md`(02 추가·선행 설치). |
 
 ## 현재 상태 (적용/검증)
-- **클러스터**: 현 `docker-desktop` kind 3노드 유지(S1 postgres PVC·S2 Harbor push 정상, S3 노드 pull=BLOCKED). standalone `kind-sanity` 는 **아직 미생성**(받는 쪽이 01-pull-sanity.sh 로 생성·검증).
-- **산출물**: `standalone-kind/` 정적검증만(작성환경 docker/kind/kubectl 부재 → 실행은 받는 쪽). 매니페스트(dev overlay)는 기존 완성·정적검증 통과 상태 유지.
-- **이미지**: Harbor `si-msa` 에 `6849550`/`dev`/`f370bc7`. dev overlay 핀=`:dev`(sha 핀은 CI 몫).
+- **클러스터**: standalone `kind-sanity` 3노드 가동(01 통과). docker-desktop kind 는 k8s OFF(엔진만).
+- **레지스트리**: 01=무인증 `kind-registry`(reg.local). 02=htpasswd `harbor-auth-reg`(harbor.local) — 받는 쪽 실행 대기.
+- **이미지**: 실 si-msa/<svc>:dev 는 아직 standalone 레지스트리에 미push(4단계). dev overlay 핀=`:dev`.
 
-## 바로 다음 할 일 (Next) — §S3' 2단계 실행 → 3단계
-1. (선택) `bash deploy/k8s/standalone-kind/00-cleanup.sh` — docker-desktop kind 잔여 디버그 파드(pulltest, node-debugger-*) 정리.
-2. **`bash deploy/k8s/standalone-kind/01-pull-sanity.sh`** — standalone kind+레지스트리+busybox→**노드 pull→파드 Ready**. **✅ PASS 해야** 3단계 착수(이론 맹신 금지). FAIL 시 스크립트 트리아지 힌트(certs.d 마운트/이름규칙/네트워크).
-3. PASS 후 **Harbor/ingress/postgres 풀 재구축(스크립트화)** → push→**노드 pull(Harbor Pull>0)**→`kubectl apply -k deploy/k8s/overlays/dev`→DB/admindb/파일저장/AS 토큰(S3 앱·토폴로지 검증 로직 재사용).
+## 바로 다음 할 일 (Next)
+1. **`bash deploy/k8s/standalone-kind/02-auth-pull-sanity.sh`** — 비공개+인증 노드 pull 검증. ✅ PASS 면 dev overlay 인증 경로 유효.
+2. **4단계 레지스트리 결정(A 실Harbor / B 인증레지스트리로 충분)** — 권장 B(프레임워크 검증 목적이면). B 면 실 si-msa/<svc>:dev 를 harbor.local(=harbor-auth-reg)에 push → `kubectl apply -k deploy/k8s/overlays/dev`.
+3. **dev overlay apply 후 검증**: 6파드 Ready + Harbor Pull>0 + DB/admindb/파일저장(/tmp/uploads)/AS 토큰 스모크(`FRAMEWORK_AUTH_SEED_SMOKE_CLIENT=true`).
 - 이후: S4 애드온 → S5 prod-rehearsal → S6 상위 흐름 → S7 Jenkins(sha 핀 자동 주입).
 
 ## 이번 세션 함정/원칙 (되돌리지 말 것)
-- **Docker Desktop GUI 로는 노드 containerd 못 박는다** — "Modify Kubernetes Cluster" 는 클러스터타입/노드수/k8s버전+Show system containers 뿐. containerd/certs.d 입구 없음 = standalone kind 필수의 재확인.
-- **standalone kind: 레지스트리 이름엔 점(.) 필수** — 점 없는 이름(`kind-registry`)은 containerd 가 Docker Hub org 로 파싱 → pull 테스트 무의미. `reg.local`(점 있음)으로.
-- **certs.d 디렉터리엔 콜론 금지** — `localhost:5001`(콜론)은 NTFS 디렉터리 불가 → extraMounts 깨짐. 포트 없는 호스트명+hosts.toml 안에서 `:5000`.
-- **push 이름 ≠ pull 이름이어도 리포지토리 경로 같으면 같은 블롭** — 호스트는 published 포트(localhost:5001) push, 노드는 reg.local pull. 레지스트리는 호스트명 아닌 리포지토리 경로로 저장.
-- **node 설정은 생성 시 선언(extraMounts/containerdConfigPatches)** — 뜬 노드 손수정(`docker exec`/`kubectl debug node`)은 재현 불가·git 밖·운영 아님(콜론 불가피할 때의 예외만).
-- **이론 맹신 금지** — 풀 재구축 전 01-pull-sanity.sh PASS 가 게이트.
-- **ArgoCD/GitOps ≠ pull** — CD 는 apply 만, pull 은 언제나 노드 containerd.
+- **Docker Desktop 내장 kind ≠ standalone `kind` CLI** — 별도 설치 필요(`FAIL: kind 가 PATH 에 없음`). DD k8s 토글은 꺼도 됨(엔진/kubectl 클라는 동작, 연결거부는 죽은 k8s API 친 것뿐).
+- **standalone kind 노드 pull 됨(실증)** — certs.d + 점 있는 레지스트리 이름 + kind 네트워크 연결이면 레지스트리 한정 이름 직접 pull. Docker Desktop kind 의 미러 인터셉트는 standalone 에 없음.
+- **certs.d 는 바인드마운트라 라이브 반영** — 클러스터 재생성 없이 ./certs.d 에 hosts.toml 추가하면 노드가 읽음(02 의 harbor.local 추가가 이걸 활용).
+- **인증 경로는 imagePullSecrets(kubelet) + certs.d(도달층) 두 층** — harbor-cred 의 docker-server 키(harbor.local)가 이미지 레지스트리명과 일치해야 kubelet 이 cred 선택. http Basic 은 hosts.toml 이 http:// 여야 노드가 평문 전송.
+- **이론 맹신 금지(유지)** — 02 PASS 가 4단계(실 이미지/overlay) 게이트.
+- **ArgoCD/GitOps ≠ pull** — pull 은 언제나 노드 containerd.
 
 <!-- 갱신 끝 -->
