@@ -21,14 +21,19 @@ replicas:
   - { name: user-service,  count: 1 }
   - { name: admin-service, count: 1 }
 
-# 이미지 핀: Harbor(harbor.local) + 불변 git-sha 태그(7e935d6 = S2 푸시분, 소스 HEAD 와 앱동작 동일/문서만 차이).
-#   base 의 가짜 registry.example.com 접두어를 Harbor 주소로 newName 치환 + newTag 로 SHA 핀.
-#   CI 갱신:  kustomize edit set image registry.example.com/si-msa/<svc>=harbor.local/si-msa/<svc>:<sha>
+# 이미지 핀: Harbor(harbor.local) + 채널 태그(:dev).
+#   ⚠️ 이전 `:7e935d6` 핀은 **stale** — Harbor 에 부재(실재 태그=6849550/dev/f370bc7)였고 노드가 없는 태그를 당기려 함.
+#      손으로 박은 sha 가 어긋난 것 자체가 **수동 핀의 증상**: 불변 sha 핀은 사람이 타이핑할 게 아니라
+#      CI(S7)가 그 빌드의 sha 로 `kustomize edit set image ...=harbor.local/si-msa/<svc>:<그-sha>` 로 주입한다.
+#      수동 리허설 동안은 채널 태그 `:dev`(항상 실재, standalone kind 타깃에서 그대로 pull) 로 둔다.
+#   ⚠️ **이 환경(Docker Desktop kind)에선 harbor.local 직접 pull 이 미러 인터셉트로 불가**(PITFALLS §9) →
+#      이 핀(harbor.local/...:dev)이 실제로 pull 되는 건 **standalone kind 트랙**(NEXT §S3' )에서 검증.
+#   base 의 가짜 registry.example.com 접두어를 Harbor 주소로 newName 치환.
 images:
-  - { name: registry.example.com/si-msa/gateway,       newName: harbor.local/si-msa/gateway,       newTag: 7e935d6 }
-  - { name: registry.example.com/si-msa/auth-server,   newName: harbor.local/si-msa/auth-server,   newTag: 7e935d6 }
-  - { name: registry.example.com/si-msa/user-service,  newName: harbor.local/si-msa/user-service,  newTag: 7e935d6 }
-  - { name: registry.example.com/si-msa/admin-service, newName: harbor.local/si-msa/admin-service, newTag: 7e935d6 }
+  - { name: registry.example.com/si-msa/gateway,       newName: harbor.local/si-msa/gateway,       newTag: dev }
+  - { name: registry.example.com/si-msa/auth-server,   newName: harbor.local/si-msa/auth-server,   newTag: dev }
+  - { name: registry.example.com/si-msa/user-service,  newName: harbor.local/si-msa/user-service,  newTag: dev }
+  - { name: registry.example.com/si-msa/admin-service, newName: harbor.local/si-msa/admin-service, newTag: dev }
 
 patches:
   # ── DB: 외부 호스트 → 인-클러스터 영속 postgres(Service 'postgres'). ────────────────────────────

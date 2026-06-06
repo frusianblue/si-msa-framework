@@ -12,7 +12,8 @@
 |---|---|---|
 | **S1 영속 postgres(PVC)** | ✅ **완료** | `components/postgres-persistent`(StatefulSet) apply → `data-postgres-0` **Bound**(5Gi/RWO/standard), `postgres-0` Running. Service 는 headless→**ClusterIP** 정정(clusterIP 불변 충돌 해소). |
 | **S2 Harbor + push** | ✅ **완료(ingress 경로)** | ingress-nginx(LoadBalancer, EXTERNAL-IP=localhost) + Harbor `expose.type=ingress`(`harbor.local`) + Windows/WSL hosts + insecure-registries. `si-msa` 프로젝트에 4서비스 × (`7e935d6`,`dev`) push 확인(포털). |
-| **S3 dev overlay apply** | ◐ **매니페스트 준비완료(이 드롭) · apply 대기** | `overlays/dev` 이미지 핀(`harbor.local/si-msa/<svc>:7e935d6`)+DB→인-클러스터 `postgres:5432`(auth/sidb/**admindb**)+파일저장 `/tmp/uploads`+`pull-secret-dev.yaml`(harbor-cred+default SA) 까지 매니페스트 완성·정적검증 통과. 남음=받는 쪽 `apply -k`+**pull 트리아지**(노드 containerd)+AS 토큰 스모크. |
+| **S3 dev overlay apply** | ⛔ **Docker Desktop kind 에선 BLOCKED(노드 pull 구조적 한계) · standalone kind 트랙으로 전환** | 매니페스트는 완성·정적검증 통과(DB/admindb/파일저장/pull-secret). 그러나 **노드 containerd 가 모든 pull 을 내장 미러(`registry-mirror:1273`)로 가로채 `harbor.local` 직접 pull 이 500** → 외부 레지스트리 pull *실증 불가*(인증은 정상이었음). `:dev`(실재 태그)로도 동일. **결정: 레지스트리 pull 검증은 standalone kind 로(§S3').** dev overlay 핀은 stale `7e935d6`→`:dev` 로 정정(sha 핀은 CI 몫). |
+| **S3' standalone kind 트랙** | ▶ **다음 섹션 시작점** | `kind` CLI 직접 생성(`containerdConfigPatches`+`certs.d/harbor.local/hosts.toml` extraMounts)로 노드가 harbor.local 직접 pull. 순서: ① PITFALLS 제약 못박기(완료) → ② **최소 pull sanity**(레지스트리1+더미 이미지) → ③ Harbor/ingress/postgres 풀 재구축 → ④ push→**노드 pull(Pull>0)**→dev apply. |
 | S4 애드온 | 대기 | metrics-server/HPA → kube-prometheus-stack → (ingress-nginx 는 S2 에서 선설치됨). |
 | S5 prod-rehearsal overlay | 대기 | prod 토폴로지 + 로컬 대역. |
 | S6 상위 흐름 스모크 | 대기 | OIDC RP·이중 발급기 우선. |
@@ -24,11 +25,12 @@
 
 | # | 항목 | 결정 |
 |---|---|---|
-| 1 | 이미지 태그 | 양태그(`:<git-sha>` 핀 + 채널 `:dev`/semver). 매니페스트는 `kustomize edit set image` 로 SHA 핀. 둘 다 굴려보고 최종확정 |
-| 2 | 이미지 서버 | **Harbor**(ingress 노출, `harbor.local`). push 데몬 도달=LoadBalancer 경로 |
+| 1 | 이미지 태그 | 양태그(`:<git-sha>` 핀 + 채널 `:dev`/semver). **불변 sha 핀은 CI(S7)가 `kustomize edit set image` 로 주입** — 사람이 매니페스트에 타이핑하지 않음(수동 핀이 stale 되는 게 7e935d6 사건의 교훈). 수동 리허설 중에는 채널 `:dev` 사용 |
+| 2 | 이미지 서버 | **Harbor**(ingress 노출, `harbor.local`). 호스트 push 도달=LoadBalancer 경로(정상). **단 노드 pull 실증은 Docker Desktop kind 에서 불가**(#6) |
 | 3 | 영속 | 기본 StorageClass(`standard`, local-path) 동적 프로비저닝 PVC. postgres=StatefulSet, redis=휘발(설계). 객체스토리지(S3) 제외 |
 | 4 | overlay | dev 먼저 → prod-rehearsal. dev≠prod(§1) |
 | 5 | CI/CD | Jenkins 는 마지막 |
+| 6 | **클러스터(신규 락)** | **레지스트리 pull 실증은 standalone kind(`kind` CLI 직접 생성)에서.** Docker Desktop kind 는 노드 containerd 미러 인터셉트로 외부 레지스트리 직접 pull 불가·노드 설정 입구 없음(세션3 실측, PITFALLS §9). standalone 은 노드 수 자유(현 3노드 재현) + `containerdConfigPatches` 로 harbor 직접 pull |
 
 ## 1. dev vs prod 차이 (요약)
 dev=1레플리카·약한시크릿·port-forward / prod=HPA(metrics-server)·외부시크릿(ESO)·공개issuer·TLS ingress. dev 그린이 prod 보장 안 함 — 애드온 작업이 prod 추가분 검증과 겹침.
@@ -38,8 +40,11 @@ dev=1레플리카·약한시크릿·port-forward / prod=HPA(metrics-server)·외
 
 ## 3. 런북 (S3 부터 상세)
 
-### ▶ S3 — dev overlay 실 apply (다음 섹션 시작점)
-**0) 재부팅 검증(섹션 시작 시 1회)** — Docker Desktop 껐다 켠 뒤 ingress/LB·Harbor·postgres PVC 가 자동 복귀하는지(`kubectl get svc -n ingress-nginx` EXTERNAL-IP=localhost, `harbor.local` 포털, `data-postgres-0` Bound). = port-forward 졸업 확인.
+### S3 — dev overlay 실 apply (Docker Desktop kind: ⛔ BLOCKED — 아래 결론, 다음은 §S3')
+
+> **결론(2026-06-06 세션3)**: 매니페스트는 완성됐고 호스트 push 도 정상이지만, **Docker Desktop kind 에선 노드 containerd 가 모든 pull 을 내장 미러(`registry-mirror:1273`)로 가로채 `harbor.local` 직접 pull 이 500** → 외부 레지스트리 pull *실증 불가*. `:dev`(실재 태그)로도 `ImagePullBackOff` 로 확정(인증·태그 문제 아님 — `harbor-cred`/SA 정상 부착 확인됨, 호스트 `docker pull` 은 성공하나 *다른 주체*). 노드 containerd 설정은 `kind create --config` 입구가 없어 선언적으로 못 박고, 노드 직접 수정(`kubectl debug node`)은 재현 불가라 운영 패턴 아님. **→ 레지스트리 pull 검증은 standalone kind(§S3')로 이관.** 아래 1~4 는 Docker Desktop kind 에서 *시도한 기록*(앱/토폴로지 검증 로직은 standalone 에서 재사용). PITFALLS §9 \"Docker Desktop kind 미러 인터셉트\" 참조.
+
+**0) 재부팅 검증(섹션 시작 시 1회)** — Docker Desktop 껐다 켠 뒤 ingress/LB·Harbor·postgres PVC 가 자동 복귀하는지(`kubectl get svc -n ingress-nginx` EXTERNAL-IP, `harbor.local` 포털, `data-postgres-0` Bound). = port-forward 졸업 확인.
 
 **1) dev overlay 이미지 핀 + DB/파일저장 패치 — ✅ 이 드롭에서 매니페스트 완성(정적검증 통과)**
 - `overlays/dev/kustomization.yaml`:
@@ -59,24 +64,59 @@ kubectl -n si-msa patch serviceaccount default -p '{"imagePullSecrets":[{"name":
 ```
 - ⚠️ SA 의 imagePullSecrets 는 **신규 파드부터** 적용. dev 최초 apply 는 앱 파드가 이때 처음 생기므로 그대로 반영(기존 파드 있으면 `rollout restart`).
 
-**3) apply + pull 트리아지**
+**3) apply + pull 트리아지 — 실측 결과: ⛔ 미러 인터셉트 500**
 ```
 kubectl apply -k deploy/k8s/overlays/dev
 kubectl -n si-msa get pods -w
 ```
-- ⚠️ **pull 실패는 두 층으로 구분**(Events 메시지로): ① **인증** `unauthorized`/`no basic auth credentials` → harbor-cred/SA 부착 확인(위 2), ② **이름해소/연결** → 노드 containerd 가 `harbor.local` 못 풂. 처리 후보:
-  - (a) 이 환경 "로컬 빌드 이미지 자동노출"(registry-mirror) 특성으로 pull 생략될 수 있음 → 우선 그대로 apply 해보고 Events 확인.
-  - (b) 막히면 노드측 `hosts.toml`(ingress/`harbor-core.harbor.svc` 매핑) — `K8S_INGRESS_HARBOR.md` §6.
-  - → `kubectl describe pod <svc>` Events 로 환경 맞춤 트리아지.
+- 실측: 새 파드 `ImagePullBackOff`, `describe` Events =
+  `failed to resolve reference "harbor.local/si-msa/<svc>:<tag>": HEAD http://registry-mirror:1273/v2/si-msa/<svc>/manifests/<tag>?ns=harbor.local: 500`.
+- 절단 확인: `harbor-cred`/default SA/파드 spec 모두 `imagePullSecrets` 정상(=인증 아님), `:dev`(실재 태그)로도 동일(=태그 아님), 호스트 `docker pull harbor.local/...` 성공(=호스트 데몬과 노드 containerd 는 다른 주체). → **노드↔레지스트리 도달층이 막힘. Docker Desktop kind 구조적 한계** → §S3'.
+- (참고) 자동노출은 **짧은 이름**(`si-msa/<svc>:tag`)만. `harbor.local/...` 레지스트리 한정 이름은 미러가 pull-through 시도→500.
 
-**4) AS 토큰 스모크(그린 기준의 일부)** — prod 프로파일 AS 는 등록 클라이언트 0건(설계)이라 토큰 스모크엔 클라이언트가 필요. 7e935d6 이미지에 `SmokeClientSeeder` 포함 확인됨(`framework.auth.seed-smoke-client`, 기본 false). **리허설 한정**으로 dev AS 에 한시 옵트인:
+**4) AS 토큰 스모크(그린 기준의 일부)** — prod 프로파일 AS 는 등록 클라이언트 0건(설계)이라 토큰 스모크엔 클라이언트가 필요. 이미지에 `SmokeClientSeeder` 포함(`framework.auth.seed-smoke-client`, 기본 false). **리허설 한정** 옵트인:
 ```
-# 리허설용(prod 토폴로지 검증). prod-rehearsal(S5)·운영엔 미적용.
 kubectl -n si-msa set env deploy/auth-server FRAMEWORK_AUTH_SEED_SMOKE_CLIENT=true
 kubectl -n si-msa rollout restart deploy/auth-server
 ```
-그 뒤 demo-web(public+PKCE) authorization_code 또는 demo-service(client_credentials) 로 토큰 발급 확인(= `SmokeClientDbAuthFlowTest` 의 클러스터 등가물).
+그 뒤 demo-web(public+PKCE) authorization_code 또는 demo-service(client_credentials) 로 토큰 발급 확인(= `SmokeClientDbAuthFlowTest` 의 클러스터 등가물). **단 이 단계는 6파드 Ready(=pull 통과) 전제 → standalone(§S3')에서 실행.**
 - **그린 기준**: 6파드 Ready, **Harbor 포털 Pull 수 > 0**(pull 경로 실증), AS 토큰 플로우 스모크 성공.
+
+### ▶ S3' — standalone kind 트랙 (다음 섹션 시작점)
+> **왜**: Docker Desktop kind 는 노드 containerd 를 선언적으로 설정할 입구가 없어 외부 레지스트리 pull 실증 불가(위 S3 결론). standalone kind 는 클러스터 생성 시 노드 containerd 를 박을 수 있다 → Harbor 깐 목적(빌드→push→**노드 pull**)을 닫는다.
+> **소스는 github 에 있으므로** 기존 Docker Desktop kind 자산(인-클러스터 Harbor/PVC) 소멸은 무방 — 매니페스트·push 스크립트·Harbor 설정값 전부 git/zip 보존됨. 호스트 push 경로(S2)는 그대로 재사용.
+
+**합의 순서(이 순서로 진행)**:
+1. **PITFALLS 제약 못박기** — ✅ 완료(이 세션: §9 "Docker Desktop kind 미러 인터셉트 = 외부 pull 불가" + 자동노출 편의의 이면).
+2. **최소 pull sanity(먼저 검증, 이론 맹신 금지)** — standalone kind 1개 + 로컬 레지스트리 + 더미 이미지(busybox 등) push→**노드 pull 성공**까지 5분 검증. 통과해야 풀 재구축 착수.
+3. **Harbor/ingress/postgres 풀 재구축**(스크립트화) — 2 통과 후.
+4. **push → 노드 pull(Harbor Pull>0) → dev overlay apply → DB/admindb/파일저장/AS 토큰**(S3 의 앱·토폴로지 검증 로직 재사용).
+
+**standalone kind 노드 설정(예시 — 노드에 손대지 않고 *생성 시 선언*)**:
+```yaml
+# kind-config.yaml — 노드 containerd 가 harbor.local 을 미러 우회·직접 pull
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+nodes:                      # 노드 수는 자유(현 3노드 그대로 재현 — standalone=단일노드 아님)
+  - role: control-plane
+    extraMounts: [{ hostPath: ./certs.d, containerPath: /etc/containerd/certs.d }]
+  - role: worker
+    extraMounts: [{ hostPath: ./certs.d, containerPath: /etc/containerd/certs.d }]
+  - role: worker
+    extraMounts: [{ hostPath: ./certs.d, containerPath: /etc/containerd/certs.d }]
+```
+```toml
+# ./certs.d/harbor.local/hosts.toml
+server = "http://harbor.local"
+[host."http://harbor.local"]
+  capabilities = ["pull", "resolve"]
+```
+> `harbor.local` 의 노드측 IP 해소는 hosts.toml server 를 ingress IP 로 두거나, **Harbor 를 클러스터 안에 두고 노드가 ClusterIP 로 닿게** 하면 호스트네임 문제 소거. 런북에서 확정.
+> ⚠️ **ArgoCD/GitOps 로도 이 문제는 안 풀린다** — CD 는 매니페스트 apply 만, 이미지 pull 은 언제나 노드 containerd. GitOps 는 노드 pull 정상 전제 위에 얹는 층(PITFALLS §9).
 
 ### S4 애드온 — metrics-server(HPA) → kube-prometheus-stack(SM). ingress-nginx 는 S2 에서 설치됨.
 ### S5 prod-rehearsal overlay — prod 토폴로지 + 로컬 대역(§2). HPA·TLS ingress·공개 issuer 까지.
@@ -86,4 +126,4 @@ kubectl -n si-msa rollout restart deploy/auth-server
 ## 4. 산출물 인벤토리 (이번까지)
 - `deploy/k8s/components/postgres-persistent/{postgres.yaml,kustomization.yaml}` (S1 ✅)
 - `deploy/cicd/harbor-push.sh` (S2, 양태그 push — 기본 `REGISTRY=harbor.local` 로 정정) · `docs/ops/K8S_INGRESS_HARBOR.md` (S2 ingress 경로 ✅) · `docs/ops/HARBOR_SETUP.md`(NodePort 전제 폐기, 포인터)
-- **S3(이 드롭)**: `overlays/dev/kustomization.yaml`(이미지 핀 7e935d6 + DB→postgres + admin=admindb 정정 + 파일저장 /tmp/uploads + postgres-persistent resources) · `overlays/dev/pull-secret-dev.yaml`(harbor-cred + default SA) · `PITFALLS.md`(+private Harbor pull) · 정적검증 통과(리소스/패치타깃/이미지/JSON6902/ref).
+- **S3(세션3 결과)**: `overlays/dev/kustomization.yaml`(DB→postgres + admin=admindb 정정 + 파일저장 /tmp/uploads + ServiceMonitor `$patch:delete` + postgres-persistent resources; **이미지 핀 stale `7e935d6`→`:dev` 로 정정**) · `overlays/dev/pull-secret-dev.yaml`(harbor-cred + default SA) · `PITFALLS.md`(Docker Desktop kind 미러 인터셉트=외부 pull 불가 항목 완성 + private-Harbor 예측 실측 정정) · **결론: Docker Desktop kind 노드 pull BLOCKED → standalone kind 트랙(§S3')으로 이관**.
