@@ -14,7 +14,7 @@
 - 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SC 2025.1.1 / Jackson 3 — 스택 무변경.
 
 ## 직전에 한 것 (Done)
-**B안(confidential demo-rp 전체 콜백 e2e) 구현 — 정적 검증 완료, 받는 쪽 실행 대기.** 변경 파일:
+**B안(confidential demo-rp 전체 콜백 e2e) 구현 — ✅ 받는 쪽 통과 확인(2026-06-06, 양성 1 + 음성 3).** 변경 파일:
 | 파일 | 내용 |
 |---|---|
 | `services/auth-server/.../config/LocalDemo.java` | demo-rp confidential 클라이언트 추가(CLIENT_SECRET_POST, requireProofKey(false), AC+RT, openid/profile, redirect `…:8082/api/v1/auth/oauth/demo-rp/callback`). javadoc 3종으로 갱신. |
@@ -24,7 +24,7 @@
 
 ## 현재 상태 (적용/검증)
 - **정적 교차검증 완료**: brace/paren 균형 OK · `com.fasterxml.jackson` 미사용 OK · SS7 API 권위 확인(`ClientAuthenticationMethod.CLIENT_SECRET_POST` 존재 · `ClientSettings.builder()` 기본 `requireProofKey(true)` → false override 정당) · RP SPI 시그니처 전부 실소스 대조.
-- **받는 쪽 실행 대기**: 작성환경 Maven Central·Gradle 배포서버 차단 → `:services:auth-server:test`/`spotlessApply` 는 Chae 측에서 실행.
+- **✅ 받는 쪽 통과 확인(2026-06-06)**: `:services:auth-server:test`(`OidcRpFullCallbackTest` 양성 1 + 음성 3) + `spotlessApply`. (작성환경 Maven Central·Gradle 배포서버 차단 → 실행은 Chae 측.)
 - **외부 결합 없음**: discovery off(no-op) + `userInfoUri` 미설정으로 콜백이 검증된 id_token 클레임만으로 신원을 구성(초안의 `/userinfo`/discovery 라이브 결합 → 받는 쪽 실행에서 콜백 `BusinessException` 확인 후 제거).
 
 ## 바로 다음 할 일 (Next)
