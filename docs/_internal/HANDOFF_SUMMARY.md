@@ -7,36 +7,39 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**✅ §S3' standalone kind 운영 리허설 = 본체 그린(6파드 Running), AS 토큰 1줄만 잔여(2026-06-06 세션 종료).** Docker Desktop kind 미러 인터셉트 BLOCKED → standalone `kind` CLI 트랙으로 전환해 빌드→harbor.local 인증 노드 pull→prod 부팅→DB(authdb/sidb/admindb)→**6파드 1/1 Running RESTARTS 0** 전 구간 그린. 산출물 `deploy/k8s/standalone-kind/`(kind-config·certs.d 2·01~03·00-cleanup·README). 결정 **B**(인증 레지스트리로 충분, Harbor 제품 미설치). 4단계 결함 3건 수정: ① default SA 레이스(AlreadyExists)→imagePullSecrets 를 앱 파드 템플릿(component=service)에 직접 주입 ② dev overlay=Spring prod 프로파일이라 placeholder AES/JWT 가드 **차단**→가드 통과값 교체 ③ gateway 만 생존(프로파일 미지정=경고만)이 진단 단서. **잔여 1**: AS client_credentials 토큰 — wrong-secret→**401 로 인증 메커니즘 정상 확인**(앞 302 는 stale port-forward 아티팩트), 깨끗한 port-forward 로 access_token 1줄 확인만 남음. **모든 작업 uncommitted → 다음 세션 첫 행동 = commit/push(그린 박제).**
+**✅ §S3' standalone-kind AS client_credentials 토큰 = 완전 종료(2026-06-06). jwks=200·token=HTTP 200+access_token 실측.** 잔여였던 "토큰 1줄"이 사실은 **표면 302가 진짜 원인을 가린 버그**였다. 증상: `POST /oauth2/token`(정상 secret)·`GET /oauth2/jwks`=302→/login, discovery 만 200. **여러 턴 동안 시큐리티 체인(`exceptionHandling`/매처)을 오진**하다, 보안 WEB TRACE 의 `Authorizing GET /error`(원 요청 아님)에서 전환 → 진짜 인과 확정: `auth_signing_key` 의 ACTIVE 키(`enc:` AES 암호문)가 **현재 `AES_SECRET` 으로 복호화 불가**(시크릿 바뀐 채 PVC DB 잔존) → `ensureBootstrapKey()` 가 `findNewestActive()!=null`(행 존재)만 보고 새 키 생성 스킵 → `loadFromDb` 가 그 키 스킵 → JWKS 0개 → 500 → `/error` → `@Order(2)` 체인이 막아 302 둔갑. **즉시 해소** = `DELETE FROM auth_signing_key`+`rollout restart`(부트스트랩 새 키). **코드 영구화 2건 + 재배포 도구 1건** 반영. **모든 변경 uncommitted → 다음 세션 첫 행동 = commit/push.**
 
 ## 최종 갱신
-- 일자: 2026-06-06 · 갱신자: 운영 리허설 세션(§S3' standalone kind 그린·결함3건·토큰 잔여)
-- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SS7 / SC 2025.1.1 / Jackson 3 — 스택 무변경(devops 스크립트/매니페스트/문서만).
+- 일자: 2026-06-06 · 갱신자: §S3' 토큰 마감 세션(서명키 복호화 트랩·`/error` 마스킹·redeploy 도구)
+- 대상 브랜치: master · 환경: Spring Boot 4.0.6 / Java 21 / SF7 / SS7 / SC 2025.1.1 / Jackson 3 — 스택 무변경(auth-server 2파일 + devops 스크립트 + 문서).
 
 ## 직전에 한 것 (Done)
 | 단계 | 산출/검증 |
 |---|---|
-| standalone kind 트랙 | `deploy/k8s/standalone-kind/` 신설(kind-config 3노드+config_path+certs.d extraMounts, hosts.toml reg.local/harbor.local, 01 무인증 pull ✅PASS, 02 인증 pull ✅PASS, 03 dev-overlay up, 00 cleanup, README). 정적검증(bash -n·yaml·toml). |
-| 4단계 dev overlay 그린 | 빌드→push(localhost:5443→harbor.local)→`apply -k overlays/dev`→**6파드 1/1 Running RESTARTS 0** + authdb/sidb/admindb 분리 확인 ✅. |
-| 결함 3건 수정 | (a) default SA AlreadyExists→imagePullSecrets 파드템플릿 주입(`pull-secret-dev.yaml` SA 제거 + `kustomization.yaml` patch) (b) prod 프로파일 시크릿 가드 차단→`secrets-dev.yaml` AES/JWT 가드 통과값(점/길이, DB 비번 유지) (c) gateway 생존 단서. |
-| 함정/문서 | PITFALLS §9 신규 5건(레지스트리 점·certs.d 콜론·DD kind≠CLI·default SA 레이스·prod 프로파일 시크릿가드) + 자가진단표. HANDOFF §7·HANDOFF_SUMMARY·NEXT_K8S_REAL_DEPLOY 갱신. |
+| 302 근본원인 규명 | TRACE(`LOGGING_LEVEL_…SECURITY_WEB=TRACE`)에서 `Authorizing GET /error` 포착 → 로그 `JdbcRotatingJwkSource: 서명키 파싱/복호화 실패 — 건너뜀` + `IllegalStateException: 사용 가능한 서명키 없음` 확인. `auth_signing_key` head=`enc:`(AES 암호문), 현재 `AES_SECRET` 으로 복호화 불가. |
+| 즉시 해소 | `psql -d authdb -c "DELETE FROM auth_signing_key;"` → `rollout restart deploy/auth-server` → 부트스트랩 새 ACTIVE 키 → **jwks=200·token=200+access_token 실측 ✅**. |
+| 코드 영구화(2) | ① `JdbcRotatingJwkSource.ensureBootstrapKey()` → `hasUsableActiveKey()`(복호화/파싱 성공까지 확인, 불가하면 새 키 부트스트랩; 옛 키 비파괴 보존) ② `AuthorizationServerConfig.defaultSecurityFilterChain` permitAll 에 `/error` 추가. 부수: `exceptionHandling` 을 SS7 정본(`defaultAuthenticationEntryPointFor(LoginUrl, MediaTypeRequestMatcher(TEXT_HTML))`)으로 정렬. |
+| 재배포 도구 | `deploy/k8s/standalone-kind/redeploy.sh` 신설 — 소스 다이제스트 태그(`src-<sha1>`)로 빌드→push→`set image`→rollout(+`--smoke` 토큰). 고정 태그 캐시 함정 영구 제거. |
+| 함정/문서 | PITFALLS §5 신규 2건(서명키 복호화→부트스트랩 차단 / `/error` 미허용 마스킹) + curl `*/*` TEXT_HTML 메모 + 자가진단 2행. HANDOFF §6(상세)·§7(🟢+백로그⑤)·이 SUMMARY 갱신. |
 
 ## 현재 상태 (적용/검증)
-- **클러스터**: standalone `kind-sanity` 3노드. dev overlay apply 됨, 6파드 Running. docker-desktop kind 는 k8s OFF(엔진만). 잔존 컨테이너: `kind-registry`(01 무인증, 정리 가능)·`harbor-auth-reg`(harbor.local, 유지).
-- **이미지**: harbor-auth-reg 에 `si-msa/<svc>:dev` 4개 push 됨(노드 Pulled 11건). overlay 핀=`:dev`.
-- **그린 기준**: 6파드 ✅ · DB 3개 ✅ · AS access_token = **미확인(stale forward 로 302 났던 것, 깨끗이 재시도 필요)**.
+- **클러스터**: standalone `kind-sanity` 3노드, dev overlay, 6파드 Running. `harbor-auth-reg`(harbor.local) 유지. auth-server 파드 imagePullPolicy=Always(세션 중 변경) — dev 루프엔 무방.
+- **서명키**: `auth_signing_key` 에 현재 마스터키로 부트스트랩된 ACTIVE 키 1개(복호화 가능). 옛 `enc:` 죽은 키는 DELETE 됨.
+- **그린 기준**: 6파드 ✅ · DB authdb/sidb/admindb ✅ · **AS jwks=200·token=200 ✅** = §S3' 전 구간 그린.
+- **미커밋**: ⑤ auth-server 2파일 + redeploy.sh + PITFALLS/HANDOFF/SUMMARY (앞 세션 ④ standalone-kind 트랙도 여전히 미커밋).
 
 ## 바로 다음 할 일 (Next)
-1. **commit/push 먼저** — 누적분(standalone-kind 6파일 + dev overlay 2수정 + PITFALLS/HANDOFF/NEXT). 그린 박제.
-   `git add -A && git commit -m "feat(devops): standalone-kind 운영경로 리허설 그린 + dev overlay 수정(imagePullSecrets 파드주입·prod 시크릿가드 통과값)" && git push origin master`
-2. **AS 토큰 1줄 마감** — port-forward 정리 후 깨끗이: `pkill -f port-forward; kubectl -n si-msa port-forward svc/auth-server 9000:9000 >/tmp/pf.log 2>&1 & sleep 4; curl -s -u demo-service:demo-secret -d grant_type=client_credentials -d scope=api.read localhost:9000/oauth2/token | head -c 500; echo`. `access_token` 나오면 §S3' 완전 종료. (안 나오면 SS DEBUG 로그 — 단 wrong→401 확인됐으니 가능성 낮음.)
-3. **S4 애드온** — metrics-server(HPA, kind 는 `--kubelet-insecure-tls`) → kube-prometheus-stack(설치 후 dev overlay ServiceMonitor `$patch:delete` 해제 → dev 도 관측). 이후 S5 prod-rehearsal → S6 상위흐름(OIDC RP·이중발급기) → S7 Jenkins(sha 핀 자동 주입).
+1. **commit/push 먼저(그린 박제)** — 누적 ④+⑤ 한 묶음:
+   `git add -A && git commit -m "fix(auth-server): 서명키 복호화 불가 ACTIVE 키가 부트스트랩 차단 → JWKS 0개/토큰 500 수정(hasUsableActiveKey) + /error permitAll(에러 마스킹 제거) + redeploy.sh(다이제스트 태그); standalone-kind 트랙/overlay" && git push origin master`
+2. **(받는 쪽 빌드 검증)** — 작성환경 Gradle 불가 → `./gradlew :services:auth-server:test spotlessApply`(특히 `JdbcRotatingJwkSource`/`AuthorizationServerConfig` 컴파일 + 기존 `TokenIssuanceRoundTripTest` 회귀). 이미 standalone-kind 에서 런타임 그린이므로 회귀 위험 낮음.
+3. **S4 애드온** — metrics-server(HPA, kind 는 `--kubelet-insecure-tls`) → kube-prometheus-stack(설치 후 dev overlay ServiceMonitor `$patch:delete` 해제). 이후 S5 prod-rehearsal → S6 상위흐름(OIDC RP·이중발급기) → S7 Jenkins(sha 핀 자동 — redeploy.sh 의 다이제스트 태그 발상을 CI 로 승격).
 
 ## 이번 세션 함정/원칙 (되돌리지 말 것)
-- **default SA 재생성 금지** — fresh ns 와 같은 apply 면 AlreadyExists 레이스 → imagePullSecrets 미부착(401). 앱 파드 템플릿에 직접 주입(component=service).
-- **dev overlay=Spring prod 프로파일** — placeholder 시크릿(change-me/change-this, 짧음)은 AES/JWT 가드가 **차단**(경고 아님). secrets-dev 값은 가드 통과값이어야. DB 비번은 postgres initdb 사용자와 묶여 변경 금지.
-- **standalone kind=NetworkPolicy 비집행** — apps→postgres 안 막힘(docker-desktop kind 와 정반대). · **certs.d 점/콜론 규칙** · **DD 내장 kind≠standalone kind CLI**.
-- **wrong-secret→401 = 인증 메커니즘 정상** — 302 는 stale port-forward 아티팩트. 깨끗이 한 번만 찍을 것.
-- **이론 맹신 금지 + ArgoCD/GitOps≠pull**(pull 은 언제나 노드 containerd) 유지.
+- **표면 증상(302)이 진짜 원인(500)을 가린다** — 커스텀 시큐리티 체인은 `/error`(+`/actuator/**`)를 permitAll 해야 내부 예외가 인증 리다이렉트로 둔갑하지 않는다. TRACE 에 원 요청 아닌 `Authorizing GET /error` 가 보이면 내부 ERROR 포워딩 신호.
+- **"키가 있다" ≠ "키를 쓸 수 있다"** — 부트스트랩/헬스는 행 존재가 아니라 **복호화 가능 여부**까지 본다(AES_SECRET 교체 시 옛 키가 새 키 생성을 막던 트랩). `hasUsableActiveKey()`.
+- **AES_SECRET 교체 + PVC DB 잔존 = 서명키 복호화 불가** — 샌티/dev 는 `DELETE FROM auth_signing_key`+재기동으로 재부트스트랩. 운영은 시크릿 정합 또는 키 재생성 절차 필요.
+- **로컬 반복 배포는 고정 태그 말고 콘텐츠 다이제스트 태그** — `:local`/`:dev` + `IfNotPresent` 는 "반영됐나" 실랑이를 부른다. `redeploy.sh` 의 `src-<sha1>` 가 이를 제거(노드/호스트 옛 이미지 무관).
+- **호스트 자바 불필요** — 이미지는 `Dockerfile.build`(컨테이너 안 Gradle)로 빌드. `bootBuildImage`/호스트 gradlew 아님.
+- (유지) wrong-secret→401 은 client-auth 필터 자체 거부라 entry point/매처와 무관 — 302 진단에 끌려가지 말 것.
 
 <!-- 갱신 끝 -->

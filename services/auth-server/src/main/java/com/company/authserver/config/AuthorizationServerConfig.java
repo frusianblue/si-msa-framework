@@ -114,7 +114,11 @@ public class AuthorizationServerConfig {
         //    302(→/login)/401 이 떨어지고, 프로브/헬스체크가 영영 실패 → 컨테이너 unhealthy(부팅은 정상인데 죽음).
         //    framework-security 기본 체인(SecurityAutoConfiguration)이 user/admin/gateway 에 쓰는 규약과 동일하게 맞춘다.
         //    (노출 엔드포인트 자체는 application.yml management.endpoints.web.exposure.include 로 이미 한정됨.)
-        http.authorizeHttpRequests(a -> a.requestMatchers("/actuator/**")
+        // ⚠️ "/error" 도 반드시 미인증 허용. 서블릿 컨테이너는 처리 중 예외(예: AS 토큰 엔드포인트의 JwtEncodingException)
+        //    가 나면 내부적으로 ERROR 디스패치로 /error 에 포워딩한다. 이 체인(AS 엔드포인트 매처에 안 걸리는 그 외 요청)이
+        //    /error 를 anyRequest().authenticated() + formLogin 으로 잡으면, 본래 5xx 여야 할 응답이 302(→/login) 으로
+        //    둔갑한다 → 진짜 예외(서명키 복호화 실패 등)가 가려져 디버깅이 시큐리티 토끼굴로 샌다. (PITFALLS §9)
+        http.authorizeHttpRequests(a -> a.requestMatchers("/actuator/**", "/error")
                         .permitAll()
                         .anyRequest()
                         .authenticated())
