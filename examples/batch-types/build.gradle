@@ -1,0 +1,61 @@
+// =====================================================================================
+// batch-types — Spring Batch 6 "처리 방식(유형)" + DB 리더/라이터 종류 카탈로그
+// -------------------------------------------------------------------------------------
+// 처리 방식(스텝 모델):
+//   multiThreadedChunkJob  멀티스레드 청크(JdbcPagingItemReader + taskExecutor)
+//   partitionedJob         로컬 파티셔닝(id 범위 분할 → 워커 스텝 병렬)
+//   flowControlJob         플로우 제어(조건 분기 on/to + 병렬 split)
+//   compositeProcessorJob  처리기 체인(CompositeItemProcessor: 검증→가공→변환)
+// DB 연동(리더/라이터 종류):
+//   jdbcPaging(위 멀티스레드에 포함) · MyBatis(mapper) · StoredProcedure(저장 프로시저)
+//   mybatisJob             MyBatisPagingItemReader → MyBatisBatchItemWriter
+//   storedProcedureJob     StoredProcedureItemReader(PL/pgSQL refcursor) → JdbcBatchItemWriter
+//
+// 실행: ./gradlew bootRun --args='--spring.batch.job.name=partitionedJob'
+// =====================================================================================
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.0.6'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencyManagement {
+    imports {
+        mavenBom 'org.springframework.cloud:spring-cloud-task-dependencies:5.0.1'
+    }
+}
+
+dependencies {
+    implementation 'com.company:framework-task:1.0.0' // = batch + task(core/batch)
+
+    runtimeOnly 'org.postgresql:postgresql'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // --- MyBatis (mybatisJob 용) ---
+    //   ⚠️ Batch 6 필수: mybatis-spring 은 반드시 4.0.0+ (batch 클래스가 신패키지
+    //   org.springframework.batch.infrastructure.item.* 를 import). 3.0.x 는 Batch 5 패키지라 비호환.
+    //   (mybatis-spring-boot-starter 는 현재 mybatis-spring 3.0.5 를 끌어오므로 starter 대신 직접 선언.)
+    //   mybatis-spring 4.0.0 타깃: mybatis 3.5.19 / Spring 7.0.1 / Spring Batch 6.0.0 (우리 스택과 정합).
+    implementation 'org.mybatis:mybatis:3.5.19'
+    implementation 'org.mybatis:mybatis-spring:4.0.0'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.batch:spring-batch-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.batchtypes.jobs.mybatis.SettlementMapper">
+
+  <!-- 페이징 select: MyBatisPagingItemReader 가 _pagesize/_skiprows 를 넘긴다(PostgreSQL=LIMIT/OFFSET). -->
+  <select id="selectTxnPage" resultType="com.example.batchtypes.jobs.mybatis.SettlementMb">
+    SELECT id, merchant_id AS merchantId, amount
+    FROM txn
+    ORDER BY id
+    LIMIT #{_pagesize} OFFSET #{_skiprows}
+  </select>
+
+  <!-- 배치 insert: MyBatisBatchItemWriter 가 아이템(SettlementMb)을 파라미터로 넘긴다. -->
+  <insert id="insertOut" parameterType="com.example.batchtypes.jobs.mybatis.SettlementMb">
+    INSERT INTO txn_mybatis_out (id, merchant_id, amount)
+    VALUES (#{id}, #{merchantId}, #{amount})
+  </insert>
+
+</mapper>

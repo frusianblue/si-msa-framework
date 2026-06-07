@@ -18,7 +18,7 @@
 | 적합 | **k8s 환경 1순위.** 컨테이너-네이티브, 상주·패치 부담 0 | 런타임에 스케줄 보고/일시정지/즉시실행, VM·단일 상주 배포 |
 
 > 배타가 아니다. 같은 `Job` 정의를 두 모델로 모두 굴릴 수 있다 — 배포 형태(CronJob vs 상주 Deployment)로 고른다.
-> 실투입 예제: `examples/batch-task-reference`(모델 A, 단일 정산 잡 엔드투엔드) · `examples/batch-cookbook`(모델 A, 실무 패턴 5종: 파일→DB·DB→파일·다단계·Tasklet·내결함). framework-batch README(모델 B).
+> 실투입 예제: `examples/batch-task-reference`(모델 A, 단일 정산 잡 엔드투엔드) · `examples/batch-cookbook`(모델 A, 실무 패턴 5종: 파일→DB·DB→파일·다단계·Tasklet·내결함) · `examples/batch-types`(처리 방식·DB 리더/라이터 종류 6종: 멀티스레드·파티셔닝·플로우·처리기체인·MyBatis·StoredProcedure). framework-batch README(모델 B).
 
 ---
 

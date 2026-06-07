@@ -1,0 +1,138 @@
+# =====================================================================================
+# batch-types — 6개 잡을 각각 CronJob 으로. 같은 이미지, BATCH_JOB_NAME 만 다르다.
+#   적용: kubectl apply -f k8s/cronjobs.yaml
+#   수동 1회 실행: kubectl create job --from=cronjob/batch-partitioned manual-part-1
+#   ※ DB 접속정보는 예시 — 실제로는 Secret/ConfigMap 으로 주입.
+# =====================================================================================
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: batch-multithreaded
+spec:
+  schedule: "10 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: batch
+              image: batch-types:1.0.0
+              args: ["--spring.batch.job.name=multiThreadedChunkJob"]
+              env:
+                - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres:5432/appdb" }
+                - { name: SPRING_DATASOURCE_USERNAME, value: "app" }
+                - { name: SPRING_DATASOURCE_PASSWORD, value: "app" }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: batch-partitioned
+spec:
+  schedule: "20 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: batch
+              image: batch-types:1.0.0
+              args: ["--spring.batch.job.name=partitionedJob"]
+              env:
+                - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres:5432/appdb" }
+                - { name: SPRING_DATASOURCE_USERNAME, value: "app" }
+                - { name: SPRING_DATASOURCE_PASSWORD, value: "app" }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: batch-flow
+spec:
+  schedule: "30 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: batch
+              image: batch-types:1.0.0
+              args: ["--spring.batch.job.name=flowControlJob"]
+              env:
+                - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres:5432/appdb" }
+                - { name: SPRING_DATASOURCE_USERNAME, value: "app" }
+                - { name: SPRING_DATASOURCE_PASSWORD, value: "app" }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: batch-composite
+spec:
+  schedule: "40 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: batch
+              image: batch-types:1.0.0
+              args: ["--spring.batch.job.name=compositeProcessorJob"]
+              env:
+                - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres:5432/appdb" }
+                - { name: SPRING_DATASOURCE_USERNAME, value: "app" }
+                - { name: SPRING_DATASOURCE_PASSWORD, value: "app" }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: batch-mybatis
+spec:
+  schedule: "50 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: batch
+              image: batch-types:1.0.0
+              args: ["--spring.batch.job.name=mybatisJob"]
+              env:
+                - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres:5432/appdb" }
+                - { name: SPRING_DATASOURCE_USERNAME, value: "app" }
+                - { name: SPRING_DATASOURCE_PASSWORD, value: "app" }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: batch-storedproc
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: batch
+              image: batch-types:1.0.0
+              args: ["--spring.batch.job.name=storedProcedureJob"]
+              env:
+                - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres:5432/appdb" }
+                - { name: SPRING_DATASOURCE_USERNAME, value: "app" }
+                - { name: SPRING_DATASOURCE_PASSWORD, value: "app" }
