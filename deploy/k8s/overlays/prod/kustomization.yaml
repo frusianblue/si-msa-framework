@@ -21,10 +21,10 @@ resources:
 
 # 불변 sha 핀(promote 가 커밋). registry.example.com 은 운영 레지스트리 placeholder(ops 가 newName 으로 치환).
 images:
-  - { name: registry.example.com/si-msa/gateway, newName: harbor.local/si-msa/gateway, newTag: 520856b }
-  - { name: registry.example.com/si-msa/auth-server, newName: harbor.local/si-msa/auth-server, newTag: 520856b }
-  - { name: registry.example.com/si-msa/user-service, newName: harbor.local/si-msa/user-service, newTag: 520856b }
-  - { name: registry.example.com/si-msa/admin-service, newName: harbor.local/si-msa/admin-service, newTag: 520856b }
+  - { name: registry.example.com/si-msa/gateway,       newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/auth-server,   newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/user-service,  newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/admin-service, newTag: __GITSHA__ }
 
 patches:
   # ── imagePullPolicy: base 의 IfNotPresent 를 그대로 유지(별도 패치 없음). ──
@@ -61,7 +61,7 @@ patches:
     patch: |-
       - op: replace
         path: /data/DB_URL
-        value: jdbc:postgresql://prod-postgres.internal:5432/sidb
+        value: jdbc:postgresql://prod-postgres.internal:5432/admindb
   # prod 진입 도메인 + TLS (base si-msa-gateway Ingress 를 머지 패치)
   - path: ingress-prod.yaml
 

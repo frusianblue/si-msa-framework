@@ -124,6 +124,11 @@ promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4
 - **워킹트리 clean 전제**: 미커밋 변경이 있으면 `:<sha>` 가 실제 빌드 내용과 어긋남 → 40 의 0단계가 막음(overlay 파일만 예외).
 - **placeholder name 핀 필수**: prod overlay 의 image name=`registry.example.com/...`(운영 레지스트리 placeholder) → newTag 만 박으면 가짜 레지스트리에서 pull 시도 = 실패. images 줄을 `{ name: ..., newName: harbor.local/..., newTag: <sha> }` 로 통째 교체해 **newName 까지** 박아야 함(PITFALLS §9 local overlay 함정의 prod·harbor 판).
 - **sed 핀(kustomize 불요)**: overlay images 는 flow 스타일 한 줄이라 `40-promote` 가 sed 로 줄 통째 교체(첫/재promote 멱등). dev 의 `pin-image-tag.sh`(sed)와 일관 — 별도 CLI 설치 불요.
+- **파드 green 의 런타임 선결조건(데이터 정합)**: prod 는 다음이 매니페스트에 반영돼 있어야 4서비스가 뜬다 —
+  - **file base-path**: `deployment-hardening.yaml` 공통 env `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`(readOnlyRootFilesystem 에서 local FileStorage 가 `/application/uploads` 못 만들어 admin 등이 깨짐).
+  - **DB 분리**: user=`sidb`, admin=`admindb`(둘 다 sidb 면 Flyway `checksum mismatch` 충돌 — PITFALLS §9). initdb-prod.sql 이 admindb 를 만들어둠.
+  - ⚠️ **이미 sidb 가 오염된 클러스터**(과거 admin 이 sidb 에 마이그레이션 적용): `36-reset-sidb-rehearsal.sh` 로 sidb 재생성(admin→admindb 분리 sync 후). fresh 클러스터(00~)는 처음부터 분리라 불요.
+  - ⚠️ **base/overlay 매니페스트 변경은 40-promote 가 자동 커밋하지 않는다**(images 핀만 커밋) → `deployment-hardening.yaml`·admin DB_URL 변경은 **별도 git commit/push** 해야 ArgoCD 가 본다.
 
 ## 다음 단계 (스펙 §3-5~)
 
