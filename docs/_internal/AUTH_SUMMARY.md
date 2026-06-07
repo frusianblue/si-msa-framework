@@ -188,4 +188,3 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
 - 이번 세션: **#2 보안-영속 결합 분리 설계 확정(LOCKED), 코드 미착수.** 착수 전 소스 실측으로 계획 doc 2개 갭 해소 —
   ① `CurrentUserProvider` 감사 브리지(2번째 mybatis 결합) → 어댑터 이전, ② auth-server 도 마이그레이션 대상, ③ `SecurityMapper` FQN 유지(user-service 무변경).
   계획 doc §2.5 에 LOCKED 로 기록. **다음 세션 = 코드 작성**(어댑터 신설 + 코어 포트화 + 3서비스 마이그레이션 + archtest/jacoco + 문서 캐스케이드).
-
