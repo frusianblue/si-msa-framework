@@ -94,11 +94,39 @@ bash 92-verify-gitops.sh      # G8~G10
 - **commit-first**: 로컬 apply 가 아니라 git push 가 트리거. 미푸시면 si-msa-prod 가 안 생김(20 이 경고).
 - **dest=kind-svc**: 리허설. 실 prod 는 그 클러스터 이름으로 교체.
 
-## 다음 단계 (스펙 §3-4~)
+## 4단계: Harbor(hub) + bash promote
 
-4. promote 배선(`Jenkinsfile.promote`: CD 가 push 한 불변 `:<sha>` → prod overlay `kustomize edit set image` + git commit/push → ArgoCD sync) + Harbor(hub) 설치
+> 전제: 3단계 PASS(`92-verify-gitops.sh`). 파드 ImagePullBackOff(sentinel `__GITSHA__` + Harbor 미설치)를 **green** 으로 전환.
+> 빌드 주체 = **호스트 docker**(Kaniko 아님). "bash 로 흐름부터 증명"이 목적 → 미해결 Kaniko 멀티빌드 이슈를 끌어들이지 않음. Jenkins(`Jenkinsfile.promote`) 파이프라인화는 흐름 증명 후 후속.
+
+```bash
+cd deploy/k8s/prod-kind
+bash 30-harbor-hub-install.sh   # kind-cicd(hub)에 Harbor(Helm, harbor.local) + si-msa 프로젝트
+bash 40-promote.sh              # 호스트 docker 빌드 → push → overlay 핀 → git commit/push → ArgoCD sync
+# (sync/pull/startup 대기 후)
+bash 41-verify-promote.sh       # G11~G13
+```
+
+**호스트 push 사전조건**(40-promote 가 docker push harbor.local 하려면): Docker Desktop daemon 에 `insecure-registries: ["harbor.local"]`(HTTP 평문 레지스트리) + Windows/WSL hosts 에 `127.0.0.1 harbor.local`.
+
+promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4서비스 `:<sha>` 빌드(builder 스테이지 SERVICE 무관 → 1회 컴파일 재사용) → ② `harbor.local/si-msa/<svc>:<sha>` push → ③ `overlays/prod` 에 `kustomize edit set image registry.example.com/si-msa/<svc>=harbor.local/si-msa/<svc>:<sha>`(placeholder newName + sha newTag, 멱등) → ④ **git commit/push**(prod 반전 — dev 의 "되커밋 X"와 정반대, ArgoCD 는 master 가 진실) → ⑤ `refresh=hard` 로 즉시 reconcile.
+
+| 게이트 | 검증 |
+|---|---|
+| **G11** | Harbor(hub) reachable + si-msa 프로젝트에 4서비스 repo `:<sha>` 아티팩트 존재 |
+| **G12** | overlays/prod 핀 완료 — images newTag `__GITSHA__` 소거 + newName=harbor.local + git 커밋·push |
+| **G13** | si-msa-prod = Synced + Healthy + kind-svc 파드 4서비스 Running(green) |
+
+- **★ prod 는 핀을 git 에 커밋**: dev(push-CD)는 워크스페이스에서만 핀(되커밋 X)지만, prod(pull-GitOps)는 ArgoCD 가 git(master) 커밋 상태를 진실로 reconcile → 핀이 **반드시 커밋·push** 돼야 sync 됨. `40-promote` 가 그 커밋을 만든다.
+- **워킹트리 clean 전제**: 미커밋 변경이 있으면 `:<sha>` 가 실제 빌드 내용과 어긋남 → 40 의 0단계가 막음(overlay 파일만 예외).
+- **placeholder name 핀 필수**: prod overlay 의 image name=`registry.example.com/...`(운영 레지스트리 placeholder) → newTag 만 박으면 가짜 레지스트리에서 pull 시도 = 실패. `set image NAME=NEWNAME:TAG` 로 **newName 까지** 박아야 함(PITFALLS §9 local overlay 함정의 prod·harbor 판).
+- **kustomize CLI 필요**: GitOps 표준 도구. 없으면 `go install sigs.k8s.io/kustomize/kustomize/v5@latest`.
+
+## 다음 단계 (스펙 §3-5~)
+
 5. 데이터/관측 정합 (prod overlay DB/Redis 를 K8s밖 엔드포인트로, 관측 분산형)
 6. 문서 캐스케이드(`docs/ops/PROD_GITOPS_ARGOCD.md` 신설)
+- (선택) Jenkins(`Jenkinsfile.promote`) 파이프라인화 — bash promote 흐름 증명 후
 
 ## teardown
 

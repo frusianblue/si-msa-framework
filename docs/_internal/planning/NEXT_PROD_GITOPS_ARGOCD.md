@@ -1,6 +1,6 @@
 # NEXT — 운영(prod) 프로비저닝: ArgoCD GitOps + 3-클러스터 분리 토폴로지
 
-> 상태: **설계 잠김(2026-06-08 세션, 대화로 확정) · 구현 미착수.**
+> 상태: **설계 잠김(2026-06-08, 대화로 확정) · 1~3단계 실측 PASS · 4단계 자산 작성·정적검증 완료(실측 대기).**
 > 다음 섹션 진입점. **순서 = 무조건 인프라부터**(경험 먼저로 새다 인프라에서 되돌리는 비용 회피 — Chae 방침).
 > 이번 섹션 산출(이미 적용): `deploy/k8s/overlays/prod/kustomization.yaml` 가변 `:latest` → 커밋식 `__GITSHA__` 전환(아래 §4 참조).
 
@@ -42,7 +42,7 @@
 1. **인프라 토대(먼저)** — kind 2클러스터(`kind-cicd` + `kind-svc`) 생성 스크립트 + 우분투 도커 postgres/redis(`--network kind`) 기동/연결. 클러스터간 네트워크·노드 Harbor 신뢰·서비스→DB 도달 검증(PASS 게이트). **✅ PASS 검증 완료(2026-06-08, 받는 쪽 실측 G1~G4)** — `deploy/k8s/prod-kind/`(kind-cicd/svc config·`00`~`03`·`90-verify` G1~G4·`00-down`·README). 결정: 호스트 포트 cicd=80/443·svc=8080/8443, 파드→밖DB=CoreDNS 주입(`prod-postgres.internal` 무수정), 노드 Harbor 신뢰=registry-trust DaemonSet 멀티클러스터판.
 2. **ArgoCD(hub)** — `kind-cicd` 에 ArgoCD 설치(`argocd.local` B안 ingress) + `kind-svc` 원격 클러스터 등록(kubeconfig server=컨테이너 IP). **✅ PASS 검증 완료(2026-06-08, G5~G7 · UI Clusters 에 kind-svc 등록 확인)** — `10-cicd-ingress`·`11-argocd-install`(Helm)·`12-register-svc`(선언형 cluster Secret, insecure=false 정상)·`91-verify-argocd`.
 3. **GitOps 자산** — `deploy/argocd/`: AppProject(`projects/si-msa.yaml`) + prod Application(`apps/si-msa-prod.yaml`, source=`overlays/prod`, targetRevision=`master`, dest=`kind-svc`, sync 자동+selfHeal+prune) + app-of-apps(`bootstrap.yaml`). **✅ PASS 검증 완료(2026-06-08, G8~G10 · si-msa-prod Synced · kind-svc Successful)** — `20-gitops-bootstrap`(commit-first)·`92-verify-gitops`. 트리아지: prod overlay 에 ServiceMonitor `$patch:delete` 누락 → ArgoCD `tasks are not valid` → 추가(dev/local 과 동일, PITFALLS §9). 파드 ImagePullBackOff=fail-loud(sentinel `__GITSHA__`, 4단계 promote+Harbor 후 green).
-4. **promote 배선** — `deploy/cicd/Jenkinsfile.promote`(또는 stage): CD 가 push 한 불변 `:<sha>` 를 prod overlay 에 `kustomize edit set image` + **git commit/push** → ArgoCD sync.
+4. **promote 배선** — bash 우선(Chae 결정 2026-06-08): 빌드 주체 = **호스트 docker**(Kaniko 아님 — 흐름부터 증명, 미해결 Kaniko 멀티빌드 회피). **🟡 자산 작성·정적검증 완료(2026-06-08) · 받는 쪽 실측(G11~G13) 대기** — `30-harbor-hub-install.sh`(08 멀티클러스터 적응판: kind-cicd 에 Harbor Helm + si-msa 프로젝트; cicd 노드 certs.d/CoreDNS 불요 = push 는 호스트, pull 은 kind-svc) · `40-promote.sh`(호스트 docker `Dockerfile.build` 4서비스 `:<sha>` → push → `kustomize edit set image .../<svc>=harbor.local/si-msa/<svc>:<sha>` → **git commit/push**(prod 반전) → ArgoCD refresh=hard) · `41-verify-promote.sh`(G11 Harbor repo·G12 핀+커밋·G13 파드 green). 정적검증: bash -n PASS, kustomize 핀 후 형식 시뮬레이션으로 G12 grep 패턴 검증(주석 `__GITSHA__` 오탐 회피 = `newTag: __GITSHA__` 한정). ⚠️ 호스트 push 사전조건 = daemon `insecure-registries: ["harbor.local"]` + hosts. Jenkins(`Jenkinsfile.promote`) 파이프라인화는 흐름 증명 후 후속.
 5. **데이터/관측 정합** — prod overlay 의 `DB_URL`/Redis 호스트를 데이터(K8s 밖) 엔드포인트로(이미 `prod-postgres.internal` 전제) + 관측 분산형(워크로드 agent → 중앙 Grafana).
 6. **문서 캐스케이드** — 운영 가이드(`docs/ops/PROD_GITOPS_ARGOCD.md` 신설) + branch-per-env 가이드(master=prod 레퍼런스 + release-태그 대안) + FRAMEWORK_MODULES/README + PITFALLS + HANDOFF.
 
