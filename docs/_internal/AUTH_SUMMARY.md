@@ -159,8 +159,9 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
 
 ## 7. 다음 (Next)
 
-> **다음 세션 시작점**: T1 양쪽(8080 카탈로그 · 8081 실서비스) curl 검증 완료 ☑. 다음은 아래 중 택1 —
-> **#2 보안-영속 결합 분리**(authoring · framework 리팩터) / **T1 멀티팟 체감**(replicas=2 세션 외부화) / **T2 무상태 JWT**(상태 축 비교).
+> **다음 세션 시작점**: **#2 보안-영속 결합 분리 — 코드 작성**. 설계 확정 완료(LOCKED) →
+> [`planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md`](./planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md) §2.5(설계 확정 보강) 그대로 실행.
+> (T1 양쪽 8080·8081 curl 검증은 ☑ 완료 — 아래 트랙진행 #4.)
 
 ### 먼저 처리
 1. ✅ **카탈로그 빌드 통일(완료)** — `examples/auth-types` 를 standalone → **루트 멀티프로젝트로 편입**.
@@ -168,21 +169,23 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
    → `project(':framework:..')` 로, 플러그인 버전 선언 제거(루트 상속). standalone `settings.gradle` 삭제.
    이제 `publishToMavenLocal` 불필요, repo 루트에서 `:examples:auth-types:bootRun` 으로 바로 실행.
    ⚠️ 예제는 jacocoAggregation/archtest 대상이 아님 — 루트 `build.gradle` 의 해당 목록엔 넣지 않았다.
-2. **보안-영속 결합 분리(리팩터)** — `docs/_internal/planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md` 착수.
+2. **보안-영속 결합 분리(리팩터)** — ✅ **설계 확정(LOCKED)**, 코드 미착수. `planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md` §2.5 참조.
    `framework-security` 의 MyBatis/DataSource 강제 결합을 RBAC 포트/어댑터(`framework-security-rbac-mybatis`)로 분리.
-   완료 후 T1 데모에서 H2/DataSource 제거(인증만 → DataSource 불필요).
+   확정 보강: (i) 감사 브리지 `CurrentUserProvider` 도 어댑터로 이전(2번째 mybatis 결합), (ii) auth-server 도 마이그레이션 대상(기본 `dynamic-authorization=true`),
+   (iii) `SecurityMapper` FQN 유지 → user-service 코드 무변경. 완료 후 T1 데모에서 H2/DataSource 제거.
 3. **[결정됨 (a)] `session.cookie-name` 실배선** — 죽은 프로퍼티(§6)를 `server.servlet.session.cookie.name` 으로 연결해
    실제 쿠키 이름을 바꾼다(톰캣·Spring Session 동시 적용). framework-security 변경 → 문서 캐스케이드 동반. 우선순위: 8081 검증 → #2 뒤.
 
 ### 트랙 진행
-4. ✅ **T1 검증(완료)** — ☑ 카탈로그(8080) curl 4~5단계 통과. ☑ 실서비스(8081) 동일 검증 통과(1·5=401, 2·3·4=200; `principal=alice`/`authorities=[ROLE_USER]`, 쿠키 `JSESSIONID` = 정적 점검 예고대로).
+4. ✅ **T1 검증(완료)** — ☑ 카탈로그(8080) curl 4~5단계 통과. ☑ 실서비스(8081) 동일 검증 통과(1·5=401, 2·3·4=200; `principal=alice`/`authorities=[ROLE_USER]`, 쿠키 `JSESSIONID`).
 5. **T1 멀티팟 체감** — `auth-session-service` replicas=2 로 띄워 세션 외부화 on/off 차이 확인(`framework-session`).
 6. **T2(무상태 JWT)로 상태 축 비교** — `auth-jwt-service` + 카탈로그 `t2-jwt` 프로파일. 로그아웃·확장 차이 기록.
 
 ### 세션 닫음 메모
-- 직전 세션: #1 카탈로그 루트 편입 / rbac WARN 억제(H2 `INIT=RUNSCRIPT` 빈 스키마, 양쪽) / T1 카탈로그(8080) curl 검증 통과 /
-  cookie-name 죽은 설정 발견·문서 정정·(a) 결정 / 재실행용 [`AUTH_T1_VERIFY.md`](./AUTH_T1_VERIFY.md) 작성.
-  → 커밋/푸시 완료(HEAD `0e7f332 "추가"`, master). 이전의 "미커밋" 메모는 해소됨.
-- 이번 세션: `auth-session-service` 8081 정적 점검(골격 ↔ 8080 카탈로그 동형 확인) → 로컬 curl 실행 → **T1 실서비스 ☑ 검증 통과**.
-  새 함정 없음(§6 추가 없음). 본 문서 갱신분만 커밋/푸시 필요.
+- 직전 세션: #1 카탈로그 루트 편입 / rbac WARN 억제(H2 `INIT=RUNSCRIPT` 빈 스키마) / T1 카탈로그(8080) curl 검증 통과 /
+  cookie-name 죽은 설정 발견·(a) 결정 / [`AUTH_T1_VERIFY.md`](./AUTH_T1_VERIFY.md) 작성. → 커밋/푸시 완료(HEAD `0e7f332`).
+- T1 실서비스(8081): `auth-session-service` 정적 점검(8080 동형 확인) → 로컬 curl 1·5=401 / 2·3·4=200 통과 → T1 ☑.
+- 이번 세션: **#2 보안-영속 결합 분리 설계 확정(LOCKED), 코드 미착수.** 착수 전 소스 실측으로 계획 doc 2개 갭 해소 —
+  ① `CurrentUserProvider` 감사 브리지(2번째 mybatis 결합) → 어댑터 이전, ② auth-server 도 마이그레이션 대상, ③ `SecurityMapper` FQN 유지(user-service 무변경).
+  계획 doc §2.5 에 LOCKED 로 기록. **다음 세션 = 코드 작성**(어댑터 신설 + 코어 포트화 + 3서비스 마이그레이션 + archtest/jacoco + 문서 캐스케이드).
 

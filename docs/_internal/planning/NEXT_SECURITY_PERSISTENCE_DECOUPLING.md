@@ -1,6 +1,6 @@
 # NEXT_SECURITY_PERSISTENCE_DECOUPLING.md
 
-> **상태: 활성(ACTIVE)** — 다음 섹션 착수 대상. 완료 시 `docs/archive/` 로 이동(ARCHIVED 배너).
+> **상태: 활성(ACTIVE) · 설계 확정(LOCKED, 2026-06-07)** — 다음 섹션 = 코드 작성 착수. **§2.5(설계 확정 보강)** 을 §6 체크리스트와 함께 그대로 실행. 완료 시 `docs/archive/` 로 이동(ARCHIVED 배너).
 > 관련: `docs/_internal/AUTH_SUMMARY.md` §6(트랙 Pitfalls), `docs/guide/AUTH_COMPOSITION_GUIDE.md`,
 > `docs/guide/PITFALLS.md`(§ ConditionalOnMissingBean introspection / MapperScan annotationClass).
 
@@ -48,6 +48,36 @@ RBAC(선택 기능) → MyBatis(특정 기술) → DataSource(인프라) 가 줄
 
 ---
 
+## 2.5 설계 확정 보강 (2026-06-07 소스 실측 반영 · LOCKED)
+
+> 착수 전 실제 소스 대조로 계획의 **두 갭**을 발견·해소했다. 다음 세션은 이 절을 그대로 실행한다.
+
+### 발견 1 — 두 번째 mybatis 결합(감사 브리지)
+RBAC 외에 `SecurityAutoConfiguration`(line 3·157)이 `SecurityContextCurrentUserProvider`
+(= framework-mybatis 의 `CurrentUserProvider` SPI 구현, created_by/updated_by 공급)를 `@Primary` 빈으로 등록한다 —
+코어 → mybatis 의 **두 번째** 컴파일 결합. §6-2 "mybatis 의존 제거" + §6-5 ArchUnit "코어 no-mybatis" 를 그대로 적용하면 이 브리지가 컴파일 불가.
+- **결정**: `SecurityContextCurrentUserProvider` 도 **어댑터로 이전**(security+mybatis 둘 다 가진 유일한 자리). 어댑터에서 `@Primary CurrentUserProvider` 로 등록.
+- **고아 의존 0 증명**: framework-mybatis 를 쓰는 서비스 3종(user/admin/auth-server)이 **전부 `dynamic-authorization=true`(기본값)** → 어차피 어댑터를 물게 됨.
+  보안-only 서비스(`auth-session-service`)는 mybatis 자체가 없어 감사 대상 엔티티가 없으므로 무영향.
+- 실측: framework-mybatis `MyBatisConfig.defaultCurrentUserProvider` 는 `@ConditionalOnMissingBean(CurrentUserProvider.class)` 라 어댑터 빈이 우선.
+  주입 순서 견고성 위해 어댑터 빈에 `@Primary` 유지(현행 동작과 동일).
+
+### 발견 2 — auth-server 도 마이그레이션 대상
+계획 §6-4 는 user/admin 만 적었으나, **auth-server** 도 `dynamic-authorization` 미지정 = 기본값 `true`(`FrameworkSecurityProperties.dynamicAuthorization=true`) +
+`V3__rbac_metadata.sql` 보유 → fail-fast 에 걸린다. **셋(user/admin/auth-server) 모두** 같은 delivery 에 어댑터 한 줄 추가
+(안 하면 부팅 실패 — 의도된 fail-fast, 회귀 방지 위해 동시 적용).
+
+### 결정 — SecurityMapper FQN 유지
+`SecurityMapper`(+`SecurityMapper.xml` 네임스페이스)를 어댑터로 옮기되 **패키지/FQN 그대로**
+(`com.company.framework.security.rbac.mapper.SecurityMapper`) 유지. user-service `DbAuthenticationProvider` 의 `import` 가 어댑터 jar 에서 그대로 해소 →
+**user-service 코드 무변경**(의존 한 줄만 추가). 코어엔 이제 이 패키지가 없고 어댑터가 소유(classpath 분할 패키지, 런타임 정상).
+
+### fail-fast 동작 확정
+`dynamic-authorization=true` ∧ `ResourceMetadataProvider` 부재 → **프로파일 무관 부팅 실패**(조용한 인가 무력화 차단).
+`JwtSecretSafetyGuard`(InitializingBean#afterPropertiesSet 에서 throw) 패턴 재사용.
+
+---
+
 ## 3. SPI(포트) 설계
 
 DB 를 만지는 지점은 `SecurityMapper`(rbac.mapper) 3개 메서드:
@@ -75,6 +105,7 @@ public interface MenuProvider {                  // 메뉴 API
 - `SecurityMapper`(@Mapper 인터페이스) + `resources/mapper/security/SecurityMapper.xml`
 - `MyBatisResourceMetadataProvider implements ResourceMetadataProvider`
 - `MyBatisMenuProvider implements MenuProvider`
+- **`SecurityContextCurrentUserProvider`(코어에서 이전) — `@Primary CurrentUserProvider`(감사 브리지, §2.5 발견 1)**
 - (선택) `findRolesByLoginId` 를 제공할 `MyBatisRoleProvider` 또는 `SecurityMapper` 자체를 어댑터가 노출
   → user-service 의 `DbAuthenticationProvider` 가 이걸 주입받게.
 
@@ -115,7 +146,8 @@ public interface MenuProvider {                  // 메뉴 API
 
 ### 6-1. 새 모듈 신설 (`framework-security-rbac-mybatis`)
 - [ ] `framework/framework-security-rbac-mybatis/` 생성(build.gradle: `api project(':framework:framework-security')` + `api project(':framework:framework-mybatis')`)
-- [ ] `SecurityMapper` + `SecurityMapper.xml` 이전, `MyBatisResourceMetadataProvider`/`MyBatisMenuProvider` 작성
+- [ ] `SecurityMapper` + `SecurityMapper.xml` 이전(**FQN/네임스페이스 유지** — §2.5), `MyBatisResourceMetadataProvider`/`MyBatisMenuProvider` 작성
+- [ ] `SecurityContextCurrentUserProvider` 코어→어댑터 이전 + `@Primary CurrentUserProvider` 빈 등록(감사 브리지, §2.5 발견 1)
 - [ ] 어댑터 `@AutoConfiguration`(nested `@ConditionalOnClass(SqlSessionFactory.class)` + `@MapperScan(annotationClass=Mapper.class)`)
 - [ ] `META-INF/.../AutoConfiguration.imports` 등록
 
@@ -124,6 +156,7 @@ public interface MenuProvider {                  // 메뉴 API
 - [ ] `rbac.spi` 포트 신설(`ResourceMetadataProvider`, `MenuProvider`)
 - [ ] `SecurityMetadataService`/`DynamicAuthorizationManager`/`MenuService`/`MenuController` 를 포트 의존으로 변경
 - [ ] `SecurityAutoConfiguration`: `@MapperScan`·`SecurityMapper` 참조 제거, RBAC 빈에 `@ConditionalOnBean(포트)`
+- [ ] `SecurityAutoConfiguration`: `CurrentUserProvider` import·`securityContextCurrentUserProvider()` @Bean 제거 + `SecurityContextCurrentUserProvider.java` 코어에서 삭제(어댑터로 이전, §2.5) → 코어 `com.company.framework.mybatis.*` 잔여 import 0
 - [ ] dynamic-authorization=true + 포트 부재 → fail-fast 가드 빈
 
 ### 6-3. 신규 모듈 등록(프로젝트 규약 — 동시 등록 필수)
@@ -134,9 +167,10 @@ public interface MenuProvider {                  // 메뉴 API
 - [ ] root `build.gradle` jacocoAggregation 추가
 
 ### 6-4. 기존 서비스 마이그레이션
-- [ ] `services/user-service/build.gradle` 에 `-rbac-mybatis` 의존 한 줄 추가(현재 dynamic-authorization=true)
-- [ ] `services/admin-service/build.gradle` 동일
-- [ ] `DbAuthenticationProvider` 의 `SecurityMapper` 주입 경로 확인(어댑터가 노출)
+- [ ] `services/user-service/build.gradle` 에 `-rbac-mybatis` 의존 한 줄 추가(현재 dynamic-authorization=true·기본값)
+- [ ] `services/admin-service/build.gradle` 동일(기본값 true)
+- [ ] `services/auth-server/build.gradle` 동일(기본값 true + `V3__rbac_metadata.sql`, §2.5 발견 2)
+- [ ] `DbAuthenticationProvider` — `SecurityMapper` FQN 유지(§2.5)이므로 **코드 무변경**, 어댑터 의존만으로 import 해소
 - [ ] 로컬 부팅·기존 동작 회귀 확인(Chae)
 
 ### 6-5. ArchUnit 회귀 방지
