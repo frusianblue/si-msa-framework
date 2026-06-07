@@ -4,7 +4,10 @@
 # =====================================================================
 spring:
   datasource:
-    url: jdbc:h2:mem:authsession;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    # INIT=RUNSCRIPT: 빈 rbac 스키마(행 0) 선생성 → SecurityMetadataService 의 부팅 시 findAllResources
+    #   조회가 0행으로 깔끔히 끝나 시끄러운 WARN 제거(dynamic-authorization=false 라 캐시는 미사용 — 로그 위생).
+    #   ⚠️ local(H2) 전용. dev/prod(PostgreSQL)은 실제 rbac 스키마를 앱 마이그레이션으로 제공.
+    url: "jdbc:h2:mem:authsession;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;INIT=RUNSCRIPT FROM 'classpath:db/rbac-empty-schema.sql'"
     username: sa
     password:
     driver-class-name: org.h2.Driver

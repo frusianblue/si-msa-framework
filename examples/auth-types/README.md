@@ -21,23 +21,19 @@
 
 ---
 
-## 사전 준비 (1회)
+## 사전 준비
 
-이 예제는 `com.company:framework-*:1.0.0` 을 mavenLocal 에서 소비한다. repo 루트에서:
-
-```bash
-./gradlew :framework:framework-core:publishToMavenLocal \
-          :framework:framework-mybatis:publishToMavenLocal \
-          :framework:framework-security:publishToMavenLocal
-```
+별도 준비 없음. 이 예제는 **루트 멀티프로젝트에 편입**되어 `project(':framework:..')` 를 직접 소비하므로
+`publishToMavenLocal` 단계가 필요 없다(과거 standalone 빌드의 mavenLocal 소비 방식은 폐기).
 
 ---
 
 ## 실행
 
+repo 루트에서:
+
 ```bash
-cd examples/auth-types
-./gradlew bootRun --args='--spring.profiles.active=t1-form-session'
+./gradlew :examples:auth-types:bootRun --args='--spring.profiles.active=t1-form-session'
 ```
 
 ---
@@ -71,6 +67,8 @@ curl -i -b cookies.txt localhost:8080/api/resource
 ---
 
 ## 부팅 메모
-- framework-security 는 framework-mybatis 를 전이로 끌어온다 → **DataSource(H2) 필수**. 데모는 H2 인메모리(빈 스키마).
-- rbac DB 동적 인가는 `framework.security.dynamic-authorization=false` 로 꺼서 rbac 테이블 없이 부팅("인증만 되면 통과").
+- framework-security 는 framework-mybatis 를 전이로 끌어온다 → **DataSource(H2) 필수**. 데모는 H2 인메모리.
+- rbac DB 동적 인가는 `framework.security.dynamic-authorization=false` 로 꺼서 "인증만 되면 통과". 단 토글과 무관하게
+  `SecurityMetadataService` 가 부팅 시 `findAllResources()` 를 1회 호출하므로, 빈 rbac 스키마(행 0)를 H2 `INIT=RUNSCRIPT
+  FROM 'classpath:db/rbac-empty-schema.sql'` 로 선생성해 **조용히 부팅**한다(없어도 무해하지만 시끄러운 WARN 이 찍힘).
 - 세션 모드에서도 JWT `AuthController`(`/api/v1/auth/login`)가 함께 뜨지만 경로가 달라 충돌 없음 — T1 은 세션 경로만 쓴다.

@@ -21,7 +21,7 @@
 
 | 위치 | 역할 | 빌드 형태 | 패키지 |
 |------|------|-----------|--------|
-| `examples/auth-types` | **카탈로그**(학습·체감) — 한 앱에서 프로파일 전환으로 T1~T10 A/B 비교 | 독립 빌드(standalone `settings.gradle`), `com.company:framework-*:1.0.0` 소비 | `com.example.authtypes` |
+| `examples/auth-types` | **카탈로그**(학습·체감) — 한 앱에서 프로파일 전환으로 T1~T10 A/B 비교 | 루트 멀티프로젝트 편입(`include 'examples:auth-types'`), `project(':framework:..')` 직접 의존 | `com.example.authtypes` |
 | `services/auth-*-service` | **실서비스**(실전 적용) — 방식별로 쪼갠 배포 가능한 서비스 | 루트 `settings.gradle` include, `project(':framework:..')` 의존 | `com.company.<방식>` |
 
 `examples` = 비교 실험, `services` = 실전 적용. 카탈로그에서 체감 → 실서비스에 반영하는 순서.
@@ -67,7 +67,7 @@
 
 | 트랙 | 방식 | 카탈로그(`examples/auth-types`) | 실서비스(`services/`) |
 |------|------|-------------------------------|----------------------|
-| T1 | 세션 | ◐ `t1-form-session` 프로파일 생성 | ◐ `auth-session-service` 골격 생성 |
+| T1 | 세션 | ◐ `t1-form-session` 프로파일 + 루트 빌드 편입(#1 완료) | ◐ `auth-session-service` 골격 생성 |
 | T2 | 무상태 JWT | ☐ | ☐ `auth-jwt-service` |
 | T3 | OIDC RP | ☐ | ☐ `auth-oidc-service` |
 | T4 | SAML SP | ☐ | ☐ `auth-saml-service` |
@@ -89,7 +89,9 @@
 
 - **데모 인증기**: `DemoAuthenticator implements Authenticator` (인메모리 사용자, BCrypt 검증).
 - **부팅 전제**: framework-security 가 `framework-mybatis` 를 전이로 끌어옴 → SqlSessionFactory 용 **DataSource(H2) 필수**.
-  데모는 `dynamic-authorization=false` + `menu=false` 로 rbac DB 조회를 끄고, H2 빈 스키마로 부팅.
+  데모는 `dynamic-authorization=false` + `menu=false` 로 rbac **인가 연결**을 끈다. ⚠️ 단 `SecurityMetadataService` 는
+  토글과 무관하게 부팅 시 `findAllResources()` 를 1회 호출하므로(§6 참고), 빈 rbac 스키마(행 0)를 H2 `INIT=RUNSCRIPT`
+  로 선생성해 조용히 부팅한다(없으면 무해하지만 시끄러운 WARN).
 - **체감 포인트**:
   - 단일 파드: 톰캣 `HttpSession` 으로 충분.
   - replicas≥2: 세션 공유 필요 → `framework-session`(Spring Session Redis) 의존 추가. **안 하면 파드 전환 시 로그아웃** ← T1의 핵심 체감.
@@ -125,15 +127,33 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
   rbac 미사용 시 `dynamic-authorization=false`/`menu=false` 로 DB 조회 회피(스키마는 빈 채로 OK).
 - **[일반 known] 세션 모드에서도 JWT `AuthController` 가 동시 등록**(`AuthAutoConfiguration` 은 `@ConditionalOnBean(Authenticator)` 만 검사) —
   경로가 `/api/v1/auth/login`(JWT) vs `/api/v1/auth/session/login`(세션)으로 분리돼 **충돌 아님**. T1은 세션 경로만 사용.
+- **[겪음 encountered] standalone 예제를 루트 멀티프로젝트로 편입할 때(#1)** — standalone `build.gradle` 의
+  `id 'org.springframework.boot' version '4.0.6'` / `id 'io.spring.dependency-management' version '1.1.7'` 를
+  그대로 두면, 루트가 이미 클래스패스에 올린(`apply false`) 플러그인과 **버전 중복 선언 충돌**("plugin already on the classpath
+  must not include a version"). 해결: 버전 제거하고 적용만(`id 'org.springframework.boot'`), 의존은 `'com.company:..:1.0.0'`
+  → `project(':framework:..')`, group/version/toolchain/repositories/dependency-management/JUnit·인코딩은 루트 상속에 맡김
+  (형제 `services/auth-session-service` 와 동형). 또한 편입한 디렉터리의 **standalone `settings.gradle` 는 삭제**해야 한다 —
+  남겨두면 그 디렉터리에서 `gradle` 직접 실행 시 그 settings 가 잡혀 `project(':framework:..')` 미해소로 실패하는 함정.
+- **[겪음 encountered] `dynamic-authorization=false` 인데도 부팅 시 rbac 테이블 조회 WARN** — `SecurityAutoConfiguration`
+  의 `securityMetadataService` 빈은 토글과 **무관하게 항상 생성**되고(`SecurityAutoConfiguration` 161–163줄),
+  생성자가 `reload()` → `SecurityMapper.findAllResources()` 를 1회 호출한다. `dynamic-authorization` 토글은
+  "조회 결과를 인가 체인에 **연결할지**"만 끄지(306·374줄 `if`), "조회 **자체**"는 막지 못한다. 빈 H2엔 `resources`/`roles`/
+  `role_resources` 테이블이 없어 MyBatis 가 `JdbcSQLSyntaxErrorException: Table "RESOURCES" not found` 를 시끄럽게
+  찍는다. **단, `reload()` 는 try/catch 로 삼켜 빈 캐시로 시작 → 기동·로그인 정상(무해, 로그 노이즈일 뿐).**
+  해결(데모): 빈 rbac 스키마(행 0) 3테이블을 H2 `INIT=RUNSCRIPT FROM 'classpath:db/rbac-empty-schema.sql'` 로 선생성
+  → 0행 조회로 조용히 부팅. (schema.sql 은 빈 생성 순서에 따라 reload 후 실행될 수 있어 INIT 절을 택함.)
+  근본 해결은 #2(보안-영속 결합 분리) — SecurityMetadataService 의 무조건 DB 결합 제거가 이 WARN 의 진짜 원인.
 
 ---
 
 ## 7. 다음 (Next)
 
-### 먼저 처리(이번 섹션에서 결정, 미적용)
-1. **카탈로그 빌드 통일** — `examples/auth-types` 를 독립 빌드 → **루트 멀티프로젝트로 편입**
-   (루트 `settings.gradle` 에 `include 'examples:auth-types'`, `build.gradle` 의존을 `'com.company:..:1.0.0'` →
-   `project(':framework:..')` 로 전환). 그러면 `publishToMavenLocal` 불필요, `:examples:auth-types:bootRun` 으로 바로 실행.
+### 먼저 처리
+1. ✅ **카탈로그 빌드 통일(완료)** — `examples/auth-types` 를 standalone → **루트 멀티프로젝트로 편입**.
+   루트 `settings.gradle` 에 `include 'examples:auth-types'`, `build.gradle` 의존을 `'com.company:..:1.0.0'`
+   → `project(':framework:..')` 로, 플러그인 버전 선언 제거(루트 상속). standalone `settings.gradle` 삭제.
+   이제 `publishToMavenLocal` 불필요, repo 루트에서 `:examples:auth-types:bootRun` 으로 바로 실행.
+   ⚠️ 예제는 jacocoAggregation/archtest 대상이 아님 — 루트 `build.gradle` 의 해당 목록엔 넣지 않았다.
 2. **보안-영속 결합 분리(리팩터)** — `docs/_internal/planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md` 착수.
    `framework-security` 의 MyBatis/DataSource 강제 결합을 RBAC 포트/어댑터(`framework-security-rbac-mybatis`)로 분리.
    완료 후 T1 데모에서 H2/DataSource 제거(인증만 → DataSource 불필요).

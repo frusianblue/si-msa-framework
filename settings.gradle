@@ -51,3 +51,11 @@ include 'services:auth-session-service'   // T1: 서버 세션(HttpSession + 쿠
 // include 'services:auth-jwt-service'    // T2: 무상태 JWT (예정)
 // include 'services:auth-oidc-service'   // T3: OIDC RP 위임 (예정)
 // include 'services:auth-saml-service'   // T4: SAML SP 위임 (예정)
+
+// ----- 예제/카탈로그 (examples) -----
+// auth-types: 인증 "방식(유형)" 카탈로그 — 한 앱에서 프로파일 전환으로 T1~T10 A/B 비교.
+//   독립(standalone) 빌드에서 루트 멀티프로젝트로 편입(#1). project(':framework:..') 직접 소비 →
+//   publishToMavenLocal 불필요, `:examples:auth-types:bootRun` 으로 바로 실행. (docs/_internal/AUTH_SUMMARY.md)
+//   ⚠️ 예제는 배포 산출물/커버리지 집계 대상이 아니다 → root build.gradle 의 jacocoAggregation 목록엔 넣지 않는다.
+include 'examples:auth-types'
+// 그 외 examples/* (batch-cookbook·batch-task-reference·batch-types) 는 여전히 독립 standalone 빌드로 둔다.
