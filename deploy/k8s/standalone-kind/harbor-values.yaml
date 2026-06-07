@@ -1,23 +1,31 @@
 # deploy/k8s/standalone-kind/harbor-values.yaml
 # ─────────────────────────────────────────────────────────────────────────────
-# 인-클러스터 Harbor (standalone kind). NodePort + HTTP + 영속 PVC.
-# 차트: harbor/harbor (helm.goharbor.io). 키는 실제 values.yaml(goharbor/harbor-helm) 검증함.
-#   expose.type=nodePort / expose.tls.enabled=false / expose.nodePort.ports.http.nodePort=30002
-#   externalURL 은 08-harbor-install.sh 가 control-plane 노드 IP 로 --set 주입(split-horizon 통일).
-#   persistence: kind 기본 SC 'standard'(local-path) — 재부팅 보존(PVC).
-#   trivy 비활성(로컬 dev 경량화; 필요 시 true).
+# 인-클러스터 Harbor (standalone kind). 【B안 (2026-06-07 세션4) — ingress 노출】
+# 차트: harbor/harbor (helm.goharbor.io). 키는 실제 values.yaml(goharbor/harbor-helm) 검증.
+#
+# 이전(NodePort 30002) → 지금(ingress, harbor.local):
+#   expose.type=ingress / expose.tls.enabled=false / className=nginx / hosts.core=harbor.local
+#   ssl-redirect=false  → HTTP 평문(ingress 가 308 https 리다이렉트 안 하도록).
+#   proxy-body-size="0" → 이미지 레이어 push 본문 크기 무제한(기본 1m 면 push 깨짐).
+#   externalURL 은 08-harbor-install.sh 가 http://harbor.local 로 --set(토큰 realm = 이 값).
+#   persistence: kind 기본 SC 'standard'(local-path) — 재부팅 보존(PVC). trivy off(경량).
 # ─────────────────────────────────────────────────────────────────────────────
 expose:
-  type: nodePort
+  type: ingress
   tls:
     enabled: false
-  nodePort:
-    ports:
-      http:
-        nodePort: 30002
+  ingress:
+    className: nginx
+    hosts:
+      core: harbor.local
+    annotations:
+      # HTTP 평문 — https 강제 리다이렉트(308) 방지.
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      # 레지스트리 push 본문 무제한(레이어 블롭). 0 = 무제한.
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
 
-# externalURL 은 스크립트가 http://<control-plane-ip>:30002 로 덮어씀(아래는 자리표시).
-externalURL: http://harbor.local:30002
+# externalURL = 토큰 realm. 스크립트가 http://harbor.local 로 덮어씀(아래는 자리표시).
+externalURL: http://harbor.local
 
 harborAdminPassword: "Harbor12345"
 
@@ -41,7 +49,7 @@ persistence:
       storageClass: "standard"
       size: 2Gi
 
-# 로컬 dev 경량화 — 취약점 스캐너 제외(필요 시 true 로).
+# 로컬 dev 경량화 — 취약점 스캐너 제외(필요 시 true).
 trivy:
   enabled: false
 

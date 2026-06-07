@@ -1,20 +1,24 @@
 # deploy/k8s/standalone-kind/registry-trust-daemonset.yaml
 # ─────────────────────────────────────────────────────────────────────────────
-# 노드 containerd 레지스트리 미러(certs.d)를 *재부팅 내성* 있게 기입하는 DaemonSet.
+# 노드 containerd 레지스트리 미러(certs.d) + 노드 /etc/hosts 를 *재부팅 내성* 있게 기입하는 DaemonSet.
 #
 # 왜 필요한가 (2026-06-07 함정):
 #   기존 방식 = kind extraMounts 로 호스트 ./certs.d 를 노드 /etc/containerd/certs.d 에 bind mount.
-#   → Docker Desktop/WSL 재부팅 시 이 bind mount 가 통째로 휘발(`No such file or directory`)
-#     → containerd 가 harbor.local 을 기본 https://harbor.local:443 으로 시도 → connection refused
-#     → auth-server 만 (롤아웃으로 새 pull 필요해서) ImagePullBackOff. 다른 서비스는 노드캐시(IfNotPresent)로 생존.
+#   → Docker Desktop/WSL 재부팅 시 이 bind mount 가 통째로 휘발 → harbor.local 기본 https:443 폴백 → connection refused
+#     → auth-server 만 (롤아웃으로 새 pull 필요해서) ImagePullBackOff.
+#   해결: hostPath(/etc/containerd/certs.d)에 ConfigMap 내용을 *노드 부팅마다* 다시 써넣는다(bind mount 의존 제거).
 #
-# 해결: hostPath(/etc/containerd/certs.d)에 ConfigMap 내용을 *노드 부팅마다* 다시 써넣는다.
-#   - containerd 는 certs.d 를 요청마다 읽으므로 재시작 불필요(파일만 있으면 즉시 반영).
-#   - DaemonSet 파드는 노드 재시작 시 kubelet 이 자동 재기동 → 미러 자동 복구. bind mount 의존 제거.
-#   - 레지스트리 엔드포인트를 바꾸려면 ConfigMap 만 수정 + `kubectl -n registry-system rollout restart ds/registry-trust`.
+# 【B안 개정 (2026-06-07 세션4) — ingress realm 해소를 위한 노드 /etc/hosts 기입 추가】
+#   ingress 노출로 전환하면 Harbor 토큰 realm = externalURL = http://harbor.local (IP 아님).
+#   → 노드 containerd 도 harbor.local 이라는 *이름*을 풀어야 한다(노드는 CoreDNS 안 씀 → /etc/hosts 필요).
+#   해법: 08-harbor-install.sh 가 ConfigMap 의 `node-etc-hosts` 키에 `<CP_IP> harbor.local` 을 넣고,
+#         이 DaemonSet 이 그 내용을 노드 /etc/hosts 에 *멱등 병합*한다.
+#   - certs.d 의 harbor.local 엔드포인트는 `http://harbor.local`(이름) → /etc/hosts 로 CP_IP:80(ingress hostPort)에 도달.
+#   - `node-etc-hosts` 키가 없으면(=구 NodePort 모드) /etc/hosts 는 건드리지 않음(하위호환).
 #
 # 적용:  kubectl apply -f deploy/k8s/standalone-kind/registry-trust-daemonset.yaml
 # 확인:  docker exec sanity-control-plane cat /etc/containerd/certs.d/harbor.local/hosts.toml
+#        docker exec sanity-control-plane getent hosts harbor.local
 # ─────────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Namespace
@@ -26,18 +30,21 @@ kind: ConfigMap
 metadata:
   name: registry-hosts
   namespace: registry-system
-  # ⚠️ harbor.local 기본값 = 현행 인증 레지스트리(harbor-auth-reg:5000). 이걸로 두면 오늘 쓰던 :dev pull 이 즉시 복구.
-  #   인-클러스터 Harbor(NodePort 30002)로 전환 시 08-harbor-install.sh 가 이 값을 자동 갱신 + ds rollout.
+  # ⚠️ 기본값은 *부트스트랩 자리표시*. 08-harbor-install.sh(ingress 모드)가 harbor.local 엔드포인트와
+  #   node-etc-hosts 를 CP_IP 로 덮어쓰고 ds 를 rollout 한다. 재부팅 복구는 07-reboot-recover.sh.
 data:
   # 키 이름 = certs.d 하위 디렉터리(레지스트리 호스트). 값 = 해당 hosts.toml 내용.
   harbor.local: |
-    # 노드의 harbor.local 해소 → kind 네트워크의 harbor-auth-reg:5000 (현행). HTTP 평문.
-    [host."http://harbor-auth-reg:5000"]
+    # ingress 모드: 노드 harbor.local → (노드 /etc/hosts: CP_IP) → http(80, ingress hostPort) → ingress-nginx → harbor-core.
+    [host."http://harbor.local"]
       capabilities = ["pull", "resolve"]
   reg.local: |
     # 무인증 sanity 레지스트리(01-pull-sanity.sh) → kind-registry:5000.
     [host."http://kind-registry:5000"]
       capabilities = ["pull", "resolve"]
+  # node-etc-hosts: 노드 /etc/hosts 에 보장할 줄들(한 줄당 "IP 이름"). 08 이 CP_IP 로 채움.
+  #   기본 비움 → /etc/hosts 미변경(NodePort 하위호환). ingress 모드에서 08 이 "<CP_IP> harbor.local" 로 설정.
+  node-etc-hosts: ""
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -55,8 +62,7 @@ spec:
       labels:
         app.kubernetes.io/name: registry-trust
       annotations:
-        # ConfigMap 변경 시 파드 자동 재생성 트리거(체크섬 대용; rollout restart 로도 충분).
-        configmap/revision: "1"
+        configmap/revision: "2"
     spec:
       # 컨트롤플레인 포함 전 노드에 배치(컨트롤플레인 taint 허용).
       tolerations:
@@ -69,15 +75,37 @@ spec:
             - -c
             - |
               set -eu
-              echo "[registry-trust] writing certs.d on node ${NODE_NAME:-?}"
-              for f in /config/*; do
-                host="$(basename "$f")"
+              echo "[registry-trust] node=${NODE_NAME:-?}"
+
+              # 1) certs.d 기입 — registry host 키(harbor.local, reg.local)만.
+              for host in harbor.local reg.local; do
+                f="/config/${host}"
+                [ -f "$f" ] || continue
                 mkdir -p "/host-certs-d/${host}"
                 cp "$f" "/host-certs-d/${host}/hosts.toml"
-                echo "  wrote /etc/containerd/certs.d/${host}/hosts.toml"
+                echo "  certs.d: /etc/containerd/certs.d/${host}/hosts.toml"
               done
+
+              # 2) /etc/hosts 멱등 병합 — node-etc-hosts 키가 비어있지 않을 때만(ingress 모드).
+              if [ -s /config/node-etc-hosts ]; then
+                cp /host-etc-hosts /tmp/hosts.work
+                while IFS= read -r line; do
+                  [ -z "$line" ] && continue
+                  name="$(echo "$line" | awk '{print $2}')"
+                  [ -z "$name" ] && continue
+                  # 같은 이름의 기존 줄 제거 후 새 줄 추가(멱등; IP 변동 추적).
+                  grep -v "[[:space:]]${name}\$" /tmp/hosts.work > /tmp/hosts.next 2>/dev/null || true
+                  echo "$line" >> /tmp/hosts.next
+                  mv /tmp/hosts.next /tmp/hosts.work
+                done < /config/node-etc-hosts
+                # inode/바인드마운트 보존 위해 mv 가 아니라 내용 덮어쓰기.
+                cat /tmp/hosts.work > /host-etc-hosts
+                echo "  /etc/hosts merged:"; cat /config/node-etc-hosts | sed 's/^/    + /'
+              else
+                echo "  /etc/hosts: node-etc-hosts 비어있음 → 미변경(NodePort 하위호환)"
+              fi
+
               echo "[registry-trust] done. holding."
-              # 재기동 시 다시 써넣도록 파드는 살아있는 상태로 대기.
               while true; do sleep 3600; done
           env:
             - name: NODE_NAME
@@ -87,6 +115,8 @@ spec:
           volumeMounts:
             - name: certs-d
               mountPath: /host-certs-d
+            - name: etc-hosts
+              mountPath: /host-etc-hosts
             - name: config
               mountPath: /config
               readOnly: true
@@ -98,6 +128,10 @@ spec:
           hostPath:
             path: /etc/containerd/certs.d
             type: DirectoryOrCreate
+        - name: etc-hosts
+          hostPath:
+            path: /etc/hosts
+            type: File
         - name: config
           configMap:
             name: registry-hosts

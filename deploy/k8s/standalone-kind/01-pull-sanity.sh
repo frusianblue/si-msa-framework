@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # deploy/k8s/standalone-kind/01-pull-sanity.sh
 # ───────────────────────────────────────────────────────────────────────────────
-# §S3' 2단계 — 최소 pull sanity (이론 맹신 금지: Harbor 풀 재구축 전에 *먼저* 검증).
-# 목적(딱 하나만 증명): "standalone kind 의 노드 containerd 가 레지스트리 한정 이름을
-#   *직접* pull 한다" — 이것이 Docker Desktop kind 에선 미러 인터셉트(registry-mirror:1273,
-#   ?ns=harbor.local: 500)로 불가능했던 바로 그 동작이다(PITFALLS §9).
-# 통과(PASS)해야 §S3' 3단계(Harbor/ingress/postgres 풀 재구축)로 진행한다.
+# 최소 pull sanity — "standalone kind 의 노드 containerd 가 레지스트리 한정 이름을 *직접* pull 한다"를 증명.
+# = Docker Desktop kind 에선 미러 인터셉트로 불가능했던 동작(PITFALLS §9). 통과해야 Harbor/ingress 로 진행.
 #
-# 무엇을 안 건드리나: 현 docker-desktop kind 클러스터(별도 컨텍스트)는 손대지 않는다.
-#   여기서 만드는 건 이름이 다른 standalone 클러스터(kind-sanity)다.
+# 【B안 개정 (2026-06-07 세션4)】 kind-config 에서 extraMounts(./certs.d) 가 제거됨(재부팅 휘발 졸업).
+#   → 노드 certs.d 가 더는 마운트로 안 깔리므로, 이 스크립트가 클러스터 생성 직후 reg.local certs.d 를
+#     **docker exec 로 각 노드에 직접 시드**한다(DaemonSet 적용 전 sanity 단계라 자기완결로).
 #
 # 실행: bash deploy/k8s/standalone-kind/01-pull-sanity.sh
 # 정리: bash deploy/k8s/standalone-kind/00-cleanup.sh --teardown-sanity
@@ -16,19 +14,16 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-cd "$HERE"   # extraMounts 의 ./certs.d 상대경로가 여기 기준으로 해소되도록
+cd "$HERE"
 
 CLUSTER="${CLUSTER:-sanity}"
 CTX="kind-${CLUSTER}"
 REG_NAME="${REG_NAME:-kind-registry}"
 REG_PORT="${REG_PORT:-5001}"
-REPO="sanity/busybox"          # 레지스트리에 저장되는 "리포지토리 경로"(호스트명 무관)
+REPO="sanity/busybox"
 TAG="test"
 PUSH_REF="localhost:${REG_PORT}/${REPO}:${TAG}"   # 호스트가 push 하는 이름(published 포트)
 PULL_REF="reg.local/${REPO}:${TAG}"               # 노드가 pull 하는 이름(레지스트리 한정 = harbor.local 등가)
-# ⚠️ PUSH_REF 와 PULL_REF 는 레지스트리 호스트명만 다르고 리포지토리 경로(sanity/busybox)는 동일.
-#    레지스트리는 호스트명이 아니라 리포지토리 경로로 저장/서빙하므로 같은 블롭을 가리킨다.
-#    (호스트: localhost:5001 published 포트로 push / 노드: reg.local→certs.d→kind-registry:5000 으로 pull)
 
 echo "== 0) 선행 도구 점검 =="
 for bin in docker kind kubectl; do
@@ -44,7 +39,7 @@ else
   echo "  생성: 127.0.0.1:${REG_PORT} → registry:2"
 fi
 
-echo "== 2) standalone kind 클러스터(${CLUSTER}, 3노드) 생성 =="
+echo "== 2) standalone kind 클러스터(${CLUSTER}, 3노드 + extraPortMappings 80/443 + ingress-ready) 생성 =="
 if kind get clusters 2>/dev/null | grep -qx "${CLUSTER}"; then
   echo "  이미 존재 — 재사용(노드 설정 갈아끼우려면 먼저 00-cleanup.sh --teardown-sanity)"
 else
@@ -58,6 +53,18 @@ if [ "$(docker inspect -f '{{json .NetworkSettings.Networks.kind}}' "${REG_NAME}
 else
   echo "  이미 연결됨"
 fi
+
+echo "== 3.5) 노드 certs.d 직접 시드(reg.local) — extraMounts 졸업 대체 =="
+# B안: extraMounts 가 없으므로 sanity 단계에서 reg.local certs.d 를 노드에 직접 써넣는다.
+#   (Harbor 단계에선 registry-trust DaemonSet 이 이 역할을 영속·재부팅내성으로 인계.)
+for n in $(docker ps --format '{{.Names}}' | grep "^${CLUSTER}-"); do
+  docker exec "$n" mkdir -p /etc/containerd/certs.d/reg.local
+  docker exec -i "$n" sh -c 'cat > /etc/containerd/certs.d/reg.local/hosts.toml' <<'TOML'
+[host."http://kind-registry:5000"]
+  capabilities = ["pull", "resolve"]
+TOML
+  echo "  $n: /etc/containerd/certs.d/reg.local/hosts.toml"
+done
 
 echo "== 4) 더미 이미지 push(호스트 → 레지스트리) =="
 docker pull busybox:1.36 >/dev/null
@@ -75,15 +82,12 @@ echo "== 6) 검증: 노드 pull 성공 → 파드 Ready =="
 if kubectl --context "${CTX}" wait --for=condition=Ready pod/pull-sanity --timeout=120s; then
   NODE=$(kubectl --context "${CTX}" get pod pull-sanity -o jsonpath='{.spec.nodeName}')
   IMGID=$(kubectl --context "${CTX}" get pod pull-sanity -o jsonpath='{.status.containerStatuses[0].imageID}')
-  PULLED=$(kubectl --context "${CTX}" get events --field-selector involvedObject.name=pull-sanity \
-            -o jsonpath='{range .items[*]}{.reason}{" "}{end}' 2>/dev/null | tr ' ' '\n' | grep -c '^Pulled$' || true)
   echo
   echo "✅ PASS — 노드 containerd 가 레지스트리 한정 이름(${PULL_REF})을 직접 pull 했다."
   echo "         node=${NODE}"
   echo "         imageID=${IMGID}"
-  echo "         Pulled 이벤트=${PULLED}건"
   echo
-  echo "→ standalone kind 트랙 유효. 다음: §S3' 3) Harbor/ingress/postgres 풀 재구축 → 4) dev overlay apply."
+  echo "→ 다음: 10-ingress-nginx.sh → 07-reboot-recover.sh(+apply -k overlays/dev) → 08-harbor-install.sh → 09-jenkins-install.sh → 11-host-access-verify.sh"
   echo "  (정리: bash 00-cleanup.sh --teardown-sanity)"
 else
   echo
@@ -91,10 +95,9 @@ else
   kubectl --context "${CTX}" describe pod pull-sanity | sed -n '/Events:/,$p' || true
   echo
   echo "트리아지:"
-  echo "  · 'reg.local ... connection refused/timeout/500' → certs.d 미적용."
+  echo "  · 'reg.local ... connection refused/timeout/500' → certs.d 미시드(3.5 단계 확인)."
   echo "       확인: docker exec ${CLUSTER}-worker cat /etc/containerd/certs.d/reg.local/hosts.toml"
-  echo "       (비었거나 없음 = extraMounts 마운트 실패 → Windows 파일공유 경로/상대경로 cd 확인.)"
-  echo "  · 'docker.io/sanity/busybox' 로 향함 → 이미지명 레지스트리 부분에 점(.)이 없어 Docker Hub 로 폴백된 것(이름 규칙)."
+  echo "  · 'docker.io/sanity/busybox' 로 향함 → 이미지명 레지스트리 부분에 점(.)이 없어 Docker Hub 폴백(이름 규칙)."
   echo "  · 'kind-registry' 이름해소 실패 → 3단계(network connect kind) 누락 — docker network inspect kind 로 확인."
   exit 1
 fi

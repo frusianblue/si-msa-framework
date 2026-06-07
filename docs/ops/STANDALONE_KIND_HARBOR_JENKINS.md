@@ -1,97 +1,101 @@
-# STANDALONE_KIND_HARBOR_JENKINS.md — 인-클러스터 Harbor + Jenkins CI/CD (standalone kind)
+# STANDALONE_KIND_HARBOR_JENKINS.md — 인-클러스터 Harbor + Jenkins CI/CD (standalone kind, ingress 호스트 접속)
 
 > 환경: **standalone kind `kind-sanity`**(3노드, WSL+Docker Desktop). 컨텍스트 `kind-sanity`.
-> ⚠️ 이 문서가 `HARBOR_SETUP.md` / `K8S_INGRESS_HARBOR.md`(둘 다 **은퇴한 `docker-desktop` kind**
->   = LoadBalancer→localhost 자동매핑 전제)를 **대체**한다. standalone kind 엔 그 매직이 없다.
-> 산출물: `deploy/k8s/standalone-kind/{registry-trust-daemonset.yaml, 07..09-*.sh, harbor-values.yaml,
->   jenkins-values.yaml, jenkins-rbac.yaml}`, `deploy/cicd/Jenkinsfile.kind`, base/prod imagePullPolicy.
+> ⚠️ 이 문서가 `HARBOR_SETUP.md` / `K8S_INGRESS_HARBOR.md`(둘 다 **은퇴한 `docker-desktop` kind** 전제)를 **대체**한다.
+> 【B안 (2026-06-07 세션4)】 호스트 접속을 **port-forward 졸업** → 브라우저에서 `http://harbor.local` / `http://jenkins.local`.
+>   이전 NodePort(30002/32000)+port-forward 판을 **ingress-nginx + extraPortMappings** 로 교체.
 
 ---
 
 ## 0. 설계 한눈에 (왜 이렇게)
 
-세 주체가 같은 Harbor 에 닿아야 한다. standalone kind 엔 LB→localhost 가 없으므로 **control-plane 노드
-IP(`CP_IP`, kind net 172.18.x)를 단일 좌표**로 통일한다(재부팅에도 IP 보존):
+standalone kind 엔 docker-desktop 의 LB→localhost 매직이 없다. 그래서 **ingress-nginx 컨트롤러를 control-plane
+노드에 hostPort(80/443)로 띄우고**, 그 포트를 **kind 생성 시 `extraPortMappings` 로 호스트에 게시**한다.
+세 주체가 모두 `harbor.local`(이름) 한 점으로 ingress 에 닿는다 — 해소 IP 만 주체별로 다르다(split-horizon):
 
-| 주체 | 경로 | 설정 주체 |
-|---|---|---|
-| 노드 containerd (pull) | `harbor.local` → certs.d → `http://CP_IP:30002` | `registry-trust` DaemonSet(부팅마다 재기입) |
-| 인-클러스터 파드 Kaniko (push) | `harbor.local` → CoreDNS hosts → `CP_IP` :30002 | `08` 스크립트가 CoreDNS 패치 |
-| 호스트(포털/디버그) | `kubectl port-forward` | 수동 |
+| 주체 | `harbor.local` 해소 | 경로 | 설정 주체 |
+|---|---|---|---|
+| 호스트 브라우저 | `127.0.0.1` (OS hosts) | localhost:80(extraPortMappings) → ingress | 사용자(hosts 파일) |
+| 인-클러스터 Kaniko (push) | ingress-nginx **ClusterIP** | CoreDNS hosts | `08` 이 CoreDNS 패치 |
+| 노드 containerd (pull) | **CP_IP** (노드 /etc/hosts) | CP:80(ingress hostPort) → ingress | `registry-trust` DaemonSet(`08`/`07` 설정) |
 
-이미지 ref 는 **`harbor.local/si-msa/<svc>:<tag>` 그대로**(오버레이 무수정). `externalURL=http://CP_IP:30002`
-라 토큰 realm 도 동일 좌표 → 노드/파드 모두 도달.
+`externalURL=http://harbor.local` → **토큰 realm 도 이름** → 세 주체 모두 자기 해소경로로 도달. 이미지 ref 는
+`harbor.local/si-msa/<svc>:<tag>` 그대로(오버레이 무수정).
 
-**재부팅 내성의 핵심**: 과거엔 노드 certs.d 를 호스트 bind mount 로 얹었는데 재부팅 시 휘발(2026-06-07 함정).
-이제 `registry-trust` DaemonSet 이 ConfigMap 내용을 **노드 부팅마다 /etc/containerd/certs.d 에 재기입**한다.
-추가로 base `imagePullPolicy: IfNotPresent` → 노드 캐시·불변 `:<sha>` 면 미러 끊겨도 기동 유지.
-
----
-
-## 1. 실행 순서 (PASS 게이트 단위)
-
-각 단계는 **독립 검증**하고 통과 후 다음으로. (저자환경에서 실행 불가 — Chae 로컬 실행/iterate.)
-
-### Stage A — 영구 pull/재부팅 수정 (가장 견고, 먼저 적용)
-```bash
-# base 4개 deployment 에 imagePullPolicy:IfNotPresent, prod overlay 는 Always 패치(동봉).
-kubectl --context kind-sanity apply -f deploy/k8s/standalone-kind/registry-trust-daemonset.yaml
-bash deploy/k8s/standalone-kind/07-reboot-recover.sh      # 재부팅 후엔 이 한 줄이 복구 루틴
-```
-**PASS**: `kubectl -n si-msa get pods` 6파드 Ready. 노드에 certs.d 존재
-(`docker exec sanity-control-plane cat /etc/containerd/certs.d/harbor.local/hosts.toml`).
-
-### Stage B — 인-클러스터 Harbor
-```bash
-bash deploy/k8s/standalone-kind/08-harbor-install.sh
-```
-**PASS**: `kubectl -n harbor get pods` 전부 Running, `get pvc` 전부 Bound.
-포털: `kubectl -n harbor port-forward svc/harbor 8080:80` → http://localhost:8080 (admin/Harbor12345),
-`si-msa` 프로젝트(public) 보임. CoreDNS 에 `harbor.local` 매핑, 노드 certs.d 가 `CP_IP:30002` 로 갱신됨.
-
-### Stage C — 인-클러스터 Jenkins + 파이프라인
-```bash
-bash deploy/k8s/standalone-kind/09-jenkins-install.sh
-kubectl -n jenkins port-forward svc/jenkins 8088:8080      # http://localhost:8088 (admin/admin123)
-```
-UI 1회: New Item → Pipeline `si-msa-cd` → *Pipeline script from SCM* →
-Git `https://github.com/frusianblue/si-msa-framework.git`, Branch `*/master`,
-Script Path `deploy/cicd/Jenkinsfile.kind` → Save → **Build Now**.
-
-**PASS**: 파이프라인 3단계(Checkout → Kaniko build&push → Deploy) 그린.
-Harbor 포털 `si-msa` 에 4 repo × (`<sha>`,`dev`). `kubectl -n si-msa get pods` 가 `:<sha>` 이미지로 롤아웃.
+**재부팅 내성**: 노드 certs.d/`/etc/hosts` 는 `registry-trust` DaemonSet 이 부팅마다 재기입(bind mount 졸업).
+CP_IP 가 재부팅으로 바뀌면 `07-reboot-recover.sh` 가 재산출해 CM(node-etc-hosts)·노드를 갱신. base
+`imagePullPolicy: IfNotPresent` + 불변 `:<sha>` 라 미러가 잠깐 끊겨도 노드캐시로 기동 유지.
 
 ---
 
-## 2. 가장 깨지기 쉬운 곳(저자환경 미검증 — 실거동으로 트리아지)
-
-1. **NodePort 토큰 realm**: `externalURL=http://CP_IP:30002`. 노드 pull 시 401→token 요청이 `CP_IP:30002`
-   로 가야 한다. 막히면 `kubectl -n si-msa describe pod`(Events)에 `x509`/`401`/`connection refused` 단서.
-2. **Kaniko push 이름해소**: 파드가 `harbor.local` 을 CoreDNS 로 풀어야 함. 막히면
-   `kubectl -n jenkins exec <agent-pod> -c kaniko -- nslookup harbor.local` 로 `CP_IP` 확인.
-   CoreDNS rollout 안 됐으면 `08` 의 §6 재실행.
-3. **HTTP insecure**: Kaniko `--insecure-registry/--skip-tls-verify-registry=harbor.local` 필수(동봉).
-4. **Gradle 빌드 egress**: Kaniko builder 스테이지가 Maven Central 접근 필요(클러스터 인터넷). 사내망이면
-   Kaniko 컨테이너에 프록시 env 주입 필요.
-5. **CP_IP 변동**: 클러스터를 **재생성**하면 IP 바뀔 수 있음 → `08` 재실행(재부팅만으론 보존).
-
-막히면 그 단계의 `describe`/로그를 공유 → 환경 맞춤으로 수정(2026-06-07 디버깅과 동일 방식).
+## ⚠️ 선행 주의 — 재생성 = 데이터 소실
+`extraPortMappings` 는 `kind create` 시점 고정 → **클러스터 재생성 불가피**. 재생성하면 PVC 전부 소실:
+dev postgres(데모데이터), Harbor(이미지/프로젝트), Jenkins(잡/히스토리).
+- dev postgres: Flyway 스키마 재생성 → 데모데이터만 손실(리허설 수용).
+- Harbor/Jenkins: 08/09 멱등 재실행으로 재구축(Jenkins 잡 UI 1회·Harbor 이미지 파이프라인 1회 다시).
+- 보존 필요 시 재생성 전 백업: `pg_dump`(postgres-0), Harbor export, Jenkins `$JENKINS_HOME` tar.
 
 ---
 
-## 2.5 호스트 접속 (현재 port-forward / 다음 = B안 ingress)
-standalone kind 는 `kind-config.yaml` 에 `extraPortMappings` 가 없으면 **노드 포트가 호스트로 안 나온다**
-(docker-desktop kind 의 LB→localhost 자동게시가 없음 — 이게 "ingress 깔면 포워딩 불요" 가 여기선 안 되는 이유).
-- **지금(임시)**: `kubectl -n harbor port-forward svc/harbor 8080:80` · `kubectl -n jenkins port-forward svc/jenkins 8088:8080`.
-- **영구(B안, 재생성 필요)**: 새 kind-config 에 `extraPortMappings`(80/443)+`ingress-ready` 라벨 → 재생성 → ingress-nginx →
-  Harbor/Jenkins 를 ingress 노출(`harbor.local`/`jenkins.local`) → Windows·WSL hosts `127.0.0.1 harbor.local jenkins.local`.
-  상세 착수 계획 = `docs/_internal/planning/NEXT_INGRESS_HOST_ACCESS.md`(데이터 재구축 주의·토큰 realm 재조정 포함).
+## 1. 실행 순서 (PASS 게이트 단위 — 저자환경 실행 불가, Chae 로컬 iterate)
 
-## 3. 끄는 법 / 정리
 ```bash
-helm --kube-context kind-sanity -n jenkins uninstall jenkins
-helm --kube-context kind-sanity -n harbor  uninstall harbor
-kubectl --context kind-sanity delete ns jenkins harbor --ignore-not-found
-# registry-trust 는 남겨도 무해(노드 미러 유지). 제거 시:
-kubectl --context kind-sanity delete -f deploy/k8s/standalone-kind/registry-trust-daemonset.yaml
+cd deploy/k8s/standalone-kind
+
+# Stage 0 — 재생성(extraPortMappings 박기). ⚠️ PVC 소실.
+bash 00-cleanup.sh --teardown-sanity
+bash 01-pull-sanity.sh            # 새 kind-config(80/443 + ingress-ready, extraMounts 제거)로 생성 + reg.local 직접시드 + PASS
+
+# Stage 1 — ingress-nginx (호스트 진입 계층)
+bash 10-ingress-nginx.sh          # PASS: curl http://localhost → 404
+
+# Stage 2 — 앱(영속 postgres 포함) + 노드 좌표
+bash 07-reboot-recover.sh         # DaemonSet + certs.d/+/etc/hosts (08 후 좌표 정합; 우선 1차)
+kubectl --context kind-sanity apply -k ../overlays/dev    # 6파드(앱4+redis+postgres)
+
+# Stage 3 — Harbor (ingress, harbor.local)
+bash 08-harbor-install.sh         # externalURL=http://harbor.local + CoreDNS→ingress ClusterIP + 노드 /etc/hosts→CP_IP
+
+# Stage 4 — Jenkins (ingress, jenkins.local) + 자격/RBAC
+bash 09-jenkins-install.sh
+
+# Stage 5 — 호스트 hosts 등록 (1회)
+#   Windows: C:\Windows\System32\drivers\etc\hosts  (관리자)
+#   WSL    : /etc/hosts                              (sudo)
+#     127.0.0.1 harbor.local jenkins.local
+
+# Stage 6 — 최종 PASS 게이트
+bash 11-host-access-verify.sh     # harbor.local/jenkins.local 호스트 접속 + 노드/인-클러스터 좌표 일괄 점검
 ```
+
+**최종 PASS**: 브라우저 `http://harbor.local`(admin/Harbor12345) · `http://jenkins.local`(admin/admin123)
+**port-forward 없이** 접속.
+
+---
+
+## 2. 파이프라인 (Jenkins UI 1회)
+1. New Item → Pipeline → `si-msa-cd`
+2. Definition = *Pipeline script from SCM* · Git · `https://github.com/frusianblue/si-msa-framework.git` · `*/master`
+3. Script Path = `deploy/cicd/Jenkinsfile.kind` → Save → **Build Now**
+   - Kaniko build → push `harbor.local/si-msa/<svc>:<git-sha>`+`:dev`(`--insecure-registry`)
+   - `kubectl apply -k overlays/dev` → `set image :<sha>`(불변 핀) → rollout
+   - 첫 빌드에서 노드 pull(certs.d→/etc/hosts→CP:80→ingress)·:<sha> 불변배포 실증.
+
+---
+
+## 3. 트리아지 빠른 표
+| 증상 | 원인 → 조치 |
+|---|---|
+| `curl http://localhost` connection refused | extraPortMappings 부재(구 kind-config 로 생성). 재생성 필요. host 80 점유도 확인. |
+| ingress controller Pending | `ingress-ready=true` 라벨 없음 → kind-config(B안) 재생성 또는 임시 label. |
+| `harbor.local` 308→https | ingress annotation `ssl-redirect=false` 누락(harbor-values). |
+| Harbor push 413 | `proxy-body-size: "0"` 누락(harbor-values). |
+| 노드 pull `connection refused`/`x509` | 노드 /etc/hosts harbor.local 또는 certs.d 미반영 → `07-reboot-recover.sh`(CP_IP 재산출). |
+| Kaniko push DNS 실패 | CoreDNS harbor.local 매핑 누락(08 §6) → `kubectl -n kube-system rollout restart deploy/coredns`. |
+| 재부팅 후 auth-server 만 ImagePullBackOff | bind mount 휘발(구 방식). DaemonSet 미적용 → `07-reboot-recover.sh`. |
+
+---
+
+## 4. 대안 A(보류) — 프록시 컨테이너(재생성 불요)
+재생성 없이 임시로 호스트 노출만 필요하면: `docker run -d --network kind -p 8080:80 alpine/socat \
+TCP-LISTEN:80,fork TCP:<INGRESS_CLUSTERIP_또는_CP_IP>:80`. B안 PASS 후엔 불필요.

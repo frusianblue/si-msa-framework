@@ -1,6 +1,13 @@
 # deploy/k8s/standalone-kind/certs.d/harbor.local/hosts.toml
-# 비공개(인증) 레지스트리용 — 노드의 harbor.local 해소 → kind 네트워크의 harbor-auth-reg:5000.
-# reg.local(01, 무인증)과 같은 메커니즘. 인증(Basic)은 imagePullSecrets(harbor-cred)로 kubelet 이 주입.
-# ./certs.d 는 extraMounts 로 노드에 바인드마운트(라이브 반영)되므로 클러스터 재생성 없이도 노드가 읽는다.
-[host."http://harbor-auth-reg:5000"]
+# ─────────────────────────────────────────────────────────────────────────────
+# 【B안 (2026-06-07 세션4) — ingress 모드】
+# 노드 containerd 의 harbor.local 해소 → ingress(80) → harbor-core.
+#   엔드포인트가 *이름*(http://harbor.local)인 이유: ingress 는 Host 헤더로 라우팅하므로
+#   Host=harbor.local 이어야 한다. 실제 IP 해소는 노드 /etc/hosts(<CP_IP> harbor.local)가 담당
+#   (registry-trust DaemonSet 이 08 의 node-etc-hosts 값으로 기입).
+#   HTTP 평문(ingress ssl-redirect=false). 토큰 realm(http://harbor.local) 도 같은 경로로 해소.
+#
+# ※ 이 파일은 07-reboot-recover.sh 의 "즉효 직접기입" 폴백 소스이자 형상관리용 사본이다.
+#   런타임 권위값은 registry-hosts ConfigMap(08 이 CP_IP 와 함께 설정) → DaemonSet 이 노드에 반영.
+[host."http://harbor.local"]
   capabilities = ["pull", "resolve"]

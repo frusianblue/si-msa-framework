@@ -1,25 +1,35 @@
 # deploy/k8s/standalone-kind/jenkins-values.yaml
 # ─────────────────────────────────────────────────────────────────────────────
-# 인-클러스터 Jenkins (standalone kind). 차트: jenkins/jenkins (charts.jenkins.io, v5.x).
-#   키는 실제 values.yaml(jenkinsci/helm-charts charts/jenkins) 검증함.
-#   controller.serviceType=NodePort(32000) / admin 시드 / 영속 PVC(standard) / k8s agent.
-#   빌드는 agent 파드의 Kaniko 컨테이너가 수행(노드에 docker 데몬 없음 → Kaniko).
+# 인-클러스터 Jenkins (standalone kind). 【B안 (2026-06-07 세션4) — ingress 노출(jenkins.local)】
+# 차트: jenkins/jenkins (charts.jenkins.io, v5.x). 키는 실제 values.yaml 검증.
+#
+# 이전(NodePort 32000) → 지금(ingress, jenkins.local):
+#   controller.ingress.enabled=true / hostName=jenkins.local / ingressClassName=nginx
+#   controller.jenkinsUrl=http://jenkins.local  ← 리다이렉트/CSRF·에이전트 JNLP URL 정합.
+#   serviceType=ClusterIP (NodePort 불필요 — ingress 가 진입점).
+#   proxy-body-size 0 (플러그인 업로드 등 대비).
+#   빌드는 agent 파드의 Kaniko 컨테이너가 수행(노드 docker 데몬 없음 → Kaniko).
 #   ⚠️ 로컬 dev 자격(admin/admin123). 운영 전용 아님.
 # ─────────────────────────────────────────────────────────────────────────────
 controller:
-  serviceType: NodePort
-  nodePort: 32000
+  serviceType: ClusterIP
   servicePort: 8080
+  jenkinsUrl: "http://jenkins.local"
   admin:
     username: "admin"
     password: "admin123"
     createSecret: true
-  # 기본 installPlugins(kubernetes/workflow-aggregator/git/configuration-as-code 등)는 유지.
-  #   추가가 필요하면 additionalPlugins 에만 덧붙인다(installPlugins 전체 치환 금지 — 기본셋 유실).
+  ingress:
+    enabled: true
+    apiVersion: "networking.k8s.io/v1"
+    ingressClassName: nginx
+    hostName: jenkins.local
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+  # 기본 installPlugins 유지. 추가만 덧붙임(전체 치환 금지 — 기본셋 유실).
   additionalPlugins:
     - pipeline-stage-view:latest
-  # JCasC 로 자동 시드 대신, 파이프라인 잡은 UI 에서 1회 생성(SCM=레포, Script Path=deploy/cicd/Jenkinsfile.kind).
-  #   (자동 시드는 변수 많아 실패율 높음 → 명시적 UI 1스텝이 더 견고.)
   resources:
     requests: { cpu: 250m, memory: 1Gi }
     limits:   { cpu: "1",  memory: 2Gi }

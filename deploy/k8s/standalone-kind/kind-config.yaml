@@ -1,15 +1,28 @@
 # deploy/k8s/standalone-kind/kind-config.yaml
-# standalone kind(= `kind` CLI 직접 생성) — Docker Desktop kind 의 "노드 containerd 설정 입구 없음"(NEXT §0 락#6,
-#   PITFALLS §9 미러 인터셉트)을 우회하기 위한 클러스터.
-# 핵심: 클러스터 *생성 시* 노드 containerd 를 선언적으로 박는다(뜬 노드 손수정 아님).
-#   ① containerdConfigPatches 로 registry config_path = /etc/containerd/certs.d 활성
-#   ② extraMounts 로 호스트 ./certs.d 를 각 노드 /etc/containerd/certs.d 에 마운트
-#      → reg.local(레지스트리 한정 이름)을 노드가 kind-registry:5000 으로 직접 pull.
-# 노드 수: 현 docker-desktop kind(desktop-control-plane/worker/worker2)와 동일한 3노드 재현.
-#   (standalone = 단일노드 아님. 노드 수는 자유.)
-# ⚠️ extraMounts hostPath 는 `kind create` 를 실행한 작업디렉터리 기준 상대경로 → 01-pull-sanity.sh 가 이 폴더로 cd 한 뒤 생성.
-# ⚠️ Windows: ./certs.d 경로가 Docker Desktop 파일공유에 포함돼야 마운트됨(Settings > Resources > File sharing).
-# ⚠️ certs.d 하위 디렉터리명은 "이미지 참조의 레지스트리 부분"과 같아야 함 → reg.local(점 있음=레지스트리로 인식, 콜론 없음=NTFS 안전).
+# ─────────────────────────────────────────────────────────────────────────────
+# standalone kind(= `kind` CLI 직접 생성) — Docker Desktop kind 의 "노드 containerd 설정 입구 없음"을 우회.
+#
+# 【B안 개정 (2026-06-07 세션4) — 호스트 접속 port-forward 졸업】
+#   목표: 호스트 브라우저에서 http://harbor.local / http://jenkins.local 로 **port-forward 없이** 접속.
+#   standalone kind 는 docker-desktop kind 와 달리 LB→localhost 자동게시가 없으므로,
+#   ingress-nginx 컨트롤러를 control-plane 노드에 hostPort(80/443)로 띄우고 그 포트를
+#   **클러스터 생성 시점에 호스트로 게시(extraPortMappings)** 한다. → host localhost:80/443.
+#
+#   바뀐 점(이전 NodePort/port-forward 판 대비):
+#     ① control-plane 에 extraPortMappings 80→80, 443→443 추가 (ingress hostPort 를 호스트로 노출).
+#     ② control-plane 에 node-labels: ingress-ready=true 추가
+#        (kind ingress-nginx 매니페스트의 nodeSelector 가 이 라벨로 컨트롤러를 CP 노드에 고정).
+#     ③ extraMounts(./certs.d) **제거** — 재부팅에 휘발하던 bind mount 졸업.
+#        노드 certs.d 는 이제 `registry-trust` DaemonSet 이 부팅마다 재기입(07/08 가 적용).
+#        (그래서 01-pull-sanity.sh 가 reg.local certs.d 를 docker exec 로 직접 시드한다 — extraMounts 대체.)
+#     ④ containerdConfigPatches(config_path) 는 **유지** — certs.d 활성화의 전제.
+#
+# ⚠️ extraPortMappings 는 `kind create` 시점에 고정 → 추가하려면 클러스터 재생성 불가피
+#    (= B안이 재생성을 동반하는 이유). 재생성 = PVC 소실(11-host-access-verify.sh 주석/런북 참조).
+# ⚠️ host 의 80/443 이 비어 있어야 함(다른 서비스가 점유 중이면 kind create 가 bind 실패).
+#    WSL+Docker Desktop 에선 보통 비어 있음. 점유 시 `extraPortMappings` 의 hostPort 를 8080/8443 으로 낮추고
+#    hosts 도 그 포트로 접근(http://harbor.local:8080).
+# 노드 수: control-plane + worker x2 (3노드 유지).
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
@@ -18,14 +31,18 @@ containerdConfigPatches:
       config_path = "/etc/containerd/certs.d"
 nodes:
   - role: control-plane
-    extraMounts:
-      - hostPath: ./certs.d
-        containerPath: /etc/containerd/certs.d
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
   - role: worker
-    extraMounts:
-      - hostPath: ./certs.d
-        containerPath: /etc/containerd/certs.d
   - role: worker
-    extraMounts:
-      - hostPath: ./certs.d
-        containerPath: /etc/containerd/certs.d
