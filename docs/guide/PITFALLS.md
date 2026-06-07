@@ -125,6 +125,9 @@
 
 - **[겪음] WSL 등에서 `openssl base64 -d -A` 가 긴 입력을 중간에서 잘라 디코드 깨짐 → JWT/base64url 디코드는 언어 내장으로** — 증상: 스모크 스크립트(`smoke-authcode-pkce.sh`)가 id_token payload 를 `tr '_-' '/+' | openssl base64 -d -A` 로 풀어 `python json` 에 넘기는데 `json.decoder.JSONDecodeError: Unterminated string starting at line 1 column 237 (char 236)`(출력이 특정 길이에서 잘림). 작성 환경 openssl 3.0.13 에선 재현 안 되나 사용자 WSL 에선 236자에서 잘림(환경 의존). 해결: openssl/tr/수동패딩 경로를 버리고 **`python3 -c 'import base64,json; seg=tok.split(".")[1]; seg+="="*(-len(seg)%4); json.loads(base64.urlsafe_b64decode(seg))'`** 한 방으로. **일반 원칙: 셸 스크립트의 base64url/JWT 디코드는 외부 바이너리(openssl)가 아니라 언어 내장 디코더를 쓴다(환경 편차·잘림 회피).** [§8 운영/환경]
 
+- **[겪음] kind 의 metrics-server 는 `--kubelet-insecure-tls` 없이는 동작 안 함(`kubectl top`/HPA 무응답)** — 증상: 기본 `components.yaml` apply 후 `kubectl top nodes` 가 `Metrics API not available`/HPA TARGETS `<unknown>`. 원인: kind 노드 kubelet 의 서빙 인증서가 self-signed 라 metrics-server TLS 검증 실패. 해결: metrics-server Deployment 컨테이너 args 에 `--kubelet-insecure-tls` 추가(멱등). `04-metrics-hpa.sh` 가 자동 보정. ⚠️ HPA CPU% 는 추가로 컨테이너 `resources.requests.cpu` 가 있어야 계산됨(deployment-hardening 이 250m 설정). [§8 운영/환경]
+- **[겪음] kube-prometheus-stack ServiceMonitor 는 release 라벨/selector 매칭 없으면 조용히 미스크랩** — 증상: SM 을 apply 했고 `/actuator/prometheus` 도 200 인데 Prometheus 타깃에 안 뜸(무에러 0건). 원인: Prometheus 기본 `serviceMonitorSelector`=`release: <helm-release>` 라 SM 라벨 불일치 시 Operator 가 무시. 해결: ① base SM 의 `release` 라벨을 Helm release 명과 일치(여기선 `kube-prometheus-stack`), 또는 ② 설치 시 `--set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false`(+namespaceSelector 동일)로 전체수용. `05-prometheus-stack.sh` 는 ②. 확인: `GET /api/v1/targets?state=active` scrapePool 에 SM 이름 존재 여부. [§8 운영/환경]
+
 ## 9. 로컬 통합 실행(Docker Compose) · 멀티서비스 배포 정합
 
 > 2026-06-05 로컬 compose 스택(`deploy/compose/`, A안=소스부터 컨테이너 안 Gradle 빌드) 가져오며 발견. ①②는 **k8s `overlays/local` 에도 동일 결함**(kind 배포도 같은 자리에서 깨짐).

@@ -1,0 +1,15 @@
+# =====================================================================
+# T1 — 세션 기반 인증 (서버 HttpSession + 쿠키)
+#   ./gradlew bootRun --args='--spring.profiles.active=t1-form-session'
+#
+# 체감: 로그인하면 Set-Cookie: SESSION=... 으로 서버 세션 수립. 이후 쿠키로 식별.
+#   - 단일 파드: 톰캣 세션으로 충분.
+#   - replicas>=2: 세션 공유 필요(framework-session/Redis). 안 하면 파드 전환 시 로그아웃 ← T1 핵심 체감.
+#   - 로그아웃 = 서버 세션 무효화(즉시). T2(JWT)는 토큰 만료까지 유효 → 대비점.
+# =====================================================================
+framework:
+  security:
+    session:
+      mode: session     # ← 핵심 토글. 기본(stateless)에서 이것만 바꾼다.
+      csrf: true         # 세션 모드 기본. GET /api/resource 와 /api/*/auth/** 는 영향 없음.
+      cookie-name: SESSION

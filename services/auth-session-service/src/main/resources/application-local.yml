@@ -1,0 +1,13 @@
+# =====================================================================
+# local : 로컬 개발 기본 = H2 인메모리 (외부 설치 0)
+#   실행: ./gradlew :services:auth-session-service:bootRun
+# =====================================================================
+spring:
+  datasource:
+    url: jdbc:h2:mem:authsession;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: true

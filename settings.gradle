@@ -45,3 +45,9 @@ include 'services:gateway'
 include 'services:user-service'
 include 'services:admin-service'
 include 'services:auth-server'   // OP(OAuth2/OIDC Provider) — 외부/그룹사 위임 토큰 발급(별도 배포). SAS=SS7 흡수, 버전=BOM.
+
+// ----- 인증 방식별 실서비스 (auth-<방식>-service) — docs/_internal/AUTH_SUMMARY.md -----
+include 'services:auth-session-service'   // T1: 서버 세션(HttpSession + 쿠키) 기반 인증
+// include 'services:auth-jwt-service'    // T2: 무상태 JWT (예정)
+// include 'services:auth-oidc-service'   // T3: OIDC RP 위임 (예정)
+// include 'services:auth-saml-service'   // T4: SAML SP 위임 (예정)

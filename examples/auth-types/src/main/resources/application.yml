@@ -1,0 +1,48 @@
+# =====================================================================
+# auth-types / 공통 설정 (모든 트랙 공유) — 인증 "방식"만 트랙 프로파일에서 바꾼다.
+#   실행: ./gradlew bootRun --args='--spring.profiles.active=t1-form-session'
+# =====================================================================
+server:
+  port: 8080
+
+spring:
+  application:
+    name: auth-types
+  # 기본 프로파일 없음 — 반드시 트랙을 골라 띄운다(t1-form-session 등).
+  threads:
+    virtual:
+      enabled: true
+
+  # framework-security 는 framework-mybatis 전이 의존 → SqlSessionFactory 용 DataSource 필수.
+  # 데모는 외부 설치 0 = H2 인메모리(빈 스키마). 인증기는 인메모리라 DB 행이 필요 없다.
+  datasource:
+    url: jdbc:h2:mem:authtypes;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  # 데모는 앱 테이블이 없으므로 Flyway 끔.
+  flyway:
+    enabled: false
+
+# framework-security 의 rbac SecurityMapper.xml(전이 jar 내부) 을 찾도록.
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+
+framework:
+  security:
+    # 데모: rbac DB 동적 인가를 끄고 "인증만 되면 통과"로 둔다(rbac 테이블 불필요).
+    dynamic-authorization: false
+    menu: false
+    jwt:
+      # 세션 모드에서도 JwtProvider 빈은 생성된다 → 32바이트 이상 시크릿 필요(로컬 데모용 고정값).
+      secret: auth-types-demo-secret-key-please-change-in-real-services-32+
+      access-token-validity-seconds: 1800
+      refresh-token-validity-seconds: 1209600
+    token-store:
+      type: memory
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

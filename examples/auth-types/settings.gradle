@@ -1,0 +1,4 @@
+// 독립(standalone) Gradle 빌드 — 인증 "방식(유형)"을 프로파일별로 보여 주는 카탈로그.
+//   한 앱에 여러 인증 방식을 심고 spring.profiles.active=<트랙> 으로 골라 띄워 A/B 비교한다.
+//   (배치 카탈로그 examples/batch-types 와 동일한 사상 — 그쪽은 spring.batch.job.name 으로 잡 선택.)
+rootProject.name = 'auth-types'

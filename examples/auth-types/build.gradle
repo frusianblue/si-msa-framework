@@ -1,0 +1,56 @@
+// =====================================================================================
+// auth-types — 인증 "방식(유형)" 카탈로그
+// -------------------------------------------------------------------------------------
+// 한 앱에 여러 인증 방식을 심고, 프로파일로 골라 띄워 차이를 A/B 비교한다.
+//   T1 세션      : --spring.profiles.active=t1-form-session   (서버 HttpSession + 쿠키)
+//   T2 무상태JWT : --spring.profiles.active=t2-jwt            (예정)
+//   T3 OIDC RP   : --spring.profiles.active=t3-oidc           (예정)
+//   T4 SAML SP   : --spring.profiles.active=t4-saml           (예정)
+//
+// 공통 보호 리소스는 GET /api/resource 하나로 고정 — 인증 방식만 바꿔가며 같은 자물쇠를 연다.
+//
+// 사전 1회(이 예제가 com.company:framework-* 를 소비):
+//   ../../gradlew :framework:framework-core:publishToMavenLocal \
+//                 :framework:framework-mybatis:publishToMavenLocal \
+//                 :framework:framework-security:publishToMavenLocal      # repo 루트에서
+//   (세션 외부화 T1 멀티팟 체감 시 추가) :framework:framework-session:publishToMavenLocal
+//
+// 실행:
+//   ./gradlew bootRun --args='--spring.profiles.active=t1-form-session'
+// =====================================================================================
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.0.6'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    // framework-security 가 framework-core + framework-mybatis(SqlSessionFactory) + security starter + jjwt 를 전이로 가져온다.
+    implementation 'com.company:framework-security:1.0.0'
+
+    // framework-security 는 framework-mybatis 전이 의존 → SqlSessionFactory 용 DataSource 가 반드시 필요하다.
+    // 데모는 외부 설치 0 = H2 인메모리(빈 스키마). rbac 조회는 dynamic-authorization=false 로 끈다.
+    runtimeOnly 'com.h2database:h2'
+
+    // (T1 멀티팟 세션 외부화 체감 시 주석 해제 — Spring Session Redis)
+    // implementation 'com.company:framework-session:1.0.0'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

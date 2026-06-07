@@ -39,6 +39,8 @@ chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind && kind --version
 | `02-auth-pull-sanity.sh` | **비공개(Basic auth) 레지스트리** + `harbor-cred`(imagePullSecrets) → 노드 pull 검증. dev overlay 의 인증 경로 실증(3단계 첫 조각) |
 | `03-dev-overlay-up.sh` | **4단계**: 실 이미지 빌드(compose) → harbor.local push → `dev` overlay apply → 6파드 Ready/DB 검증(`--smoke` 시 AS 토큰) |
 | `smoke-authcode-pkce.sh` | **검증**: 실클러스터 authorization_code+PKCE+`DbAuthenticator` 전체 흐름(폼로그인→code→토큰→id_token sub=tester→jwks). `SmokeClientDbAuthFlowTest` 의 실클러스터 등가물 |
+| `04-metrics-hpa.sh` | **S4-1**: metrics-server 설치(kind `--kubelet-insecure-tls`) → `kubectl top` → 일회용 HPA 로 metrics→HPA 파이프라인 확인(`--load` 스케일 관찰·`--keep` 유지) |
+| `05-prometheus-stack.sh` | **S4-2**: kube-prometheus-stack(Helm) 설치 → ServiceMonitor 적용 → Prometheus `si-msa-services` 타깃 UP 스모크(`--grafana` 접속정보) |
 | `certs.d/harbor.local/hosts.toml` | 노드의 `harbor.local` 해소 → `harbor-auth-reg:5000`(02 용) |
 | `00-cleanup.sh` | docker-desktop kind 잔여 디버그 파드 정리 + (옵션)standalone teardown |
 
@@ -64,6 +66,14 @@ bash deploy/k8s/standalone-kind/03-dev-overlay-up.sh --smoke  # + AS 토큰(clie
 # OAuth2 운영 인증 경로(authorization_code+PKCE+DbAuthenticator) 실클러스터 검증 — 시더 on 가정(아니면 ENSURE_SEEDER=1)
 bash deploy/k8s/standalone-kind/smoke-authcode-pkce.sh
 #   그린: 7단계 ✅ + sub=tester + jwks=200 → ② 종료.
+
+# S4-1: metrics-server + HPA 스모크
+bash deploy/k8s/standalone-kind/04-metrics-hpa.sh
+#   그린: kubectl top OK + HPA TARGETS≠<unknown>.
+
+# S4-2: kube-prometheus-stack + ServiceMonitor 스크랩 스모크
+bash deploy/k8s/standalone-kind/05-prometheus-stack.sh            # --grafana 로 접속정보
+#   그린: si-msa-services 타깃 UP → 관측 파이프라인 정상.
 
 # 끝나면 정리
 bash deploy/k8s/standalone-kind/00-cleanup.sh --teardown-sanity

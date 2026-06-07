@@ -1,0 +1,52 @@
+# =====================================================================
+# auth-session-service / 공통 설정 (모든 프로파일 공유)
+#   인증 방식 = 서버 세션. 환경 구분: local | dev | prod
+#   실행(로컬): ./gradlew :services:auth-session-service:bootRun   (= local, H2)
+# =====================================================================
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-session-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  threads:
+    virtual:
+      enabled: true
+  flyway:
+    enabled: false   # 데모는 앱 테이블 없음(인메모리 인증기). rbac 도 미사용.
+
+# framework-security 전이 jar 의 rbac SecurityMapper.xml 을 찾도록.
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+
+framework:
+  security:
+    # 인증 상태관리 = 서버 세션(이 서비스의 정체성).
+    session:
+      mode: session
+      csrf: true
+      cookie-name: SESSION
+    # 데모: rbac DB 동적 인가 off → "인증만 되면 통과"(rbac 테이블 불필요). 실서비스 전환 시 true + rbac 스키마.
+    dynamic-authorization: false
+    menu: false
+    jwt:
+      # 세션 모드에서도 JwtProvider 빈이 생성됨 → 32바이트+ 시크릿 필요. 운영은 JWT_SECRET 으로 주입.
+      secret: ${JWT_SECRET:auth-session-service-demo-secret-please-change-32bytes+}
+    token-store:
+      type: memory
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId:-}]"

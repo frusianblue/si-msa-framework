@@ -1,0 +1,30 @@
+// services/auth-session-service/build.gradle
+//
+// T1 — 서버 세션(HttpSession + 쿠키) 기반 인증을 쓰는 실서비스.
+//   인증 방식별로 services/auth-<방식>-service 로 분리한다(session/jwt/oidc/saml).
+//   카탈로그(examples/auth-types)에서 체감한 세션 방식을 배포 가능한 서비스로 옮긴 것.
+plugins {
+    id 'org.springframework.boot'      // 버전은 루트(카탈로그)에서 상속
+}
+
+dependencies {
+    // ===== 공통 프레임워크 =====
+    implementation project(':framework:framework-core')
+    implementation project(':framework:framework-security')   // framework-mybatis 전이 포함(SqlSessionFactory)
+    // 멀티팟(replicas>=2) 세션 외부화 체감 시 주석 해제 — Spring Session Redis 로 HttpSession 공유.
+    // implementation project(':framework:framework-session')
+
+    // 관측: Prometheus 스크레이프(/actuator/prometheus). 버전=Boot BOM.
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
+    // ===== DB =====
+    // framework-security 가 framework-mybatis 전이 의존 → SqlSessionFactory 용 DataSource 필수.
+    // 데모 인증기는 인메모리라 행이 필요 없다. 로컬은 H2 빈 스키마.
+    runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'org.postgresql:postgresql'                    // dev/prod 프로파일용
+
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+}
