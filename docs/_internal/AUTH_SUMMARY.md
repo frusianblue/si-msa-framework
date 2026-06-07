@@ -130,6 +130,15 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
 
 ## 7. 다음 (Next)
 
-1. **T1 로컬 부팅·curl 검증** (Chae 로컬) — 카탈로그 `t1-form-session` + `auth-session-service` 양쪽.
-2. **T1 멀티팟 체감** — `auth-session-service` replicas=2 로 띄워 세션 외부화 on/off 차이 확인(`framework-session`).
-3. **T2(무상태 JWT)로 상태 축 비교** — `auth-jwt-service` + 카탈로그 `t2-jwt` 프로파일. 로그아웃·확장 차이 기록.
+### 먼저 처리(이번 섹션에서 결정, 미적용)
+1. **카탈로그 빌드 통일** — `examples/auth-types` 를 독립 빌드 → **루트 멀티프로젝트로 편입**
+   (루트 `settings.gradle` 에 `include 'examples:auth-types'`, `build.gradle` 의존을 `'com.company:..:1.0.0'` →
+   `project(':framework:..')` 로 전환). 그러면 `publishToMavenLocal` 불필요, `:examples:auth-types:bootRun` 으로 바로 실행.
+2. **보안-영속 결합 분리(리팩터)** — `docs/_internal/planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md` 착수.
+   `framework-security` 의 MyBatis/DataSource 강제 결합을 RBAC 포트/어댑터(`framework-security-rbac-mybatis`)로 분리.
+   완료 후 T1 데모에서 H2/DataSource 제거(인증만 → DataSource 불필요).
+
+### 트랙 진행
+3. **T1 로컬 부팅·curl 검증** (Chae 로컬) — 카탈로그 `t1-form-session` + `auth-session-service` 양쪽.
+4. **T1 멀티팟 체감** — `auth-session-service` replicas=2 로 띄워 세션 외부화 on/off 차이 확인(`framework-session`).
+5. **T2(무상태 JWT)로 상태 축 비교** — `auth-jwt-service` + 카탈로그 `t2-jwt` 프로파일. 로그아웃·확장 차이 기록.

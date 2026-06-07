@@ -1,0 +1,164 @@
+# NEXT_SECURITY_PERSISTENCE_DECOUPLING.md
+
+> **상태: 활성(ACTIVE)** — 다음 섹션 착수 대상. 완료 시 `docs/archive/` 로 이동(ARCHIVED 배너).
+> 관련: `docs/_internal/AUTH_SUMMARY.md` §6(트랙 Pitfalls), `docs/guide/AUTH_COMPOSITION_GUIDE.md`,
+> `docs/guide/PITFALLS.md`(§ ConditionalOnMissingBean introspection / MapperScan annotationClass).
+
+---
+
+## 0. 한 줄 요약
+
+`framework-security` 가 `framework-mybatis` 를 **무조건 전이 의존**하고 RBAC 매퍼 빈을 **무조건 로딩**하는 탓에,
+**인증만 쓰는 서비스도 MyBatis + DataSource 를 강제로 떠안는다.** RBAC 영속을 **포트/어댑터(SPI)** 로 분리해
+보안 코어가 특정 영속 기술(MyBatis)·인프라(DataSource)에 결합되지 않게 한다.
+
+---
+
+## 1. 문제 (현재 상태, 실측)
+
+의존 사슬:
+```
+framework-security  ──api project(':framework:framework-mybatis')──>  mybatis-spring-boot-starter + spring-boot-starter-jdbc
+        │  (framework-security/build.gradle 에 박혀 있음 — 무조건)
+        ▼
+SecurityAutoConfiguration (무조건 로딩):
+  @MapperScan("com.company.framework.security.rbac.mapper")        ← SqlSessionFactory 필요
+  @Bean securityMetadataService(SecurityMapper)                     ← DataSource 필요
+  @Bean dynamicAuthorizationManager(SecurityMetadataService)
+  @Bean menuService(SecurityMapper)         (menu=true 일 때)
+  @Bean menuController(MenuService)         (menu=true 일 때)
+```
+
+결과: 보안을 쓰면 **DataSource 가 하나는 있어야 부팅**(SqlSessionFactory 가 못 뜨면 컨텍스트 실패).
+→ 인증만 쓰는 데모/위임 서비스(`auth-session-service` 등)가 의미 없는 H2 를 끼워야 했음.
+
+**세 겹 결합**(틀린 부분): 보안이 강제해야 하는 건 **인증(`Authenticator`)** 하나뿐인데,
+RBAC(선택 기능) → MyBatis(특정 기술) → DataSource(인프라) 가 줄줄이 강제됨.
+
+---
+
+## 2. 결정
+
+- **(가) 별도 어댑터 모듈 신설**: `framework-security-rbac-mybatis`.
+- 보안 코어는 **RBAC 포트(SPI)** 만 알고, MyBatis 구현은 어댑터로 분리(= `Authenticator` 와 동일 사상).
+- `framework-security` 의 `api project(':framework:framework-mybatis')` **제거**.
+- RBAC 쓰는 서비스는 어댑터 의존 **한 줄** 추가. 인증만 쓰는 서비스는 **의존 0개 추가, DataSource 불필요.**
+
+미래 확장: `framework-security-rbac-jpa`, `framework-security-rbac-jdbc` 등 어댑터만 새로 작성.
+
+---
+
+## 3. SPI(포트) 설계
+
+DB 를 만지는 지점은 `SecurityMapper`(rbac.mapper) 3개 메서드:
+`findAllResources()`(동적 인가용 URL-역할), `findMenusByRoles(roles)`(메뉴), `findRolesByLoginId(loginId)`(역할).
+
+> 주의(실측): `findRolesByLoginId` 는 **프로젝트의 Authenticator 가 직접 사용**한다
+> (예: `services/user-service` 의 `DbAuthenticationProvider`). 프레임워크 로그인 흐름은 역할을
+> `AuthenticatedUser.roles()` 로 받으므로, role 조회는 **프로젝트/어댑터 관심사**다.
+
+### 보안 코어(`framework-security`)에 둘 포트
+```java
+// rbac.spi (신설 패키지)
+public interface ResourceMetadataProvider {     // 동적 인가
+    List<Resource> findAllResources();
+}
+public interface MenuProvider {                  // 메뉴 API
+    List<Menu> findMenusByRoles(List<String> roles);
+}
+```
+- 도메인 타입 `Resource` / `Menu` / `MenuDto` 는 **포트 계약**이므로 보안 코어에 **잔류**.
+- `SecurityMetadataService` / `DynamicAuthorizationManager` / `MenuService` / `MenuController` 는
+  `SecurityMapper`(MyBatis) 대신 위 **포트**에 의존하도록 변경(코어에 잔류).
+
+### 어댑터(`framework-security-rbac-mybatis`)로 이전
+- `SecurityMapper`(@Mapper 인터페이스) + `resources/mapper/security/SecurityMapper.xml`
+- `MyBatisResourceMetadataProvider implements ResourceMetadataProvider`
+- `MyBatisMenuProvider implements MenuProvider`
+- (선택) `findRolesByLoginId` 를 제공할 `MyBatisRoleProvider` 또는 `SecurityMapper` 자체를 어댑터가 노출
+  → user-service 의 `DbAuthenticationProvider` 가 이걸 주입받게.
+
+---
+
+## 4. 로딩/격리 설계 (PITFALLS 직결 — 반드시 준수)
+
+1. **어댑터 자동설정은 `@ConditionalOnClass(SqlSessionFactory.class)` 가드된 nested static `@Configuration` 안에서만**
+   매퍼/Provider 빈을 만든다. (PITFALLS: `@ConditionalOnMissingBean` 타입 미명시 시 형제 빈 introspection →
+   부재 의존 클래스 로딩. nested + ConditionalOnClass 로 격리.)
+2. **`@MapperScan` 은 어댑터 안에서 `annotationClass = Mapper.class` 필터와 함께**. (PITFALLS: 필터 없으면 SPI 인터페이스까지 스캔 → `ConflictingBeanDefinitionException`.)
+3. 코어 `SecurityAutoConfiguration` 에서 `@MapperScan` 및 `SecurityMapper` 직접 참조 **전부 제거**.
+4. 코어의 RBAC 빈은 포트 빈 존재를 조건으로:
+   - `dynamicAuthorizationManager` → `@ConditionalOnBean(ResourceMetadataProvider.class)`
+   - `menuService`/`menuController` → `@ConditionalOnBean(MenuProvider.class)` (+ 기존 `menu=true`)
+
+### fail-fast (조용한 인가 무력화 방지)
+- `dynamic-authorization=true` **인데** `ResourceMetadataProvider` 빈이 없으면 → **부팅 실패**.
+  메시지: "dynamic-authorization=true 이면 RBAC provider 가 필요합니다 — `framework-security-rbac-mybatis`(또는 다른 RBAC 어댑터)를 의존에 추가하세요."
+  (`@ConditionalOnProperty(dynamic-authorization=true)` + `@ConditionalOnMissingBean(ResourceMetadataProvider.class)` 가드 빈으로 fail-fast 구현 — DevAuthSafetyGuard/JwtSecretSafetyGuard 패턴 재사용.)
+- `dynamic-authorization=false` → 포트 불필요, 보안 체인은 `authenticated()` 로만. **DataSource·MyBatis 없이 부팅.**
+
+---
+
+## 5. "그냥 MyBatis 쓰는 경우" — 변화는 의존성 한 줄
+
+| 케이스 | 현재 | 개선 후 |
+|--------|------|---------|
+| 인증만 (데모/위임 서비스) | MyBatis+DataSource 강제 | 의존 0개 추가, DataSource 불필요 |
+| RBAC + MyBatis (user/admin-service) | 자동 | `implementation project(':framework:framework-security-rbac-mybatis')` **한 줄** |
+| RBAC + JPA (미래) | 불가 | `-rbac-jpa` 어댑터만 |
+
+동작은 100% 동일(SecurityMapper/XML/동적 인가/메뉴 그대로, 어댑터가 통째로 담음).
+
+---
+
+## 6. 작업 체크리스트
+
+### 6-1. 새 모듈 신설 (`framework-security-rbac-mybatis`)
+- [ ] `framework/framework-security-rbac-mybatis/` 생성(build.gradle: `api project(':framework:framework-security')` + `api project(':framework:framework-mybatis')`)
+- [ ] `SecurityMapper` + `SecurityMapper.xml` 이전, `MyBatisResourceMetadataProvider`/`MyBatisMenuProvider` 작성
+- [ ] 어댑터 `@AutoConfiguration`(nested `@ConditionalOnClass(SqlSessionFactory.class)` + `@MapperScan(annotationClass=Mapper.class)`)
+- [ ] `META-INF/.../AutoConfiguration.imports` 등록
+
+### 6-2. 코어 변경 (`framework-security`)
+- [ ] `build.gradle`: `api project(':framework:framework-mybatis')` **제거**
+- [ ] `rbac.spi` 포트 신설(`ResourceMetadataProvider`, `MenuProvider`)
+- [ ] `SecurityMetadataService`/`DynamicAuthorizationManager`/`MenuService`/`MenuController` 를 포트 의존으로 변경
+- [ ] `SecurityAutoConfiguration`: `@MapperScan`·`SecurityMapper` 참조 제거, RBAC 빈에 `@ConditionalOnBean(포트)`
+- [ ] dynamic-authorization=true + 포트 부재 → fail-fast 가드 빈
+
+### 6-3. 신규 모듈 등록(프로젝트 규약 — 동시 등록 필수)
+- [ ] `settings.gradle` include
+- [ ] `framework-archtest/build.gradle` 의존 추가
+- [ ] archtest `.imports` 가드 대상 추가
+- [ ] guard test(`getResources` 로 `.imports` 직접 검증) 추가
+- [ ] root `build.gradle` jacocoAggregation 추가
+
+### 6-4. 기존 서비스 마이그레이션
+- [ ] `services/user-service/build.gradle` 에 `-rbac-mybatis` 의존 한 줄 추가(현재 dynamic-authorization=true)
+- [ ] `services/admin-service/build.gradle` 동일
+- [ ] `DbAuthenticationProvider` 의 `SecurityMapper` 주입 경로 확인(어댑터가 노출)
+- [ ] 로컬 부팅·기존 동작 회귀 확인(Chae)
+
+### 6-5. ArchUnit 회귀 방지
+- [ ] 규칙 추가: `framework-security` 는 `framework-mybatis`/`org.mybatis..`/`org.apache.ibatis..` 에 의존 금지
+- [ ] 규칙 추가: rbac.spi 포트는 MyBatis 타입을 시그니처에 노출 금지
+
+### 6-6. 문서 동반 갱신(코드=문서 동시)
+- [ ] `framework-security/README.md`(켜는법/쓰는법/끄는법 + RBAC 어댑터 분리 설명 + `## 실전 사용 예 (코드)`)
+- [ ] `framework-security-rbac-mybatis/README.md`(신규, `## 실전 사용 예 (코드)` 포함)
+- [ ] root `README.md`, `docs/FRAMEWORK_MODULES.md`(36→37 모듈, 카테고리 반영)
+- [ ] `docs/guide/AUTH_COMPOSITION_GUIDE.md`, `MODULE_COMPOSITION`
+- [ ] `docs/guide/PITFALLS.md`(보안-영속 결합 분리 교훈 추가)
+- [ ] `framework/README.md` 모듈 링크
+
+### 6-7. T1 데모 후속(이 리팩터 완료 후)
+- [ ] `examples/auth-types`·`services/auth-session-service` 에서 **H2/DataSource 제거**(인증만 → DataSource 불필요 확인)
+- [ ] `AUTH_SUMMARY.md` §5/§6 갱신(부팅 전제 "DataSource 필수" 항목 해소 기록)
+
+---
+
+## 7. 영향 범위 / 리스크
+
+- user-service / admin-service 는 `dynamic-authorization=true` 라 **어댑터 한 줄 추가 전까지 부팅 실패**(fail-fast 의도된 동작). 마이그레이션을 같은 PR/delivery 에 포함해 회귀 없게.
+- 빌드 환경 제약: Maven Central 차단 → Gradle 실행 불가. Claude 정적 작성, Chae 로컬 빌드/테스트.
+- 검증: 포트 분리 로직은 순수 JDK 하니스로, Spring 와이어링은 Chae 로컬 위임.
