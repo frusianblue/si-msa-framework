@@ -81,13 +81,8 @@ patches:
         path: /data/FRAMEWORK_FILE_STORAGE_BASE_PATH
         value: /tmp/uploads
 
-  # ── ServiceMonitor 제거 — 이 클러스터엔 아직 monitoring.coreos.com CRD 가 없다(S4 kube-prometheus-stack 에서 설치). ──
-  #   그대로 두면 `no matches for kind "ServiceMonitor"` 로 apply 가 에러(나머지는 적용되지만 비클린/CI 깨짐). local overlay 와 동일.
-  #   ⚠️ S4 에서 Prometheus Operator 설치 후 이 delete 패치를 제거하면 dev 도 ServiceMonitor 로 관측됨(dev=prod-like 관측).
-  - target: { group: monitoring.coreos.com, version: v1, kind: ServiceMonitor, name: si-msa-services }
-    patch: |-
-      $patch: delete
-      apiVersion: monitoring.coreos.com/v1
-      kind: ServiceMonitor
-      metadata:
-        name: si-msa-services
+  # ── ServiceMonitor: S4-2(kube-prometheus-stack) 설치로 활성화됨 ──
+  #   이전엔 monitoring.coreos.com CRD 부재로 base 의 si-msa-services SM 을 $patch:delete 했으나,
+  #   05-prometheus-stack.sh 가 Prometheus Operator(=CRD)를 설치하므로 그 delete 패치를 제거해 SM 을 그대로 적용한다.
+  #   base SM 의 release=kube-prometheus-stack 라벨이 Operator serviceMonitorSelector 와 매칭(+ 스크립트가 NilUsesHelmValues=false 로 전체수용).
+  #   ⚠️ kube-prometheus-stack 미설치 클러스터에 apply 하면 `no matches for kind "ServiceMonitor"` → 먼저 05 스크립트 실행.
