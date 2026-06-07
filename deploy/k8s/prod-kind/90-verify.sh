@@ -21,11 +21,21 @@ FAILED=0
 pass(){ echo "  [PASS] $1"; }
 fail(){ echo "  [FAIL] $1"; FAILED=1; }
 
-# 파드 1회 실행 — stdout+stderr 합쳐서 그대로 반환(에러 안 가림). --quiet 미사용.
+# 파드 1회 실행 — 짧은 명령은 `-i --rm` attach 가 종료 타이밍에 출력을 놓치므로(배너만 캡처),
+#   detached 실행 → 완료 대기 → `kubectl logs`(확실) → 삭제. 출력은 명령의 실제 stdout/stderr.
 run_pod(){ # $1=ctx $2=image ; 나머지=커맨드
   local ctx="$1" img="$2"; shift 2
-  kubectl --context "$ctx" run "verify-$$-$RANDOM" --restart=Never -i --rm \
-    --image="$img" --image-pull-policy=IfNotPresent --command -- "$@" 2>&1
+  local name="verify-$$-$RANDOM" phase=""
+  kubectl --context "$ctx" run "$name" --restart=Never \
+    --image="$img" --image-pull-policy=IfNotPresent --command -- "$@" >/dev/null 2>&1
+  local i
+  for i in $(seq 1 40); do
+    phase="$(kubectl --context "$ctx" get pod "$name" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    case "$phase" in Succeeded|Failed) break ;; esac
+    sleep 2
+  done
+  kubectl --context "$ctx" logs "$name" 2>&1
+  kubectl --context "$ctx" delete pod "$name" --force --grace-period=0 >/dev/null 2>&1 || true
 }
 diag(){ # $1=ctx — FAIL 트리아지용 덤프
   local ctx="$1"
