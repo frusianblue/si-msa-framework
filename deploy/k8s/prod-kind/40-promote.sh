@@ -52,6 +52,15 @@ if [ -n "$DIRTY" ]; then
 fi
 SHA="$(git -C "$ROOT" rev-parse --short HEAD)"
 echo "  registry=$REGISTRY project=$PROJECT sha=$SHA  (빌드 대상 HEAD)"
+# git author identity 선점검 — 없으면 4단계 commit 에서 깨짐. 빌드/push 다 한 뒤 낭비 방지차 0단계에서 선점검.
+GIT_EMAIL="$(git -C "$ROOT" config user.email 2>/dev/null || true)"
+GIT_NAME="$(git -C "$ROOT" config user.name 2>/dev/null || true)"
+if [ -z "$GIT_EMAIL" ] || [ -z "$GIT_NAME" ]; then
+  echo "FAIL: git author identity 미설정 — promote commit 이 깨진다(빌드/push 전에 선점검)."
+  echo "      git config user.email \"you@example.com\"  &&  git config user.name \"Your Name\""
+  echo "      (이 repo 한정이면 그대로, 전역이면 --global 추가)"
+  exit 1
+fi
 
 echo "== 1) 빌드(호스트 docker, 4서비스 :$SHA) =="
 # builder 스테이지는 ARG SERVICE 무관 → BuildKit 캐시로 첫 빌드만 Gradle 컴파일, 나머지 3은 캐시 재사용.
