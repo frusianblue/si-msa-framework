@@ -1,3 +1,6 @@
+> ⚠️ **ARCHIVED (2026-06-07 세션8 종료 시점)** — 완료됨. 아래는 착수 당시 기록(보존용).
+> 완료: B안 호스트 접속 실행·검증(11-host-access-verify 전 항목 PASS). harbor.local/jenkins.local 직접 접속(HANDOFF §7 세션4, PITFALLS §9).
+
 # NEXT_INGRESS_HOST_ACCESS.md — 다음 세션 착수용 (B안: 재생성 + ingress-nginx)
 
 > 🟢 **상태(2026-06-07 세션4): 호스트 접속 B안 = 실행·검증 완료.** `11-host-access-verify.sh` 전 항목 PASS,

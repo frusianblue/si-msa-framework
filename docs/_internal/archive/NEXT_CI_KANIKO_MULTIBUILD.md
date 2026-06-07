@@ -1,3 +1,6 @@
+> ⚠️ **ARCHIVED (2026-06-07 세션8 종료 시점)** — 완료됨. 아래는 착수 당시 기록(보존용).
+> 해결: 서비스별 kaniko 컨테이너 4개 + 순차 executor 1회(HANDOFF §7 세션6, PITFALLS §9). 실잡 4서비스 build→push 성공.
+
 # NEXT_CI_KANIKO_MULTIBUILD.md — 다음 세션 착수용 (Kaniko 다중 이미지 빌드 재설계)
 
 > 상태(2026-06-07 세션4): 🟡 미해결. 호스트 접속(B안)·CI 파이프라인 1차 가동은 완료.
