@@ -79,6 +79,14 @@ Harbor 포털 `si-msa` 에 4 repo × (`<sha>`,`dev`). `kubectl -n si-msa get pod
 
 ---
 
+## 2.5 호스트 접속 (현재 port-forward / 다음 = B안 ingress)
+standalone kind 는 `kind-config.yaml` 에 `extraPortMappings` 가 없으면 **노드 포트가 호스트로 안 나온다**
+(docker-desktop kind 의 LB→localhost 자동게시가 없음 — 이게 "ingress 깔면 포워딩 불요" 가 여기선 안 되는 이유).
+- **지금(임시)**: `kubectl -n harbor port-forward svc/harbor 8080:80` · `kubectl -n jenkins port-forward svc/jenkins 8088:8080`.
+- **영구(B안, 재생성 필요)**: 새 kind-config 에 `extraPortMappings`(80/443)+`ingress-ready` 라벨 → 재생성 → ingress-nginx →
+  Harbor/Jenkins 를 ingress 노출(`harbor.local`/`jenkins.local`) → Windows·WSL hosts `127.0.0.1 harbor.local jenkins.local`.
+  상세 착수 계획 = `docs/_internal/planning/NEXT_INGRESS_HOST_ACCESS.md`(데이터 재구축 주의·토큰 realm 재조정 포함).
+
 ## 3. 끄는 법 / 정리
 ```bash
 helm --kube-context kind-sanity -n jenkins uninstall jenkins

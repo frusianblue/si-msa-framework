@@ -40,4 +40,5 @@
 | 재부팅 후 **특정 서비스만** ImagePullBackOff + `dial tcp 127.0.0.1:443: connection refused` | §8 certs.d bind mount 휘발 → `registry-trust` DaemonSet 으로 영구화 + `07-reboot-recover.sh` |
 | 오버레이가 `:dev`/`:<sha>` 인데도 노드 캐시 무시하고 매번 레지스트리 재확인 | §8 base 태그 `:latest` + imagePullPolicy 미명시 → 기본 Always. base 에 `IfNotPresent` 명시 |
 | standalone kind 에서 ingress-nginx LoadBalancer EXTERNAL-IP 가 `<pending>` | §8 standalone kind 엔 LB→localhost 매직 없음(docker-desktop 전용). NodePort+CP_IP 좌표 사용 |
+| Harbor/Jenkins 설치는 됐는데 호스트(브라우저) localhost:30002/32000 접속 불가 | §8 standalone kind=`extraPortMappings` 부재→노드 포트 호스트 비노출. **ingress 만으론 불가**. `port-forward`(임시) 또는 재생성+extraPortMappings+ingress(B안) |
 | 인-클러스터 Kaniko push 가 `harbor.local` 해소 실패 | §9 CoreDNS hosts(harbor.local→CP_IP) 미적용 → `08` §6 재실행 |
