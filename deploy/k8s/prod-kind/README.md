@@ -109,7 +109,7 @@ bash 41-verify-promote.sh       # G11~G13
 
 **호스트 push 사전조건**(40-promote 가 docker push harbor.local 하려면): Docker Desktop daemon 에 `insecure-registries: ["harbor.local"]`(HTTP 평문 레지스트리) + Windows/WSL hosts 에 `127.0.0.1 harbor.local`.
 
-promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4서비스 `:<sha>` 빌드(builder 스테이지 SERVICE 무관 → 1회 컴파일 재사용) → ② `harbor.local/si-msa/<svc>:<sha>` push → ③ `overlays/prod` 에 `kustomize edit set image registry.example.com/si-msa/<svc>=harbor.local/si-msa/<svc>:<sha>`(placeholder newName + sha newTag, 멱등) → ④ **git commit/push**(prod 반전 — dev 의 "되커밋 X"와 정반대, ArgoCD 는 master 가 진실) → ⑤ `refresh=hard` 로 즉시 reconcile.
+promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4서비스 `:<sha>` 빌드(builder 스테이지 SERVICE 무관 → 1회 컴파일 재사용) → ② `harbor.local/si-msa/<svc>:<sha>` push → ③ `overlays/prod` 의 images 줄을 sed 로 통째 교체(placeholder newName + sha newTag, flow 유지, 멱등 — kustomize CLI 불요) → ④ **git commit/push**(prod 반전 — dev 의 "되커밋 X"와 정반대, ArgoCD 는 master 가 진실) → ⑤ `refresh=hard` 로 즉시 reconcile.
 
 | 게이트 | 검증 |
 |---|---|
@@ -119,8 +119,8 @@ promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4
 
 - **★ prod 는 핀을 git 에 커밋**: dev(push-CD)는 워크스페이스에서만 핀(되커밋 X)지만, prod(pull-GitOps)는 ArgoCD 가 git(master) 커밋 상태를 진실로 reconcile → 핀이 **반드시 커밋·push** 돼야 sync 됨. `40-promote` 가 그 커밋을 만든다.
 - **워킹트리 clean 전제**: 미커밋 변경이 있으면 `:<sha>` 가 실제 빌드 내용과 어긋남 → 40 의 0단계가 막음(overlay 파일만 예외).
-- **placeholder name 핀 필수**: prod overlay 의 image name=`registry.example.com/...`(운영 레지스트리 placeholder) → newTag 만 박으면 가짜 레지스트리에서 pull 시도 = 실패. `set image NAME=NEWNAME:TAG` 로 **newName 까지** 박아야 함(PITFALLS §9 local overlay 함정의 prod·harbor 판).
-- **kustomize CLI 필요**: GitOps 표준 도구. 없으면 `go install sigs.k8s.io/kustomize/kustomize/v5@latest`.
+- **placeholder name 핀 필수**: prod overlay 의 image name=`registry.example.com/...`(운영 레지스트리 placeholder) → newTag 만 박으면 가짜 레지스트리에서 pull 시도 = 실패. images 줄을 `{ name: ..., newName: harbor.local/..., newTag: <sha> }` 로 통째 교체해 **newName 까지** 박아야 함(PITFALLS §9 local overlay 함정의 prod·harbor 판).
+- **sed 핀(kustomize 불요)**: overlay images 는 flow 스타일 한 줄이라 `40-promote` 가 sed 로 줄 통째 교체(첫/재promote 멱등). dev 의 `pin-image-tag.sh`(sed)와 일관 — 별도 CLI 설치 불요.
 
 ## 다음 단계 (스펙 §3-5~)
 

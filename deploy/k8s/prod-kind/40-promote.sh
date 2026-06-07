@@ -14,13 +14,12 @@
 #   흐름:
 #     1) 빌드  호스트 docker + deploy/docker/Dockerfile.build, 4서비스 :<sha>  (builder 스테이지 SERVICE 무관 → 1회 컴파일 재사용)
 #     2) push  docker login harbor.local → harbor.local/si-msa/<svc>:<sha>
-#     3) 핀    overlays/prod 에 kustomize edit set image(placeholder name → harbor.local name + :<sha>, 멱등)
+#     3) 핀    overlays/prod 에 sed 로 placeholder name → harbor.local name + :<sha>(flow 줄 통째 교체, 멱등, kustomize 불요)
 #     4) commit/push  overlays/prod/kustomization.yaml 를 master 에  (ArgoCD 트리거)
 #     5) sync  ArgoCD refresh=hard 로 즉시 reconcile 유도(폴링 ~3분 대기 단축)
 #
 # 전제: 30-harbor-hub-install PASS + 호스트 push 사전조건(daemon insecure-registries: harbor.local, hosts)
 #       + 워킹트리 clean(미커밋 변경이 있으면 :<sha> 가 실제 빌드 내용과 어긋남 — 0단계가 막음)
-#       + kustomize CLI(GitOps 표준; 없으면 설치 안내 후 FAIL)
 #       + Maven Central 도달(Dockerfile.build 가 컨테이너 안에서 Gradle 빌드).
 # 실행: bash deploy/k8s/prod-kind/40-promote.sh
 # 멱등: 같은 HEAD 면 같은 :<sha> 재빌드/재핀(no-op diff 면 commit 건너뜀).
@@ -39,12 +38,8 @@ OVERLAY="$ROOT/deploy/k8s/overlays/prod"
 export DOCKER_BUILDKIT=1
 
 echo "== 0) 전제 =="
-for b in docker git kustomize kubectl; do
-  command -v "$b" >/dev/null 2>&1 || {
-    echo "FAIL: '$b' 없음."
-    [ "$b" = kustomize ] && echo "   설치: 'go install sigs.k8s.io/kustomize/kustomize/v5@latest' 또는 https://kustomize.io/"
-    exit 1
-  }
+for b in docker git kubectl sed; do
+  command -v "$b" >/dev/null 2>&1 || { echo "FAIL: '$b' 없음"; exit 1; }
 done
 [ -f "$DOCKERFILE" ] || { echo "FAIL: $DOCKERFILE 없음"; exit 1; }
 [ -f "$OVERLAY/kustomization.yaml" ] || { echo "FAIL: $OVERLAY/kustomization.yaml 없음"; exit 1; }
@@ -73,17 +68,17 @@ for s in $SERVICES; do
   docker push "$REGISTRY/$PROJECT/$s:$SHA"
 done
 
-echo "== 3) overlay 핀(kustomize edit set image — placeholder → harbor name + :$SHA) =="
-# prod overlay 의 images 엔트리는 placeholder name(registry.example.com/si-msa/<svc>) + newTag __GITSHA__.
-# set image NAME=NEWNAME:TAG 가 newName + newTag 를 멱등 갱신(sentinel/이전 sha 무관하게 덮어씀).
-( cd "$OVERLAY"
-  for s in $SERVICES; do
-    kustomize edit set image "registry.example.com/$PROJECT/$s=$REGISTRY/$PROJECT/$s:$SHA"
-  done
-)
-echo "  핀 결과:"
-grep -A1 'images:' "$OVERLAY/kustomization.yaml" | sed 's/^/    /' || true
-( cd "$OVERLAY" && grep -E 'name:|newName:|newTag:' kustomization.yaml | sed 's/^/    /' ) || true
+echo "== 3) overlay 핀(sed — placeholder name → harbor name + :$SHA, kustomize CLI 불요) =="
+# prod overlay 의 images 는 flow 스타일 한 줄: `{ name: registry.example.com/si-msa/<svc>, newTag: __GITSHA__ }`.
+# 각 서비스 줄을 표준형으로 **통째 교체** → newName(harbor) + newTag(sha) 동시. flow 유지.
+#   멱등: 첫 promote(sentinel)·재promote(이전 sha 박힘) 모두 `name: registry.example.com/.../<svc>,` 포함 줄을 통째 덮어씀.
+#   ※ dev 의 pin-image-tag.sh 와 동일 sed 접근(kustomize 바이너리 불요). GNU sed -i(WSL) 전제.
+KFILE="$OVERLAY/kustomization.yaml"
+for s in $SERVICES; do
+  sed -i "s|.*name: registry\.example\.com/$PROJECT/$s,.*|  - { name: registry.example.com/$PROJECT/$s, newName: $REGISTRY/$PROJECT/$s, newTag: $SHA }|" "$KFILE"
+done
+echo "  핀 결과(images):"
+grep -E "name: registry\.example\.com/$PROJECT/" "$KFILE" | sed 's/^/    /' || true
 
 echo "== 4) commit/push (prod 반전 — ArgoCD 는 master 를 읽음) =="
 if [ -n "$(git -C "$ROOT" status --porcelain deploy/k8s/overlays/prod/kustomization.yaml)" ]; then
