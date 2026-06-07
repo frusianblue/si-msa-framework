@@ -67,7 +67,7 @@
 
 | 트랙 | 방식 | 카탈로그(`examples/auth-types`) | 실서비스(`services/`) |
 |------|------|-------------------------------|----------------------|
-| T1 | 세션 | ☑ `t1-form-session` curl 4~5단계 검증 통과 + 루트 편입(#1) | ◐ `auth-session-service` 골격(8081 curl 미검증) |
+| T1 | 세션 | ☑ `t1-form-session` curl 4~5단계 검증 통과 + 루트 편입(#1) | ☑ `auth-session-service` 8081 curl 1·5=401·2·3·4=200 검증 통과 |
 | T2 | 무상태 JWT | ☐ | ☐ `auth-jwt-service` |
 | T3 | OIDC RP | ☐ | ☐ `auth-oidc-service` |
 | T4 | SAML SP | ☐ | ☐ `auth-saml-service` |
@@ -159,8 +159,8 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
 
 ## 7. 다음 (Next)
 
-> **다음 세션 시작점**: 8081(`auth-session-service`) curl 검증 — 절차는 [`AUTH_T1_VERIFY.md`](./AUTH_T1_VERIFY.md) 그대로,
-> `BASE=http://localhost:8081` 로만 바꿔 1·5=401, 2·3·4=200 확인.
+> **다음 세션 시작점**: T1 양쪽(8080 카탈로그 · 8081 실서비스) curl 검증 완료 ☑. 다음은 아래 중 택1 —
+> **#2 보안-영속 결합 분리**(authoring · framework 리팩터) / **T1 멀티팟 체감**(replicas=2 세션 외부화) / **T2 무상태 JWT**(상태 축 비교).
 
 ### 먼저 처리
 1. ✅ **카탈로그 빌드 통일(완료)** — `examples/auth-types` 를 standalone → **루트 멀티프로젝트로 편입**.
@@ -175,12 +175,14 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
    실제 쿠키 이름을 바꾼다(톰캣·Spring Session 동시 적용). framework-security 변경 → 문서 캐스케이드 동반. 우선순위: 8081 검증 → #2 뒤.
 
 ### 트랙 진행
-4. **T1 검증** — ☑ 카탈로그(8080) curl 4~5단계 통과. ☐ **실서비스(8081) 동일 검증**(다음 세션 시작점, `AUTH_T1_VERIFY.md`).
+4. ✅ **T1 검증(완료)** — ☑ 카탈로그(8080) curl 4~5단계 통과. ☑ 실서비스(8081) 동일 검증 통과(1·5=401, 2·3·4=200; `principal=alice`/`authorities=[ROLE_USER]`, 쿠키 `JSESSIONID` = 정적 점검 예고대로).
 5. **T1 멀티팟 체감** — `auth-session-service` replicas=2 로 띄워 세션 외부화 on/off 차이 확인(`framework-session`).
 6. **T2(무상태 JWT)로 상태 축 비교** — `auth-jwt-service` + 카탈로그 `t2-jwt` 프로파일. 로그아웃·확장 차이 기록.
 
-### 세션 닫음 메모 (이번 세션)
-- 완료: #1 카탈로그 루트 편입 / rbac WARN 억제(H2 `INIT=RUNSCRIPT` 빈 스키마, 양쪽) / T1 카탈로그(8080) curl 검증 통과 /
+### 세션 닫음 메모
+- 직전 세션: #1 카탈로그 루트 편입 / rbac WARN 억제(H2 `INIT=RUNSCRIPT` 빈 스키마, 양쪽) / T1 카탈로그(8080) curl 검증 통과 /
   cookie-name 죽은 설정 발견·문서 정정·(a) 결정 / 재실행용 [`AUTH_T1_VERIFY.md`](./AUTH_T1_VERIFY.md) 작성.
-- 미커밋: 이번 세션 변경분 전부 working state — 다음 세션 또는 별도로 커밋/푸시 필요.
+  → 커밋/푸시 완료(HEAD `0e7f332 "추가"`, master). 이전의 "미커밋" 메모는 해소됨.
+- 이번 세션: `auth-session-service` 8081 정적 점검(골격 ↔ 8080 카탈로그 동형 확인) → 로컬 curl 실행 → **T1 실서비스 ☑ 검증 통과**.
+  새 함정 없음(§6 추가 없음). 본 문서 갱신분만 커밋/푸시 필요.
 
