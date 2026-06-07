@@ -69,7 +69,8 @@
 | 모듈 | 핵심 기능 | 전제 | 함께 | 핵심 토글 |
 |---|---|---|---|---|
 | **framework-excel** | POI 업/다운(다운=SXSSF 스트리밍·업=양식검증·행별 오류수집) | core | — | `framework.excel.enabled` |
-| **framework-batch** | Spring Batch 6 실행 + 표준 리스너 + Quartz cron | core | lock(다중 파드 @Scheduled 시) | `framework.batch.enabled`, `framework.scheduler.enabled` |
+| **framework-batch** | Spring Batch 6 실행 + 표준 리스너 + Quartz cron | core | lock(다중 파드 @Scheduled 시)·**task(실행이력)** | `framework.batch.enabled`, `framework.scheduler.enabled` |
+| **framework-task** | Spring Cloud Task(Boot4) 실행이력 — run-once 작업 시작·종료·종료코드·파라미터 영속(`TASK_EXECUTION`) | core | **batch**(결합 시 Job↔Task 자동연결) | `framework.task.enabled` |
 | **framework-notification** | 메일/SMS/알림톡 채널 추상화(벤더 SPI 교체) | core | mfa(OTP 발송) | `framework.notification.enabled` + `channels.{mail,sms,alimtalk}.enabled` |
 | **framework-pdf** | PDF 산출물(거래내역서/통지서, 한글 TTF 임베딩) | core | — | `framework.pdf.enabled` |
 | **framework-image** | 이미지 리사이즈/썸네일·EXIF 보정·GPS 제거(JDK ImageIO, 의존성 0) | core | file-batch(위임 대상) | `framework.image.enabled` |
@@ -79,6 +80,31 @@
 | **framework-commoncode** | 공통코드 CRUD + 캐시 무효화 | core·mybatis | — | `framework.commoncode.enabled` |
 | **framework-file / -s3 / -sftp** | 파일 저장(로컬/NAS · S3 · SFTP) + 콘텐츠검증·at-rest 암호화·Range 스트리밍·AV스캔 | core | — | `framework.file.enabled`, `storage.type=local\|s3\|sftp` |
 | **framework-openapi** | API 문서(springdoc) | core | — | `framework.openapi.enabled` |
+
+### 4-1. 배치 실행 모델 두 가지 — 무엇을 켤까
+
+| | **모델 A: framework-task (+batch)** | **모델 B: framework-batch (Quartz)** |
+|---|---|---|
+| 실행 형태 | **한 번 실행 후 종료**(run-once) | **상주 프로세스 안에서 cron 반복** |
+| 누가 깨우나 | **외부 스케줄러**(k8s CronJob·Argo·Airflow) | **프로세스 내장 Quartz** cron |
+| 핵심 가치 | 실행이력·종료코드·파라미터를 `TASK_EXECUTION` 에 영속 | yaml cron 선언만으로 Job 기동 |
+| 종료코드 | **있음**(실패→exit≠0, CronJob `backoffLimit` 재시도) | 없음(프로세스 계속 떠 있음) |
+| 모니터링 UI | (외부 스케줄러 UI / TASK_EXECUTION 조회) | **Quartz UI 연동 가능**(아래) |
+| 토글 | `framework.task.enabled` (+ `framework.batch.enabled` 결합) | `framework.batch.enabled`, `framework.scheduler.enabled` |
+
+> 결정 트리: **k8s/배치플랫폼이 깨우는가? → 모델 A**(컨테이너 종료코드로 성공·실패 판정, 클라우드 네이티브). **앱이 떠 있으면서 스스로 cron? → 모델 B**(레거시 스케줄 이식·단순 상주배치). 두 모델은 **배타가 아님** — A 의 작업 본문이 Batch6 Job 이면 task 가 그 Job 의 실행이력까지 함께 남긴다(`TASK_TASK_BATCH`). 실투입 예제는 `examples/batch-task-reference/`.
+
+### 4-2. Quartz 모니터링 UI 정확 매핑
+
+UI 는 **Quartz 스케줄러**를 들여다보는 도구라서 **모델 B(framework-batch)에만** 붙는다(모델 A 의 run-once 태스크엔 해당 없음). 전제: RAM JobStore 가 아니라 **JDBC JobStore + 클러스터**(`spring.quartz.job-store-type=jdbc`, `org.quartz.jobStore.isClustered=true`, PostgreSQL delegate, QRTZ_* 11테이블 — DDL `deploy/db/quartz/`).
+
+| 도구 | 라이선스 | 본 스택(Boot4/Java21) | 비고 |
+|---|---|---|---|
+| **QuartzDesk** | **상용**(무료 *Lite* 만 기능제한) | 코드무변경 에이전트형 | 사용자 제안 — OSS 아님(정정) |
+| **`fabioformosa/quartz-manager`** | **OSS(Apache)** | **호환**(Boot 3.5/4.0, REST+임베드 UI) | **OSS 우선 후보** |
+| Quartzmin / CrystalQuartz / quartznet-admin | OSS | ✗ **Quartz.NET 전용** | 본 스택 부적합 |
+
+> 상세(좌표·연동 절차·SCDF EOL 배경)는 **`docs/guide/BATCH_SCHEDULING_AND_UI.md`**.
 
 ---
 
@@ -127,6 +153,7 @@ core ──┬── mybatis ──── (audit, datasource, commoncode, file/-
        ├── idempotency ── messaging ── saga               (금융 연계 ★, 연쇄)
        ├── observability / log-masking                    (횡단)
        ├── lock ─── batch·scheduler                       (다중 파드 @Scheduled)
+       ├── batch ─── task (결합 시 Job↔Task 실행이력)        (run-once 외부 스케줄)
        ├── cache-redis (core Caffeine 대체)
        └── excel / pdf / image / archive / file-batch / qr / notification (생산성)
 ```
@@ -155,3 +182,6 @@ core ──┬── mybatis ──── (audit, datasource, commoncode, file/-
 - **mfa/oauth-client/saml-sp 를 security 없이** → 셋 다 security 의 JWT 발급에 얹히는 구조. security 가 전제.
 - **file-batch 의 변환/압축 op 가 안 보임** → image/archive 모듈을 같이 의존해야 해당 op 가 활성(없으면 rename 만 동작).
 - **datasource routing 과 multi 동시 on** → 상호배타. 하나만.
+- **task 만 켜고 실행이력이 안 남음** → `@EnableFrameworkTask`(=`@EnableTask`)가 부트클래스에 있어야 SCT 가 `TaskRepository`/리스너를 깬다(애너테이션 없으면 실행이력 자체가 시작 안 됨).
+- **Quartz UI 가 안 붙음** → UI 는 **모델 B(framework-batch Quartz)** 전용이고 **JDBC JobStore + 클러스터**가 전제(기본 RAM JobStore 는 외부 도구가 볼 테이블이 없다). 모델 A(task run-once)엔 Quartz UI 개념이 없다.
+- **QuartzDesk 를 OSS 로 오해** → 상용(무료 Lite 만 제한). 본 스택 OSS 후보는 `fabioformosa/quartz-manager`. (`docs/guide/BATCH_SCHEDULING_AND_UI.md`)

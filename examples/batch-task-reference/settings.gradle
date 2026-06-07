@@ -1,0 +1,5 @@
+// 이 예제는 "독립(standalone) Gradle 빌드"다 — 루트 settings.gradle 에 include 하지 않는다.
+//   목적: 실제 프로젝트가 si-msa-framework 를 "라이브러리로 소비"하는 모습을 그대로 보여 주기 위함.
+//   따라서 의존(framework-task)은 mavenLocal/사내 Nexus 에 publish 된 산출물을 가져오는 형태(아래 build.gradle 주석 참조).
+//   루트 멀티모듈 빌드에는 영향이 없다(Gradle 은 루트 settings.gradle 만 읽는다).
+rootProject.name = 'batch-task-reference'

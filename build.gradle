@@ -36,6 +36,7 @@ allprojects {
     ext {
         springBootVersion      = libs.versions.springBoot.get()
         springCloudVersion     = libs.versions.springCloud.get()
+        springCloudTaskVersion = libs.versions.springCloudTask.get()
         mybatisStarterVersion  = libs.versions.mybatisStarter.get()
         jjwtVersion            = libs.versions.jjwt.get()
         springdocVersion       = libs.versions.springdoc.get()
@@ -64,6 +65,7 @@ subprojects {
         imports {
             mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
             mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+            mavenBom "org.springframework.cloud:spring-cloud-task-dependencies:${springCloudTaskVersion}"   // 별도 BOM(Boot/Oakwood BOM 미포함) — framework-task
             mavenBom "org.testcontainers:testcontainers-bom:${libs.versions.testcontainers.get()}"
         }
     }
@@ -232,6 +234,7 @@ dependencyManagement {
     imports {
         mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
         mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+        mavenBom "org.springframework.cloud:spring-cloud-task-dependencies:${springCloudTaskVersion}"   // 별도 BOM(Boot/Oakwood BOM 미포함) — framework-task
         mavenBom "org.testcontainers:testcontainers-bom:${libs.versions.testcontainers.get()}"
     }
 }
@@ -265,6 +268,7 @@ dependencies {
     jacocoAggregation project(':framework:framework-saga')
     jacocoAggregation project(':framework:framework-excel')
     jacocoAggregation project(':framework:framework-batch')
+    jacocoAggregation project(':framework:framework-task')
     jacocoAggregation project(':framework:framework-notification')
     jacocoAggregation project(':framework:framework-mfa')
     jacocoAggregation project(':framework:framework-observability')

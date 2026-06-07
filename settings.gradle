@@ -22,6 +22,7 @@ include 'framework:framework-messaging'     // 선택형: 신뢰성 발행(Trans
 include 'framework:framework-saga'        // 선택형: 분산 트랜잭션 오케스트레이션(Saga, Outbox 기반 커맨드/리플라이)
 include 'framework:framework-excel'          // 선택형: Excel 업/다운로드(POI 스트리밍 + 양식검증)
 include 'framework:framework-batch'          // 선택형: 배치(Spring Batch 실행/리스너 + Quartz cron 스케줄)
+include 'framework:framework-task'           // 선택형: 태스크(Spring Cloud Task 5.x, Boot4 네이티브 — 단발 run-once 실행/이력기록, SCDF·k8s CronJob 오케스트레이션용)
 include 'framework:framework-notification'   // 선택형: 알림 채널 추상화(메일/SMS/알림톡)
 include 'framework:framework-mfa'            // 선택형: 규제특화 2단계 인증(TOTP/OTP, ISMS-P 복구코드)
 include 'framework:framework-observability'  // 선택형: 관측(공통 메트릭 태그/구조화 로그/OTel 익스포터 표준)

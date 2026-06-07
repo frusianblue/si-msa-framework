@@ -23,6 +23,8 @@
 - **[겪음] SAS(인가서버)가 commons-logging 제외 → 런타임 `NoClassDefFoundError: LogFactory`** — 컴파일은 통과, 기동만 실패(SF7 은 spring-jcl 폐지). 해결: `implementation 'commons-logging:commons-logging:1.3.5'` 명시.
 - ★ **[겪음] `.dockerignore` 부재 → 호스트 `build/`·`.gradle/` 누수로 이미지에 stale jar 가 담김** — 증상: 소스엔 신규 클래스(예: `SmokeClientSeeder`)가 분명히 있고 `./gradlew test` 도 통과하는데, 컨테이너 이미지로 빌드하면 그 클래스가 jar 에 없다(`grep -ac <Class> /application/app.jar` = 0). 파드도 정상 기동(에러 없음)하지만 신규 기능이 동작 안 함(예: OAuth2 클라이언트 0건). 원인: `deploy/docker/Dockerfile.build` 의 `COPY . .` 가 `.dockerignore` 부재로 호스트의 `services/*/build/`·`.gradle/`(증분·구성/빌드 캐시 스냅샷)까지 컨텍스트에 포함 → 컨테이너 Gradle 이 복사돼 들어온 옛 산출물/스냅샷을 **up-to-date** 로 보고 재컴파일을 건너뜀 → Dockerfile 2단계가 `build/libs/*.jar`(옛 jar) 를 그대로 이미지에 cp. ⚠️ `docker build --no-cache` 는 Docker **레이어** 캐시만 무효화 — 복사돼 들어온 Gradle 상태는 못 막는다(그래서 --no-cache 로도 안 고쳐짐). 진단: ① `docker run --rm <img> sh -c 'grep -ac <Class> /application/app.jar'`(0=빌드가 옛 jar 담음, 1=이미지 정상→배포 전파 문제) ② `kubectl get pod … -o jsonpath='{..image}{..imageID}'`(파드가 쓰는 태그/digest). 해결: **리포 루트 `.dockerignore`** 로 `**/build/`·`.gradle/` 등 제외(이미지 빌드를 소스에서 클린 컴파일로 hermetic 하게) + 일회성으로 `./gradlew :services:<svc>:clean` 후 재빌드. 일반 원칙: **컨테이너 이미지 빌드는 호스트 빌드 상태에 의존하면 안 된다 — 항상 소스에서 클린 빌드.** [§9 멀티서비스 배포와 동근원 — \"이미지가 코드를 안 따라옴\"]
 
+- **[겪음] Spring Cloud Task 는 메인 Oakwood BOM(2025.1.1)에 없음 → 별도 BOM** — 증상: `spring-cloud-task-core` 버전 미해소. 원인: SCT 는 Spring Cloud 릴리스트레인 BOM 밖. 해결: `dependencyManagement` 에 `mavenBom 'org.springframework.cloud:spring-cloud-task-dependencies:5.0.1'` 별도 import + 카탈로그 `springCloudTask="5.0.1"`. ⚠️ **`spring-cloud-starter-task` 는 stream 바인더까지 끌어옴** → 의도적으로 starter 대신 `spring-cloud-task-core`(+결합 시 `spring-cloud-task-batch`)만 의존.
+
 ## 2. Jackson 3 / 직렬화
 
 - ★ **[겪음] `com.fasterxml.jackson.core/databind` import 금지** — 이 스택은 **Jackson 3 (`tools.jackson.*`)**. import 시 컴파일 에러. 예외: `com.fasterxml.jackson.annotation`(애너테이션만) 유지 OK. 필터/인프라 단순 JSON 은 빈 주입 대신 **수기 직렬화**가 견고.
@@ -33,7 +35,8 @@
 
 - **[겪음] autoconfigure 패키지 분리** — 모듈별 `org.springframework.boot.<module>.autoconfigure.*` 로 이동(jdbc/batch/quartz/mail). `@AutoConfiguration(afterName=...)` FQCN 확인.
 - **[겪음] `EnvironmentPostProcessor` 이동** — `org.springframework.boot.env.*` → **`org.springframework.boot.EnvironmentPostProcessor`**. **코드 import + `spring.factories` 키 둘 다** 변경(키만 틀려도 조용히 미등록).
-- **[겪음] Spring Batch 6 대이동** — `core.job.*`/`core.launch.JobOperator` 등. `JobLauncher` deprecated → `JobOperator`.
+- ★ **[겪음] Spring Batch 6 인프라 아이템 패키지 대이동** — `ItemReader/ItemProcessor/ItemWriter/Chunk`·`JdbcCursorItemReader(Builder)`·`JdbcBatchItemWriter(Builder)`·`RepeatStatus` 가 **`org.springframework.batch.infrastructure.item.*`** 로 이동(5.x 까지의 `org.springframework.batch.item.*` 아님). 반면 `Job`/`Step`/`JobRepository`/`JobBuilder`/`StepBuilder`/`Tasklet`/`JobParameters` 등 core 는 `org.springframework.batch.core.*` 그대로(단 `Step` 은 `core.step.Step`, `JobOperator` 는 `core.launch.JobOperator`). `JobLauncher` deprecated → `JobOperator`. 추측 금지 — raw 소스로 FQCN 확인.
+- **[겪음] `JdbcBatchItemWriterBuilder.beanMapped()` 는 JavaBean 게터(`getX()`) 필요 → record 안 됨** — record 접근자는 `x()` 형태라 `BeanPropertySqlParameterSource` 가 못 잡음(파라미터 null). 해결: 라이터 입력 타입은 **게터를 가진 일반 클래스**로(리더 입력은 record 가능). 또는 `columnMapped()`.
 - **[겪음] actuator/micrometer 재편** — `MeterRegistryCustomizer` 가 `org.springframework.boot.micrometer.metrics.autoconfigure` 로.
 - **[겪음] `HttpHeaders` 가 `MultiValueMap` 미구현(SF7)** — `containsKey`→`containsHeader`, `keySet`→`headerNames`, `forEach/entrySet` 제거.
 - **[겪음] `ClientHttpRequestFactoryBuilder/Settings` 가 starter-web 컴파일 경로에 없음(Boot4 분리)** — RestClient 타임아웃은 spring-web `SimpleClientHttpRequestFactory` 로.
@@ -140,6 +143,16 @@
 
 
 ---
+
+## 10. 배치 · 태스크 · 스케줄 (Batch · Task · Scheduling)
+
+- **[일반] SCDF(Spring Cloud Data Flow) 서버 본체 = OSS EOL(2025-04)** — Broadcom 이 OSS 중단(GitHub `spring-attic` 아카이브). 마지막 OSS 2.11.x(Boot2/3), 이후 Tanzu 상용 전용. ⚠️ 새 프로젝트에 SCDF **서버**를 깔지 말 것. 반면 **Spring Cloud Task 라이브러리(5.0.1)는 생존 + Boot4 네이티브** — 실행이력 영속용으로 단독 사용 가능(SCDF 불필요).
+- **[겪음] `@EnableTask`(=`@EnableFrameworkTask`) 없으면 실행이력이 시작도 안 됨** — `framework.task.enabled=true` 만으론 부족. SCT 는 부트 클래스에 `@EnableTask` 가 있어야 `TaskRepository`/`TaskExecutionListener` 인프라를 깬다(`SimpleTaskAutoConfiguration` 은 matchIfMissing 으로 TaskRepository 는 만들지만, 실행 생명주기 기록은 애너테이션이 트리거).
+- **[겪음] SCT/Batch DDL 자동생성 끄고 Flyway 선반영** — 운영은 스키마를 마이그레이션으로 관리. `spring.cloud.task.initialize-enabled=false`(SCT 자동 DDL off, canonical) + `spring.batch.jdbc.initialize-schema=never`(Batch 자동 DDL off) + Flyway 로 `TASK_*`·`BATCH_*` 테이블 선반영(실소스 DDL: SCT 5.0.1 PostgreSQL = TASK_EXECUTION/_PARAMS/TASK_TASK_BATCH/TASK_SEQ/TASK_LOCK; Batch 6.0.3 = BATCH_JOB_INSTANCE/EXECUTION/_PARAMS/STEP_EXECUTION/(STEP|JOB)_EXECUTION_CONTEXT + 3 시퀀스).
+- **[겪음] 작업 실패가 컨테이너 종료코드로 안 나옴** — k8s CronJob 은 종료코드로 성공/실패를 판정. `spring.cloud.task.batch.fail-on-job-failure=true` + 부트 `main` 에서 `System.exit(SpringApplication.exit(ctx))` 로 종료코드 전파 + Dockerfile `ENTRYPOINT exec`(쉘 래핑 금지)이라야 Job 실패→exit≠0→CronJob `backoffLimit` 재시도가 동작.
+- **[겪음] 다중 인스턴스에서 같은 태스크 중복 실행** — `spring.cloud.task.single-instance-enabled=true`(기본 false) 로 TASK_LOCK 기반 단일 인스턴스 보장. CronJob 은 `concurrencyPolicy: Forbid`(겹침 방지) + `restartPolicy: Never`(Job 컨트롤러가 재시도 관리)도 함께.
+- **[일반/겪음] Quartz 모니터링 UI 는 모델 B(framework-batch)·JDBC JobStore 전용** — UI 도구는 Quartz 스케줄러 테이블을 들여다본다. 기본 RAM JobStore 면 외부 도구가 볼 게 없다 → `spring.quartz.job-store-type=jdbc` + `org.quartz.jobStore.isClustered=true` + PostgreSQLDelegate + QRTZ_* 11테이블(DDL `deploy/db/quartz/`). run-once 태스크(모델 A)엔 Quartz UI 개념 자체가 없음.
+- **[겪음] QuartzDesk 는 상용(OSS 아님)** — 무료 *Lite* 만 기능제한 제공, Standard/Enterprise 유료. 본 스택(Boot4/Java21) OSS 후보는 **`fabioformosa/quartz-manager`**(Apache, REST+임베드 UI, Boot 3.5/4.0 호환). Quartzmin/CrystalQuartz/quartznet-admin 은 **Quartz.NET 전용 → 부적합**. (가이드 `docs/guide/BATCH_SCHEDULING_AND_UI.md`)
 
 ## 부록: 빠른 자가진단
 

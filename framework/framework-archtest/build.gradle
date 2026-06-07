@@ -38,6 +38,7 @@ dependencies {
     testImplementation project(':framework:framework-saga')
     testImplementation project(':framework:framework-excel')
     testImplementation project(':framework:framework-batch')
+    testImplementation project(':framework:framework-task')
     testImplementation project(':framework:framework-notification')
     testImplementation project(':framework:framework-mfa')
     testImplementation project(':framework:framework-observability')

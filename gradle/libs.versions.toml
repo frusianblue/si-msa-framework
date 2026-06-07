@@ -7,6 +7,7 @@
 java                    = "21"
 springBoot              = "4.0.6"
 springCloud             = "2025.1.1"
+springCloudTask         = "5.0.1"         # Spring Cloud Task(태스크 실행/이력) — Boot BOM/Oakwood BOM 미포함 별도 프로젝트. 5.0.x = Boot 4 라인(spring-cloud-build 5.0.1→spring-boot 4.0.2). spring-cloud-task-dependencies BOM 으로 관리
 mybatisStarter          = "4.0.1"
 jjwt                    = "0.12.6"
 springdoc               = "3.0.3"

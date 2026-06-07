@@ -53,6 +53,7 @@
 | 모듈 | 한 줄 |
 |---|---|
 | [framework-batch](framework-batch/README.md) | 배치 — Spring Batch 실행/리스너 + Quartz cron 스케줄 |
+| [framework-task](framework-task/README.md) | 실행이력 — Spring Cloud Task(Boot4) `@EnableFrameworkTask`, run-once 작업 시작·종료·종료코드 영속(Batch6 결합) |
 | [framework-lock](framework-lock/README.md) | 분산 락 / 리더 선출 — `@SchedulerLock`(다중 파드 `@Scheduled` 중복 방지) |
 
 ## 📄 문서·파일·미디어 (Files & Documents)

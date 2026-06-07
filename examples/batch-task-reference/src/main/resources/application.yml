@@ -1,0 +1,48 @@
+# =====================================================================================
+# batch-task-reference — 단발(run-once) 정산 태스크 설정
+# =====================================================================================
+spring:
+  application:
+    name: settlement-task
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/appdb}
+    username: ${SPRING_DATASOURCE_USERNAME:app}
+    password: ${SPRING_DATASOURCE_PASSWORD:app}
+    driver-class-name: org.postgresql.Driver
+
+  # 스키마는 Flyway 가 소유(TASK_*/BATCH_*/도메인). 자동 DDL 은 모두 끈다(아래 batch/cloud.task).
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  batch:
+    # 기동 시 이 Job 을 1회 실행. (이름 미지정 시 등록된 Job 전부 실행되므로 운영에선 반드시 지정.)
+    job:
+      name: settlementJob
+    jdbc:
+      # Flyway 가 BATCH_* 를 만든다 → Batch 자동 DDL 비활성.
+      initialize-schema: never
+
+  cloud:
+    task:
+      # Flyway 가 TASK_* 를 만든다 → Task 자동 DDL 비활성(canonical: initialize-enabled).
+      initialize-enabled: false
+      # 같은 이름 태스크 동시 1개만(멀티 파드/중복 트리거 방지). TASK_LOCK 사용.
+      single-instance-enabled: true
+      batch:
+        # 배치 실패 → 프로세스 종료코드 ≠0. k8s Job/CronJob·SCDF 가 실패를 감지하는 핵심 스위치.
+        fail-on-job-failure: true
+
+framework:
+  task:
+    # 표준 감사 로깅 리스너(FrameworkTaskExecutionListener) 등록. (실행 이력 기록 자체는 @EnableFrameworkTask)
+    enabled: true
+
+logging:
+  level:
+    com.example.settlement: INFO
+    com.company.framework.task: INFO
+    org.springframework.batch: INFO
+    org.springframework.cloud.task: INFO

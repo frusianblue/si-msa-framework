@@ -41,6 +41,7 @@
 | `com.github.librepdf:openpdf` | 2.0.2 | PDF 산출물 생성(거래내역서/통지서) — **Boot BOM 미관리**(여기서 고정), 모듈 내부 `implementation`. 라이선스 LGPL-2.1/MPL-2.0(iText 5+ AGPL 회피). **패키지 `com.lowagie.text`(2.x); 3.0+ 는 `org.openpdf` 로 리네임 → 의도적으로 2.x 고정.** 한글은 TTF IDENTITY_H 임베딩 | framework-pdf(선택) |
 | `org.apache.sshd:sshd-core` / `sshd-sftp` | 2.16.0 | SFTP(원격 SSH) 파일 저장 — 순수 JDK SSH 가 없어 필수. **Boot BOM 미관리**(여기서 고정), 모듈 내부 `implementation`(전이 금지). **3.0.0 은 마일스톤·2.x 와 API 비호환 → 안정 2.x 고정**. `sshd-common` 은 `sshd-core` 가 전이 | framework-file-sftp(선택, `storage.type=sftp` 시) |
 | `com.google.zxing:core` | 3.5.4 | QR 코드 인코딩(`BitMatrix` 생성) — **Boot BOM 미관리**(여기서 고정), 모듈 내부 `implementation`(전이 금지). **렌더링은 JDK ImageIO 직접 → `zxing-javase` 미사용**(의존성 1개로 최소화). Java 8+ 호환·전이 런타임 의존 0 | framework-qr(선택, `framework.qr.enabled=true` 시) |
+| `org.springframework.cloud:spring-cloud-task-dependencies` (BOM) | 5.0.1 | Spring Cloud Task 실행이력(Boot4 네이티브) — **메인 Oakwood BOM(2025.1.1) 밖** → `dependencyManagement` 에 별도 `mavenBom` import. 소비 아티팩트: `spring-cloud-task-core`(+Batch6 결합 시 `spring-cloud-task-batch`). ⚠️ `spring-cloud-starter-task` 는 stream 바인더 전이 → 미사용. **SCDF 서버는 OSS EOL(2025-04)** 이라 Task 라이브러리만 사용 | framework-task(선택, `framework.task.enabled=true` 시) |
 
 ### 3.2 BOM 관리(버전 미명시)
 | 라이브러리 | 용도 | 적용 위치 |
@@ -107,6 +108,8 @@
 - **콘솔 한글 인코딩(테스트 출력)** — JDK 21 은 `file.encoding`=UTF-8 이나 Windows(한국어)는 `stdout/stderr` 가 MS949 로 잡혀 `@DisplayName` 등이 깨진다. 3계층 UTF-8 고정: 테스트 워커=루트 `build.gradle` Test `jvmArgs(-Dstdout/-Dstderr/-Dfile.encoding=UTF-8)`+`defaultCharacterEncoding`, 데몬=`gradle.properties` `org.gradle.jvmargs=...UTF-8`(변경 시 `--stop`), **콘솔 렌더=`gradlew` 클라이언트 JVM → 셸 `GRADLE_OPTS="...UTF-8"`**(데몬 설정만으론 부족).
 - **오토컨피그 로딩 테스트** — `ApplicationContextRunner` 는 설정 클래스를 리플렉션 introspect 하며 **모든 @Bean 파라미터/반환 타입을 로드**(@ConditionalOnClass 무관). 그 모듈 `compileOnly` 의존을 **전부** `testImplementation` 재선언 필요(누락 시 `Failed to parse configuration class`). 운영은 Boot ASM 메타데이터라 무관.
 - **Gateway** 아티팩트 `spring-cloud-starter-gateway-server-webflux`.
+- **Spring Cloud Task(framework-task) — SCDF 서버는 OSS EOL, Task 라이브러리만 생존**: SCDF(Data Flow) 서버 본체는 2025-04 OSS 중단(`spring-attic` 아카이브, 마지막 OSS 2.11.x=Boot2/3, 이후 Tanzu 상용). 반면 **Spring Cloud Task 5.0.1 은 Boot4 네이티브로 생존** → 실행이력 영속(`TASK_EXECUTION`)에 단독 사용(SCDF 서버 불요). 메인 Oakwood BOM 밖이라 `spring-cloud-task-dependencies:5.0.1` 별도 BOM(§3.1), `spring-cloud-starter-task` 는 stream 바인더 전이라 미사용(core+batch 만). 종료코드 전파(`fail-on-job-failure=true` + `System.exit(SpringApplication.exit(ctx))`)로 k8s CronJob 성공/실패 판정. 스케줄/UI 설계는 `docs/guide/BATCH_SCHEDULING_AND_UI.md`.
+- ★ **Spring Batch 6 인프라 아이템 패키지 재배치(되돌리지 말 것)** — `ItemReader/Writer/Processor`·`JdbcCursorItemReader(Builder)`·`JdbcBatchItemWriter(Builder)`·`Chunk`·`RepeatStatus` 가 **`org.springframework.batch.infrastructure.item.*`**(5.x `org.springframework.batch.item.*` 아님). core(`Job`/`Step`/`JobRepository`/`JobBuilder`/`StepBuilder`/`Tasklet`/`JobParameters`)는 `org.springframework.batch.core.*`. `JdbcBatchItemWriterBuilder.beanMapped()` 는 JavaBean 게터 필요 → record 입력 불가(라이터 입력은 게터 클래스로).
 - **Spring Cloud 2025.1.x(Oakwood)** — 2025.0.x 는 Boot 4 비호환.
 - **datasource-proxy / p6spy 스타터** — 반드시 `2.0.0+`.
 - **Spring Cloud AWS 미사용** — Jackson2 의존 회피 위해 AWS SDK v2 직접 사용.

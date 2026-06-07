@@ -1,0 +1,44 @@
+# 단발 태스크의 1순위 오케스트레이션 = k8s CronJob.
+# restartPolicy=Never + backoffLimit + fail-on-job-failure(앱) 의 조합으로 k8s 가 종료코드로 성공/실패를 판정한다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: settlement-task
+  namespace: apps
+  labels:
+    app: settlement-task
+spec:
+  schedule: "0 2 * * *" # 매일 02:00 (클러스터 TZ 주의 — 필요시 spec.timeZone 사용)
+  concurrencyPolicy: Forbid # 직전 실행이 안 끝났으면 새 실행 안 띄움(앱 single-instance-enabled 와 이중 안전망)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2 # 실패 시 최대 2회 재시도(태스크는 멱등 설계 전제)
+      activeDeadlineSeconds: 3600 # 1시간 넘으면 실패 처리
+      template:
+        metadata:
+          labels:
+            app: settlement-task
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: settlement
+              image: registry.local/settlement-task:1.0.0
+              args:
+                - "--spring.batch.job.name=settlementJob"
+              envFrom:
+                - secretRef:
+                    name: settlement-db # SPRING_DATASOURCE_URL/USERNAME/PASSWORD
+              resources:
+                requests:
+                  cpu: "250m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "1"
+                  memory: "1Gi"
+---
+# 일회성 수동 실행(특정 일자 재정산 등)은 위 CronJob 에서 Job 을 떠서:
+#   kubectl -n apps create job --from=cronjob/settlement-task settlement-task-manual-20260607
+#   kubectl -n apps logs job/settlement-task-manual-20260607 -f
+# 인자 추가가 필요하면 Job 매니페스트를 직접 적용한다(args 에 --baseDate=... 등).
