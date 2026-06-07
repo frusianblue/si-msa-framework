@@ -1,0 +1,39 @@
+# deploy/k8s/standalone-kind/jenkins-values.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# 인-클러스터 Jenkins (standalone kind). 차트: jenkins/jenkins (charts.jenkins.io, v5.x).
+#   키는 실제 values.yaml(jenkinsci/helm-charts charts/jenkins) 검증함.
+#   controller.serviceType=NodePort(32000) / admin 시드 / 영속 PVC(standard) / k8s agent.
+#   빌드는 agent 파드의 Kaniko 컨테이너가 수행(노드에 docker 데몬 없음 → Kaniko).
+#   ⚠️ 로컬 dev 자격(admin/admin123). 운영 전용 아님.
+# ─────────────────────────────────────────────────────────────────────────────
+controller:
+  serviceType: NodePort
+  nodePort: 32000
+  servicePort: 8080
+  admin:
+    username: "admin"
+    password: "admin123"
+    createSecret: true
+  # 기본 installPlugins(kubernetes/workflow-aggregator/git/configuration-as-code 등)는 유지.
+  #   추가가 필요하면 additionalPlugins 에만 덧붙인다(installPlugins 전체 치환 금지 — 기본셋 유실).
+  additionalPlugins:
+    - pipeline-stage-view:latest
+  # JCasC 로 자동 시드 대신, 파이프라인 잡은 UI 에서 1회 생성(SCM=레포, Script Path=deploy/cicd/Jenkinsfile.kind).
+  #   (자동 시드는 변수 많아 실패율 높음 → 명시적 UI 1스텝이 더 견고.)
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits:   { cpu: "1",  memory: 2Gi }
+
+persistence:
+  enabled: true
+  storageClass: "standard"
+  size: "8Gi"
+
+# Kubernetes 플러그인 기반 동적 agent(파드). 잡 실행 시 jenkins ns 에 파드 생성.
+agent:
+  enabled: true
+  namespace: jenkins
+
+serviceAccount:
+  create: true
+  name: jenkins

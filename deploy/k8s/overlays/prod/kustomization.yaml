@@ -20,6 +20,15 @@ images:
   - { name: registry.example.com/si-msa/admin-service, newTag: latest }
 
 patches:
+  # ── imagePullPolicy: base 는 IfNotPresent(노드캐시/불변 sha 전제) → prod 는 Always 로 덮음. ──
+  #   prod 는 가변 채널(:latest) + 운영 레지스트리라 매 배포 시 최신 다이제스트를 끌어와야 한다.
+  #   CI(S7)가 불변 :<sha> 로 박는 경우엔 Always 여도 다이제스트가 고정이라 무해(재pull 1회).
+  - target: { kind: Deployment, labelSelector: "app.kubernetes.io/component=service" }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+
   # 외부 공개 issuer(토큰 iss). gateway 검증 issuer 와 auth-server 발급 issuer 를 동일 공개 URL 로.
   - target: { kind: ConfigMap, name: auth-server-config }
     patch: |-

@@ -1,0 +1,103 @@
+# deploy/k8s/standalone-kind/registry-trust-daemonset.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# 노드 containerd 레지스트리 미러(certs.d)를 *재부팅 내성* 있게 기입하는 DaemonSet.
+#
+# 왜 필요한가 (2026-06-07 함정):
+#   기존 방식 = kind extraMounts 로 호스트 ./certs.d 를 노드 /etc/containerd/certs.d 에 bind mount.
+#   → Docker Desktop/WSL 재부팅 시 이 bind mount 가 통째로 휘발(`No such file or directory`)
+#     → containerd 가 harbor.local 을 기본 https://harbor.local:443 으로 시도 → connection refused
+#     → auth-server 만 (롤아웃으로 새 pull 필요해서) ImagePullBackOff. 다른 서비스는 노드캐시(IfNotPresent)로 생존.
+#
+# 해결: hostPath(/etc/containerd/certs.d)에 ConfigMap 내용을 *노드 부팅마다* 다시 써넣는다.
+#   - containerd 는 certs.d 를 요청마다 읽으므로 재시작 불필요(파일만 있으면 즉시 반영).
+#   - DaemonSet 파드는 노드 재시작 시 kubelet 이 자동 재기동 → 미러 자동 복구. bind mount 의존 제거.
+#   - 레지스트리 엔드포인트를 바꾸려면 ConfigMap 만 수정 + `kubectl -n registry-system rollout restart ds/registry-trust`.
+#
+# 적용:  kubectl apply -f deploy/k8s/standalone-kind/registry-trust-daemonset.yaml
+# 확인:  docker exec sanity-control-plane cat /etc/containerd/certs.d/harbor.local/hosts.toml
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-hosts
+  namespace: registry-system
+  # ⚠️ harbor.local 기본값 = 현행 인증 레지스트리(harbor-auth-reg:5000). 이걸로 두면 오늘 쓰던 :dev pull 이 즉시 복구.
+  #   인-클러스터 Harbor(NodePort 30002)로 전환 시 08-harbor-install.sh 가 이 값을 자동 갱신 + ds rollout.
+data:
+  # 키 이름 = certs.d 하위 디렉터리(레지스트리 호스트). 값 = 해당 hosts.toml 내용.
+  harbor.local: |
+    # 노드의 harbor.local 해소 → kind 네트워크의 harbor-auth-reg:5000 (현행). HTTP 평문.
+    [host."http://harbor-auth-reg:5000"]
+      capabilities = ["pull", "resolve"]
+  reg.local: |
+    # 무인증 sanity 레지스트리(01-pull-sanity.sh) → kind-registry:5000.
+    [host."http://kind-registry:5000"]
+      capabilities = ["pull", "resolve"]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: registry-trust
+  namespace: registry-system
+  labels:
+    app.kubernetes.io/name: registry-trust
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: registry-trust
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: registry-trust
+      annotations:
+        # ConfigMap 변경 시 파드 자동 재생성 트리거(체크섬 대용; rollout restart 로도 충분).
+        configmap/revision: "1"
+    spec:
+      # 컨트롤플레인 포함 전 노드에 배치(컨트롤플레인 taint 허용).
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: writer
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              echo "[registry-trust] writing certs.d on node ${NODE_NAME:-?}"
+              for f in /config/*; do
+                host="$(basename "$f")"
+                mkdir -p "/host-certs-d/${host}"
+                cp "$f" "/host-certs-d/${host}/hosts.toml"
+                echo "  wrote /etc/containerd/certs.d/${host}/hosts.toml"
+              done
+              echo "[registry-trust] done. holding."
+              # 재기동 시 다시 써넣도록 파드는 살아있는 상태로 대기.
+              while true; do sleep 3600; done
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: certs-d
+              mountPath: /host-certs-d
+            - name: config
+              mountPath: /config
+              readOnly: true
+          resources:
+            requests: { cpu: 5m, memory: 16Mi }
+            limits:   { cpu: 50m, memory: 32Mi }
+      volumes:
+        - name: certs-d
+          hostPath:
+            path: /etc/containerd/certs.d
+            type: DirectoryOrCreate
+        - name: config
+          configMap:
+            name: registry-hosts

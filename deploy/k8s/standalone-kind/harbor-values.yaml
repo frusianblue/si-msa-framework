@@ -1,0 +1,56 @@
+# deploy/k8s/standalone-kind/harbor-values.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# 인-클러스터 Harbor (standalone kind). NodePort + HTTP + 영속 PVC.
+# 차트: harbor/harbor (helm.goharbor.io). 키는 실제 values.yaml(goharbor/harbor-helm) 검증함.
+#   expose.type=nodePort / expose.tls.enabled=false / expose.nodePort.ports.http.nodePort=30002
+#   externalURL 은 08-harbor-install.sh 가 control-plane 노드 IP 로 --set 주입(split-horizon 통일).
+#   persistence: kind 기본 SC 'standard'(local-path) — 재부팅 보존(PVC).
+#   trivy 비활성(로컬 dev 경량화; 필요 시 true).
+# ─────────────────────────────────────────────────────────────────────────────
+expose:
+  type: nodePort
+  tls:
+    enabled: false
+  nodePort:
+    ports:
+      http:
+        nodePort: 30002
+
+# externalURL 은 스크립트가 http://<control-plane-ip>:30002 로 덮어씀(아래는 자리표시).
+externalURL: http://harbor.local:30002
+
+harborAdminPassword: "Harbor12345"
+
+persistence:
+  enabled: true
+  persistentVolumeClaim:
+    registry:
+      storageClass: "standard"
+      size: 5Gi
+    jobservice:
+      jobLog:
+        storageClass: "standard"
+        size: 1Gi
+    database:
+      storageClass: "standard"
+      size: 2Gi
+    redis:
+      storageClass: "standard"
+      size: 1Gi
+    trivy:
+      storageClass: "standard"
+      size: 2Gi
+
+# 로컬 dev 경량화 — 취약점 스캐너 제외(필요 시 true 로).
+trivy:
+  enabled: false
+
+# 단일 레플리카(로컬 dev). 운영은 별도 values.
+portal:
+  replicas: 1
+core:
+  replicas: 1
+jobservice:
+  replicas: 1
+registry:
+  replicas: 1

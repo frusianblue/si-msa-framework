@@ -1,0 +1,123 @@
+// deploy/cicd/Jenkinsfile.kind
+// ─────────────────────────────────────────────────────────────────────────────
+// 인-클러스터(standalone kind) CD 파이프라인 — Kaniko 빌드/푸시 + dev overlay 배포.
+//   노드에 docker 데몬이 없으므로 docker build 대신 Kaniko(데몬리스)로 빌드한다.
+//   빌드: deploy/docker/Dockerfile.build (builder 1회 + ARG SERVICE 로 서비스별 런타임).
+//   푸시: harbor.local/si-msa/<svc>:<git-sha>(불변) + :dev(채널). HTTP → --insecure-registry.
+//   배포: kubectl apply -k overlays/dev → set image 로 불변 :<git-sha> 핀 → rollout.
+//
+// 전제(09-jenkins-install.sh 가 셋업):
+//   · SA jenkins-deployer (si-msa 배포 권한), 시크릿 harbor-push-cred(jenkins ns, dockerconfigjson)
+//   · Harbor 가 harbor.local(=CoreDNS→CP_IP:30002)로 인-클러스터에서 push 가능
+//   · 노드 certs.d harbor.local→CP_IP:30002 (registry-trust DS) → 노드 pull 가능
+//   · base imagePullPolicy=IfNotPresent + 불변 :<sha> → 노드가 새 sha 1회 pull 후 캐시
+//
+// 잡 생성(UI 1회): Pipeline script from SCM → 이 파일.
+// ─────────────────────────────────────────────────────────────────────────────
+pipeline {
+  agent {
+    kubernetes {
+      defaultContainer 'jnlp'
+      yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-deployer
+  containers:
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:debug
+      command: ["/busybox/cat"]
+      tty: true
+      volumeMounts:
+        - name: kaniko-docker
+          mountPath: /kaniko/.docker
+    - name: kubectl
+      image: bitnami/kubectl:latest
+      command: ["sleep"]
+      args: ["infinity"]
+      securityContext:
+        runAsUser: 0
+  volumes:
+    - name: kaniko-docker
+      secret:
+        secretName: harbor-push-cred
+        items:
+          - key: .dockerconfigjson
+            path: config.json
+'''
+    }
+  }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  environment {
+    REGISTRY = 'harbor.local'
+    PROJECT  = 'si-msa'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        script {
+          def scmVars = checkout scm
+          env.GIT_SHA = (scmVars.GIT_COMMIT ?: 'dev').take(12)
+          echo "GIT_SHA=${env.GIT_SHA}"
+        }
+      }
+    }
+
+    // 4개 서비스를 Kaniko 로 빌드 + 양태그(:<sha>,:dev) 푸시.
+    //   Dockerfile.build builder 스테이지는 SERVICE 무관 → --cache 로 4회 중 1회만 실제 Gradle 빌드 재사용.
+    stage('Build & Push (Kaniko)') {
+      steps {
+        container('kaniko') {
+          script {
+            ['gateway', 'auth-server', 'user-service', 'admin-service'].each { svc ->
+              sh """
+                /kaniko/executor \
+                  --context=dir://${env.WORKSPACE} \
+                  --dockerfile=deploy/docker/Dockerfile.build \
+                  --build-arg SERVICE=${svc} \
+                  --destination=${env.REGISTRY}/${env.PROJECT}/${svc}:${env.GIT_SHA} \
+                  --destination=${env.REGISTRY}/${env.PROJECT}/${svc}:dev \
+                  --insecure-registry=${env.REGISTRY} \
+                  --skip-tls-verify-registry=${env.REGISTRY} \
+                  --cache=true \
+                  --cache-repo=${env.REGISTRY}/${env.PROJECT}/cache \
+                  --verbosity=info
+              """
+            }
+          }
+        }
+      }
+    }
+
+    // dev overlay 적용(오브젝트 보장) 후 불변 :<sha> 로 이미지 핀 + 롤아웃.
+    stage('Deploy to dev (kustomize + set image)') {
+      steps {
+        container('kubectl') {
+          sh '''
+            kubectl apply -k deploy/k8s/overlays/dev
+            for svc in gateway auth-server user-service admin-service; do
+              kubectl -n si-msa set image deployment/$svc app=${REGISTRY}/${PROJECT}/$svc:${GIT_SHA}
+            done
+            for svc in gateway auth-server user-service admin-service; do
+              kubectl -n si-msa rollout status deployment/$svc --timeout=300s
+            done
+            echo "── 배포 완료(:${GIT_SHA}) ──"
+            kubectl -n si-msa get pods -o wide
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo "✅ CD 성공 — harbor.local/si-msa/<svc>:${GIT_SHA} 배포됨." }
+    failure { echo "❌ CD 실패 — 단계 로그 확인(Kaniko push 401/connection 또는 노드 pull Events)." }
+  }
+}

@@ -1,0 +1,53 @@
+# deploy/k8s/standalone-kind/jenkins-rbac.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# 파이프라인 agent 파드(jenkins ns)가 si-msa 네임스페이스로 배포(apply/set image/rollout)할 권한.
+#   - SA: jenkins-deployer (jenkins ns) — Jenkinsfile.kind podTemplate 가 이 SA 로 파드 기동.
+#   - si-msa 에 built-in 'edit' ClusterRole 바인딩(Deployment/Service/ConfigMap/Secret/StatefulSet 등 표준 리소스).
+#   - 추가: monitoring.coreos.com(ServiceMonitor)·autoscaling(HPA)·networking(Ingress) 은 edit 에 일부 포함되나
+#     ServiceMonitor(CRD)는 별도 Role 로 보강.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins-deployer
+  namespace: jenkins
+---
+# si-msa 표준 리소스 편집 권한(built-in edit 재사용)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-deployer-edit
+  namespace: si-msa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-deployer
+    namespace: jenkins
+---
+# ServiceMonitor(CRD) 보강 — base 의 si-msa-services SM 을 apply -k 가 건드릴 수 있으므로.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jenkins-deployer-monitoring
+  namespace: si-msa
+rules:
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-deployer-monitoring
+  namespace: si-msa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jenkins-deployer-monitoring
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-deployer
+    namespace: jenkins

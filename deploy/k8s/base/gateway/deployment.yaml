@@ -24,6 +24,10 @@ spec:
       containers:
         - name: app
           image: registry.example.com/si-msa/gateway:latest
+          # imagePullPolicy 명시 — 원본 태그 :latest 라 미명시 시 kubelet 기본 Always 가 되어
+          #   오버레이가 :dev/:<sha> 로 치환해도 노드 캐시 무시·매번 레지스트리 재확인(미러/401 종속).
+          #   dev/local=노드캐시·kind load·불변 sha 전제 → IfNotPresent. prod=가변 채널 → overlays/prod 에서 Always.
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8000
