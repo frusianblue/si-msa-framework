@@ -10,7 +10,7 @@ plugins {
 dependencies {
     // ===== 공통 프레임워크 =====
     implementation project(':framework:framework-core')
-    implementation project(':framework:framework-security')   // framework-mybatis 전이 포함(SqlSessionFactory)
+    implementation project(':framework:framework-security')   // 인증만 사용 — 보안-영속 결합 분리로 mybatis/spring-jdbc 전이 없음(DataSource 불필요).
     // 멀티팟(replicas>=2) 세션 외부화 체감 시 주석 해제 — Spring Session Redis 로 HttpSession 공유.
     // implementation project(':framework:framework-session')
 
@@ -18,10 +18,10 @@ dependencies {
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
     // ===== DB =====
-    // framework-security 가 framework-mybatis 전이 의존 → SqlSessionFactory 용 DataSource 필수.
-    // 데모 인증기는 인메모리라 행이 필요 없다. 로컬은 H2 빈 스키마.
-    runtimeOnly 'com.h2database:h2'
-    runtimeOnly 'org.postgresql:postgresql'                    // dev/prod 프로파일용
+    // 없음. 데모 인증기는 인메모리(BCrypt 검증)이고 dynamic-authorization=false → RBAC/DataSource 불필요.
+    // (보안-영속 결합 분리 이후: framework-security 가 mybatis/spring-jdbc 를 전이로 끌어오지 않으므로
+    //  DataSourceAutoConfiguration 이 활성화되지 않는다 → H2 조차 필요 없다. RBAC DB 를 쓰는 실서비스 전환 시
+    //  framework-security-rbac-mybatis + DB 드라이버를 추가하면 된다.)
 
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
 

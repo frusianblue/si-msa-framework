@@ -90,4 +90,35 @@ public class FrameworkArchitectureTest {
     /** 필드 주입 금지(생성자 주입 강제). */
     @ArchTest
     static final ArchRule no_field_injection = NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
+
+    /**
+     * 보안-영속 결합 분리: framework-security <b>코어</b>는 특정 영속 기술(MyBatis)에 결합되면 안 된다.
+     * RBAC 영속은 어댑터(framework-security-rbac-mybatis)로 분리됐다. 어댑터 패키지
+     * ({@code ..rbac.mybatis..})와 어댑터가 소유한 매퍼 패키지({@code ..rbac.mapper.. — FQN 유지})는 예외.
+     */
+    @ArchTest
+    static final ArchRule security_core_does_not_depend_on_mybatis = noClasses()
+            .that()
+            .resideInAPackage("com.company.framework.security..")
+            .and()
+            .resideOutsideOfPackages(
+                    "com.company.framework.security.rbac.mybatis..", "com.company.framework.security.rbac.mapper..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
+                    "com.company.framework.mybatis..", "org.mybatis..", "org.apache.ibatis..")
+            .because("framework-security 코어는 MyBatis 에 결합되면 안 된다 — RBAC 영속은 어댑터(framework-security-rbac-mybatis)로 분리.")
+            .allowEmptyShould(true);
+
+    /** RBAC 포트(SPI)는 MyBatis 타입을 시그니처/구현에 노출하면 안 된다(영속 기술 중립). */
+    @ArchTest
+    static final ArchRule rbac_spi_ports_are_persistence_neutral = noClasses()
+            .that()
+            .resideInAPackage("com.company.framework.security.rbac.spi..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
+                    "com.company.framework.mybatis..", "org.mybatis..", "org.apache.ibatis..")
+            .because("RBAC 포트(SPI)는 특정 영속 기술(MyBatis)에 중립이어야 한다 — 도메인 타입만 시그니처에 노출.")
+            .allowEmptyShould(true);
 }

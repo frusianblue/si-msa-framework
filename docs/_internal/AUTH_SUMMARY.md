@@ -88,10 +88,11 @@
 (`POST /api/v1/auth/session/login | /logout`, 단일 파드는 `Set-Cookie: JSESSIONID=...`(톰캣 기본). framework-session 추가 시 `SESSION`).
 
 - **데모 인증기**: `DemoAuthenticator implements Authenticator` (인메모리 사용자, BCrypt 검증).
-- **부팅 전제**: framework-security 가 `framework-mybatis` 를 전이로 끌어옴 → SqlSessionFactory 용 **DataSource(H2) 필수**.
-  데모는 `dynamic-authorization=false` + `menu=false` 로 rbac **인가 연결**을 끈다. ⚠️ 단 `SecurityMetadataService` 는
-  토글과 무관하게 부팅 시 `findAllResources()` 를 1회 호출하므로(§6 참고), 빈 rbac 스키마(행 0)를 H2 `INIT=RUNSCRIPT`
-  로 선생성해 조용히 부팅한다(없으면 무해하지만 시끄러운 WARN).
+- **부팅 전제(2026-06-07 보안-영속 결합 분리 이후 갱신)**: framework-security 는 더 이상 `framework-mybatis`/`spring-jdbc` 를
+  전이로 끌어오지 않는다(RBAC 영속=어댑터 분리, JDBC 저장소=`compileOnly`+`@ConditionalOnClass` 가드). 데모는 `dynamic-authorization=false`
+  + `menu=false` 라 RBAC provider 가 없어도 fail-fast 에 안 걸리고, SqlSessionFactory/DataSourceAutoConfiguration 자체가 비활성 →
+  **DataSource/H2 전혀 불필요**(인메모리 인증기만으로 기동). 과거의 빈 rbac 스키마(H2 `INIT=RUNSCRIPT`)·`rbac-empty-schema.sql` 은
+  제거됐다 — 그 WARN 의 원인이던 무조건 `SecurityMetadataService` 생성이 `@ConditionalOnBean(ResourceMetadataProvider)` 로 바뀌어 사라졌다(§6 참고).
 - **체감 포인트**:
   - 단일 파드: 톰캣 `HttpSession` 으로 충분.
   - replicas≥2: 세션 공유 필요 → `framework-session`(Spring Session Redis) 의존 추가. **안 하면 파드 전환 시 로그아웃** ← T1의 핵심 체감.
@@ -125,6 +126,9 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
 - **[일반 known] framework-security 는 framework-mybatis 전이 의존** — Authenticator 만 쓰는 데모라도
   SqlSessionFactory 가 필요해 **DataSource(H2 등)가 없으면 부팅 실패**. 해결: H2 runtimeOnly + datasource 설정,
   rbac 미사용 시 `dynamic-authorization=false`/`menu=false` 로 DB 조회 회피(스키마는 빈 채로 OK).
+  - ✅ **무효화됨(2026-06-07, #2 보안-영속 결합 분리)**: 코어는 더 이상 `framework-mybatis`/`spring-jdbc` 를 전이로 끌어오지 않는다.
+    RBAC 영속은 `framework-security-rbac-mybatis` 어댑터로, JDBC 저장소는 `compileOnly`+`@ConditionalOnClass(JdbcTemplate)` 로 분리.
+    → 인증만 쓰는 서비스는 **H2/DataSource 없이 부팅**(이 항목의 "DataSource 없으면 부팅 실패"는 더 이상 성립하지 않음).
 - **[일반 known] 세션 모드에서도 JWT `AuthController` 가 동시 등록**(`AuthAutoConfiguration` 은 `@ConditionalOnBean(Authenticator)` 만 검사) —
   경로가 `/api/v1/auth/login`(JWT) vs `/api/v1/auth/session/login`(세션)으로 분리돼 **충돌 아님**. T1은 세션 경로만 사용.
 - **[겪음 encountered] standalone 예제를 루트 멀티프로젝트로 편입할 때(#1)** — standalone `build.gradle` 의
@@ -143,6 +147,9 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
   해결(데모): 빈 rbac 스키마(행 0) 3테이블을 H2 `INIT=RUNSCRIPT FROM 'classpath:db/rbac-empty-schema.sql'` 로 선생성
   → 0행 조회로 조용히 부팅. (schema.sql 은 빈 생성 순서에 따라 reload 후 실행될 수 있어 INIT 절을 택함.)
   근본 해결은 #2(보안-영속 결합 분리) — SecurityMetadataService 의 무조건 DB 결합 제거가 이 WARN 의 진짜 원인.
+  - ✅ **해결됨(2026-06-07, #2)**: `securityMetadataService` 가 `@ConditionalOnBean(ResourceMetadataProvider)` 로 바뀌어
+    RBAC provider(어댑터)가 없는 데모에선 **아예 생성되지 않는다** → `findAllResources()` 호출 자체가 사라짐 = WARN 소멸.
+    이에 따라 H2 `INIT=RUNSCRIPT` 와 `db/rbac-empty-schema.sql`(양 데모)·datasource 설정을 **전부 제거**했다(§6-7). 인증 전용 데모는 이제 DataSource 없이 기동.
 - **[겪음 encountered] `framework.security.session.cookie-name` 은 현재 어디서도 소비되지 않는 "죽은" 설정** —
   T1 검증에서 쿠키가 설정값 `SESSION` 이 아니라 톰캣 기본 `JSESSIONID` 로 나왔다. `FrameworkSecurityProperties.Session.cookieName`
   에 필드/게터/세터·기본값("SESSION")은 있으나 `getCookieName()` 호출부가 framework-security 에 없다(소비처는 전부 secure-web XSRF·
@@ -159,9 +166,13 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
 
 ## 7. 다음 (Next)
 
-> **다음 세션 시작점**: **#2 보안-영속 결합 분리 — 코드 작성**. 설계 확정 완료(LOCKED) →
-> [`planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md`](./planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md) §2.5(설계 확정 보강) 그대로 실행.
-> (T1 양쪽 8080·8081 curl 검증은 ☑ 완료 — 아래 트랙진행 #4.)
+> **다음 세션 시작점**: **T1 멀티팟 세션 외부화**(아래 트랙진행 #5). `auth-session-service` replicas≥2 로 띄워
+> 세션 외부화 on/off 차이를 체감한다(`framework-session`/Spring Session Redis). 단일 파드=톰캣 `HttpSession`,
+> 외부화 안 하면 파드 전환 시 로그아웃 ← T1 핵심 체감. 외부화하면 `framework-session` 추가로 파드 무관 세션 유지.
+>
+> **이월(받는 쪽 1회)**: #2 보안-영속 결합 분리 코드/문서 ☑(이번 세션 완료) — 적용 후 로컬 빌드/테스트 그린만 확인하면 종료
+> (`apply.sh` 또는 패치, 기준 HEAD `e6b16cb`). 그린 시 [`planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md`](./planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md) → `docs/_internal/archive/`.
+> (T1 양쪽 8080·8081 curl 검증은 ☑ 완료 — 트랙진행 #4.)
 
 ### 먼저 처리
 1. ✅ **카탈로그 빌드 통일(완료)** — `examples/auth-types` 를 standalone → **루트 멀티프로젝트로 편입**.
@@ -169,22 +180,35 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
    → `project(':framework:..')` 로, 플러그인 버전 선언 제거(루트 상속). standalone `settings.gradle` 삭제.
    이제 `publishToMavenLocal` 불필요, repo 루트에서 `:examples:auth-types:bootRun` 으로 바로 실행.
    ⚠️ 예제는 jacocoAggregation/archtest 대상이 아님 — 루트 `build.gradle` 의 해당 목록엔 넣지 않았다.
-2. **보안-영속 결합 분리(리팩터)** — ✅ **설계 확정(LOCKED)**, 코드 미착수. `planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md` §2.5 참조.
-   `framework-security` 의 MyBatis/DataSource 강제 결합을 RBAC 포트/어댑터(`framework-security-rbac-mybatis`)로 분리.
-   확정 보강: (i) 감사 브리지 `CurrentUserProvider` 도 어댑터로 이전(2번째 mybatis 결합), (ii) auth-server 도 마이그레이션 대상(기본 `dynamic-authorization=true`),
-   (iii) `SecurityMapper` FQN 유지 → user-service 코드 무변경. 완료 후 T1 데모에서 H2/DataSource 제거.
+2. **보안-영속 결합 분리(리팩터)** — ✅ **코드 작성 완료(2026-06-07, 미빌드 검증)**. `planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md` §6-1~§6-7 ☑.
+   `framework-security` 의 MyBatis 결합(→어댑터 분리) + spring-jdbc 결합(→compileOnly+`@ConditionalOnClass` 가드)까지 분리 완료.
+   §6-7 데모 H2/DataSource 제거까지 반영(인증 전용 서비스는 DataSource 불필요). 잔여: 받는 쪽(Chae) 로컬 빌드/테스트 그린 확인만.
 3. **[결정됨 (a)] `session.cookie-name` 실배선** — 죽은 프로퍼티(§6)를 `server.servlet.session.cookie.name` 으로 연결해
    실제 쿠키 이름을 바꾼다(톰캣·Spring Session 동시 적용). framework-security 변경 → 문서 캐스케이드 동반. 우선순위: 8081 검증 → #2 뒤.
 
 ### 트랙 진행
 4. ✅ **T1 검증(완료)** — ☑ 카탈로그(8080) curl 4~5단계 통과. ☑ 실서비스(8081) 동일 검증 통과(1·5=401, 2·3·4=200; `principal=alice`/`authorities=[ROLE_USER]`, 쿠키 `JSESSIONID`).
-5. **T1 멀티팟 체감** — `auth-session-service` replicas=2 로 띄워 세션 외부화 on/off 차이 확인(`framework-session`).
+5. **T1 멀티팟 체감(➡ 다음 세션)** — `auth-session-service` replicas=2 로 띄워 세션 외부화 on/off 차이 확인.
+   - off(기본): 톰캣 `HttpSession` 은 파드 로컬 → 로그인한 파드와 다른 파드로 라우팅되면 세션 미인식 = 로그아웃처럼 보임.
+   - on: `framework-session`(Spring Session Redis) 의존 추가 + Redis → 세션이 외부 저장소에 → 파드 무관 유지.
+   - 체감 방법(예): K8s Service 라운드로빈/`kubectl scale`, 또는 두 포트로 띄워 쿠키 jar 로 교차 요청. 로그인→파드A 쿠키→파드B 요청 결과 비교.
+   - 결과·전후 차이를 `AUTH_T1_VERIFY.md`(또는 신규 메모)에 기록. 쿠키 이름도 함께 관찰(단일=`JSESSIONID`, Spring Session=`SESSION` — §6 cookie-name 죽은설정 메모 참조).
 6. **T2(무상태 JWT)로 상태 축 비교** — `auth-jwt-service` + 카탈로그 `t2-jwt` 프로파일. 로그아웃·확장 차이 기록.
 
 ### 세션 닫음 메모
 - 직전 세션: #1 카탈로그 루트 편입 / rbac WARN 억제(H2 `INIT=RUNSCRIPT` 빈 스키마) / T1 카탈로그(8080) curl 검증 통과 /
   cookie-name 죽은 설정 발견·(a) 결정 / [`AUTH_T1_VERIFY.md`](./AUTH_T1_VERIFY.md) 작성. → 커밋/푸시 완료(HEAD `0e7f332`).
 - T1 실서비스(8081): `auth-session-service` 정적 점검(8080 동형 확인) → 로컬 curl 1·5=401 / 2·3·4=200 통과 → T1 ☑.
-- 이번 세션: **#2 보안-영속 결합 분리 설계 확정(LOCKED), 코드 미착수.** 착수 전 소스 실측으로 계획 doc 2개 갭 해소 —
-  ① `CurrentUserProvider` 감사 브리지(2번째 mybatis 결합) → 어댑터 이전, ② auth-server 도 마이그레이션 대상, ③ `SecurityMapper` FQN 유지(user-service 무변경).
-  계획 doc §2.5 에 LOCKED 로 기록. **다음 세션 = 코드 작성**(어댑터 신설 + 코어 포트화 + 3서비스 마이그레이션 + archtest/jacoco + 문서 캐스케이드).
+- 이번 세션: **#2 보안-영속 결합 분리 — 코드 작성 완료(미빌드 검증).** 신설 어댑터 `framework-security-rbac-mybatis`
+  (SecurityMapper+XML FQN 유지 이전 / `MyBatisResourceMetadataProvider`·`MyBatisMenuProvider` / 감사 브리지 `SecurityContextCurrentUserProvider` 이전·`@Primary` / `@AutoConfiguration(before=SecurityAutoConfiguration)` + nested `@ConditionalOnClass(SqlSessionFactory)` + `@MapperScan(annotationClass=Mapper.class)` + `.imports`).
+  코어: `rbac.spi` 포트(`ResourceMetadataProvider`/`MenuProvider`/`RbacProviderSafetyGuard`) 신설, `SecurityMetadataService`/`MenuService` 포트화,
+  `SecurityAutoConfiguration` 에서 `@MapperScan`·`SecurityMapper`·`CurrentUserProvider` 제거 + RBAC 빈 `@ConditionalOnBean(포트)` + dynamic-authorization=true 시 fail-fast, 두 필터체인 `ObjectProvider<DynamicAuthorizationManager>` 화, build.gradle mybatis 전이 제거.
+  등록: settings/archtest(의존+규칙2+가드테스트)/jacoco. 마이그레이션: user/admin/auth-server 어댑터 한 줄(DbAuthenticationProvider 무변경). 문서 캐스케이드 완료(security/adapter README·FRAMEWORK_MODULES·MODULE_COMPOSITION·AUTH_COMPOSITION_GUIDE·PITFALLS·root/framework README).
+  착수 시 발견: spring-jdbc 가 mybatis 전이로만 코어에 들어왔음(JdbcTokenStore 등) → **spring-jdbc 도 compileOnly + `JdbcTemplate` @Bean nested `@ConditionalOnClass` 가드화**(framework-lock 패턴)로 함께 분리.
+  이로써 §6-7 완수: `auth-session-service`·`examples/auth-types` 의 **H2/DataSource/rbac-empty-schema.sql 제거**(인증 전용 → DataSource 불필요). §5 부팅 전제·§6 WARN 항목 해소 기록.
+  **다음 = 받는 쪽 빌드/테스트 그린 확인.** (작성 환경 Maven Central 차단 → Gradle 미실행, 정적 작성.)
+- 세션 마무리(2026-06-07): #2 코드/문서 전부 정리 + **새 클론(현재 원격 HEAD `e6b16cb`)에 재적용·재검증** — 원격이 17커밋(전부 K8s/GitOps 문서) 전진했으나 코드 충돌 0,
+  겹친 문서 3건(FRAMEWORK_MODULES·AUTH_SUMMARY·PITFALLS)은 3-way 머지로 양쪽 보존. **놓쳤던 stale 문서 2건(`auth-session-service`/`examples:auth-types` README 부팅메모) 수정**,
+  §6 옛 known-issue 항목에 "무효화됨" 표시, 계획서 중복 체크 한 줄 정리. 빈 클론+`apply.sh`→검증 트리 바이트 일치·`git apply --3way` 클린 확인. 한방 적용 zip(overlay+patch+apply.sh+BASE_COMMIT) 산출.
+  **→ 이번 세션 종료. 다음 세션 = 트랙진행 #5 T1 멀티팟 세션 외부화.** (#2 는 받는 쪽 빌드 그린 1회만 남음 — 그린 시 계획서 archive.)
+

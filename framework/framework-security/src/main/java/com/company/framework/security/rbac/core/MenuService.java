@@ -2,7 +2,7 @@ package com.company.framework.security.rbac.core;
 
 import com.company.framework.security.rbac.domain.Menu;
 import com.company.framework.security.rbac.dto.MenuDto;
-import com.company.framework.security.rbac.mapper.SecurityMapper;
+import com.company.framework.security.rbac.spi.MenuProvider;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,18 +10,21 @@ import java.util.Map;
 
 /**
  * 로그인 사용자의 역할에 매핑된 메뉴를 조회해 계층형 트리로 반환한다.
+ *
+ * <p>특정 영속 기술에 결합되지 않도록 MyBatis 매퍼가 아닌 {@link MenuProvider} 포트에 의존한다.
+ * 구현은 어댑터 모듈(예: {@code framework-security-rbac-mybatis})이 제공한다.
  */
 public class MenuService {
 
-    private final SecurityMapper securityMapper;
+    private final MenuProvider menuProvider;
 
-    public MenuService(SecurityMapper securityMapper) {
-        this.securityMapper = securityMapper;
+    public MenuService(MenuProvider menuProvider) {
+        this.menuProvider = menuProvider;
     }
 
     public List<MenuDto> getMenuTree(List<String> roles) {
         if (roles == null || roles.isEmpty()) return List.of();
-        List<Menu> menus = securityMapper.findMenusByRoles(roles);
+        List<Menu> menus = menuProvider.findMenusByRoles(roles);
 
         Map<Long, MenuDto> map = new LinkedHashMap<>();
         for (Menu m : menus) {

@@ -250,6 +250,7 @@ dependencies {
     jacocoAggregation project(':framework:framework-core')
     jacocoAggregation project(':framework:framework-mybatis')
     jacocoAggregation project(':framework:framework-security')
+    jacocoAggregation project(':framework:framework-security-rbac-mybatis')
     jacocoAggregation project(':framework:framework-openapi')
     jacocoAggregation project(':framework:framework-redis')
     jacocoAggregation project(':framework:framework-session')

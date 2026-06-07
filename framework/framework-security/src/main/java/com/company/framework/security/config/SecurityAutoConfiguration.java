@@ -1,6 +1,5 @@
 package com.company.framework.security.config;
 
-import com.company.framework.mybatis.support.CurrentUserProvider;
 import com.company.framework.security.auth.Authenticator;
 import com.company.framework.security.auth.session.SessionAuthController;
 import com.company.framework.security.auth.session.SessionAuthService;
@@ -33,14 +32,15 @@ import com.company.framework.security.password.PasswordSafetyGuard;
 import com.company.framework.security.rbac.core.DynamicAuthorizationManager;
 import com.company.framework.security.rbac.core.MenuService;
 import com.company.framework.security.rbac.core.SecurityMetadataService;
-import com.company.framework.security.rbac.mapper.SecurityMapper;
+import com.company.framework.security.rbac.spi.MenuProvider;
+import com.company.framework.security.rbac.spi.RbacProviderSafetyGuard;
+import com.company.framework.security.rbac.spi.ResourceMetadataProvider;
 import com.company.framework.security.rbac.web.MenuController;
-import com.company.framework.security.support.SecurityContextCurrentUserProvider;
 import com.company.framework.security.token.TokenStore;
-import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -48,7 +48,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.Customizer;
@@ -86,7 +85,6 @@ import org.springframework.web.client.RestClient;
     ConcurrentSessionProperties.class
 })
 @ConditionalOnProperty(prefix = "framework.security", name = "enabled", havingValue = "true", matchIfMissing = true)
-@MapperScan("com.company.framework.security.rbac.mapper")
 @Import(PasswordEncoderConfig.class)
 public class SecurityAutoConfiguration {
 
@@ -152,32 +150,51 @@ public class SecurityAutoConfiguration {
         return new DevAuthSafetyGuard(devProps, env);
     }
 
+    // ================= RBAC 영속(동적 인가/메뉴) — 포트/어댑터(SPI) =================
+    // 코어는 RBAC 포트(ResourceMetadataProvider/MenuProvider)만 알고, 구현(MyBatis 등)은 어댑터 모듈이 제공한다
+    // (framework-security-rbac-mybatis). 인증만 쓰는 서비스는 어댑터를 의존하지 않으면 DataSource/MyBatis 불필요.
+    // 감사 브리지(SecurityContextCurrentUserProvider, @Primary CurrentUserProvider)도 어댑터로 이전됐다.
+
+    /** RBAC provider 가 있을 때만 활성. 어댑터가 SecurityAutoConfiguration 보다 먼저 로딩(before=)되어 정확히 인식된다. */
     @Bean
-    @Primary
-    public CurrentUserProvider securityContextCurrentUserProvider() {
-        return new SecurityContextCurrentUserProvider();
+    @ConditionalOnBean(ResourceMetadataProvider.class)
+    public SecurityMetadataService securityMetadataService(ResourceMetadataProvider resourceMetadataProvider) {
+        return new SecurityMetadataService(resourceMetadataProvider);
     }
 
     @Bean
-    public SecurityMetadataService securityMetadataService(SecurityMapper securityMapper) {
-        return new SecurityMetadataService(securityMapper);
-    }
-
-    @Bean
+    @ConditionalOnBean(SecurityMetadataService.class)
     public DynamicAuthorizationManager dynamicAuthorizationManager(SecurityMetadataService svc) {
         return new DynamicAuthorizationManager(svc);
     }
 
     @Bean
+    @ConditionalOnBean(MenuProvider.class)
     @ConditionalOnProperty(prefix = "framework.security", name = "menu", havingValue = "true", matchIfMissing = true)
-    public MenuService menuService(SecurityMapper securityMapper) {
-        return new MenuService(securityMapper);
+    public MenuService menuService(MenuProvider menuProvider) {
+        return new MenuService(menuProvider);
     }
 
     @Bean
+    @ConditionalOnBean(MenuService.class)
     @ConditionalOnProperty(prefix = "framework.security", name = "menu", havingValue = "true", matchIfMissing = true)
     public MenuController menuController(MenuService menuService) {
         return new MenuController(menuService);
+    }
+
+    /**
+     * fail-fast: dynamic-authorization=true(기본) 인데 RBAC provider 어댑터가 없으면 부팅 실패.
+     * 동적 인가가 조용히 무력화(매핑 0건=전부 허용)되는 운영 사고를 차단(프로파일 무관). 가드 빈 생성 즉시 throw.
+     */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "framework.security",
+            name = "dynamic-authorization",
+            havingValue = "true",
+            matchIfMissing = true)
+    @ConditionalOnMissingBean(ResourceMetadataProvider.class)
+    public RbacProviderSafetyGuard rbacProviderSafetyGuard() {
+        return new RbacProviderSafetyGuard();
     }
 
     // ================= 개발 모드 체인 (인증 우회) =================
@@ -212,13 +229,6 @@ public class SecurityAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(PasswordHistoryStore.class)
-    @ConditionalOnProperty(prefix = "framework.security.password.history.store", name = "type", havingValue = "jdbc")
-    public PasswordHistoryStore jdbcPasswordHistoryStore(JdbcTemplate jdbcTemplate) {
-        return new JdbcPasswordHistoryStore(jdbcTemplate);
-    }
-
-    @Bean
     @ConditionalOnMissingBean
     public PasswordLifecycleService passwordLifecycleService(
             PasswordHistoryStore historyStore, PasswordEncoder passwordEncoder, PasswordProperties props) {
@@ -235,14 +245,6 @@ public class SecurityAutoConfiguration {
             matchIfMissing = true)
     public ConcurrentSessionService inMemoryConcurrentSessionService(ConcurrentSessionProperties props) {
         return new InMemoryConcurrentSessionService(props);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(ConcurrentSessionService.class)
-    @ConditionalOnProperty(prefix = "framework.security.concurrent-session.store", name = "type", havingValue = "jdbc")
-    public ConcurrentSessionService jdbcConcurrentSessionService(
-            JdbcTemplate jdbcTemplate, ConcurrentSessionProperties props) {
-        return new JdbcConcurrentSessionService(jdbcTemplate, props);
     }
 
     @Bean
@@ -270,6 +272,37 @@ public class SecurityAutoConfiguration {
                         ex -> ex.authenticationEntryPoint(entryPoint).accessDeniedHandler(accessDeniedHandler));
     }
 
+    // ================= JDBC 백엔드 저장소 (선택) — spring-jdbc(JdbcTemplate) 있을 때만 =================
+    // 보안 자체의 JDBC 저장소(비번이력·동시세션)는 host 앱이 spring-jdbc 를 제공할 때만 등록한다.
+    // (보안-영속 결합 분리: 인증만 쓰는 서비스는 spring-jdbc 가 없어 이 설정이 통째로 백오프 → DataSource 불필요.)
+    // 톱레벨이 아니라 nested + 클래스레벨 @ConditionalOnClass 로 둬야, JdbcTemplate 부재 시 메서드 introspection 으로 깨지지 않는다.
+    // (token-store=jdbc 는 TokenStoreAutoConfiguration 이 동일 방식으로 가드. memory 기본값은 톱레벨 유지.)
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(JdbcTemplate.class)
+    static class JdbcSecurityStoreConfig {
+
+        @Bean
+        @ConditionalOnMissingBean(PasswordHistoryStore.class)
+        @ConditionalOnProperty(
+                prefix = "framework.security.password.history.store",
+                name = "type",
+                havingValue = "jdbc")
+        public PasswordHistoryStore jdbcPasswordHistoryStore(JdbcTemplate jdbcTemplate) {
+            return new JdbcPasswordHistoryStore(jdbcTemplate);
+        }
+
+        @Bean
+        @ConditionalOnMissingBean(ConcurrentSessionService.class)
+        @ConditionalOnProperty(
+                prefix = "framework.security.concurrent-session.store",
+                name = "type",
+                havingValue = "jdbc")
+        public ConcurrentSessionService jdbcConcurrentSessionService(
+                JdbcTemplate jdbcTemplate, ConcurrentSessionProperties props) {
+            return new JdbcConcurrentSessionService(jdbcTemplate, props);
+        }
+    }
+
     // ================= 정상 체인 — 무상태(JWT) : framework.security.session.mode=stateless(기본) =================
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnProperty(
@@ -291,7 +324,7 @@ public class SecurityAutoConfiguration {
                 DownstreamTokenAuthenticator downstreamAuthenticator,
                 TokenStore tokenStore,
                 FrameworkSecurityProperties props,
-                DynamicAuthorizationManager dynamicAuthorizationManager,
+                ObjectProvider<DynamicAuthorizationManager> dynamicAuthorizationManager,
                 RestAuthenticationEntryPoint entryPoint,
                 RestAccessDeniedHandler accessDeniedHandler)
                 throws Exception {
@@ -304,7 +337,8 @@ public class SecurityAutoConfiguration {
                         auth.requestMatchers("/actuator/**", "/api/*/auth/**", "/swagger-ui/**", "/v3/api-docs/**")
                                 .permitAll();
                         if (props.isDynamicAuthorization()) {
-                            auth.anyRequest().access(dynamicAuthorizationManager);
+                            // dynamic-authorization=true → RBAC provider 필수(없으면 RbacProviderSafetyGuard 가 부팅 차단).
+                            auth.anyRequest().access(dynamicAuthorizationManager.getObject());
                         } else {
                             auth.anyRequest().authenticated();
                         }
@@ -350,7 +384,7 @@ public class SecurityAutoConfiguration {
                 HttpSecurity http,
                 FrameworkSecurityProperties props,
                 SecurityContextRepository securityContextRepository,
-                DynamicAuthorizationManager dynamicAuthorizationManager,
+                ObjectProvider<DynamicAuthorizationManager> dynamicAuthorizationManager,
                 RestAuthenticationEntryPoint entryPoint,
                 RestAccessDeniedHandler accessDeniedHandler)
                 throws Exception {
@@ -372,7 +406,8 @@ public class SecurityAutoConfiguration {
                 auth.requestMatchers("/actuator/**", "/api/*/auth/**", "/swagger-ui/**", "/v3/api-docs/**")
                         .permitAll();
                 if (props.isDynamicAuthorization()) {
-                    auth.anyRequest().access(dynamicAuthorizationManager);
+                    // dynamic-authorization=true → RBAC provider 필수(없으면 RbacProviderSafetyGuard 가 부팅 차단).
+                    auth.anyRequest().access(dynamicAuthorizationManager.getObject());
                 } else {
                     auth.anyRequest().authenticated();
                 }

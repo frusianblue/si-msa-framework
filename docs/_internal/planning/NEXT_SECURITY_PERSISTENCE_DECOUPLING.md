@@ -1,6 +1,6 @@
 # NEXT_SECURITY_PERSISTENCE_DECOUPLING.md
 
-> **상태: 활성(ACTIVE) · 설계 확정(LOCKED, 2026-06-07)** — 다음 섹션 = 코드 작성 착수. **§2.5(설계 확정 보강)** 을 §6 체크리스트와 함께 그대로 실행. 완료 시 `docs/archive/` 로 이동(ARCHIVED 배너).
+> **상태: 활성(ACTIVE) · 코드 작성 완료(2026-06-07, 미빌드 검증)** — **§6-1~§6-7 코드/문서 작성 완료**(spring-jdbc 결합까지 분리 → 인증 전용 데모 H2/DataSource 제거 포함). **잔여: 받는 쪽(Chae) 로컬 빌드/테스트 검증만**(Maven Central 차단 → 작성 환경 빌드 불가). 빌드 그린 확인 시 `docs/archive/` 로 이동(ARCHIVED 배너).
 > 관련: `docs/_internal/AUTH_SUMMARY.md` §6(트랙 Pitfalls), `docs/guide/AUTH_COMPOSITION_GUIDE.md`,
 > `docs/guide/PITFALLS.md`(§ ConditionalOnMissingBean introspection / MapperScan annotationClass).
 
@@ -145,49 +145,54 @@ public interface MenuProvider {                  // 메뉴 API
 ## 6. 작업 체크리스트
 
 ### 6-1. 새 모듈 신설 (`framework-security-rbac-mybatis`)
-- [ ] `framework/framework-security-rbac-mybatis/` 생성(build.gradle: `api project(':framework:framework-security')` + `api project(':framework:framework-mybatis')`)
-- [ ] `SecurityMapper` + `SecurityMapper.xml` 이전(**FQN/네임스페이스 유지** — §2.5), `MyBatisResourceMetadataProvider`/`MyBatisMenuProvider` 작성
-- [ ] `SecurityContextCurrentUserProvider` 코어→어댑터 이전 + `@Primary CurrentUserProvider` 빈 등록(감사 브리지, §2.5 발견 1)
-- [ ] 어댑터 `@AutoConfiguration`(nested `@ConditionalOnClass(SqlSessionFactory.class)` + `@MapperScan(annotationClass=Mapper.class)`)
-- [ ] `META-INF/.../AutoConfiguration.imports` 등록
+- [x] `framework/framework-security-rbac-mybatis/` 생성(build.gradle: `api project(':framework:framework-security')` + `api project(':framework:framework-mybatis')`)
+- [x] `SecurityMapper` + `SecurityMapper.xml` 이전(**FQN/네임스페이스 유지** — §2.5), `MyBatisResourceMetadataProvider`/`MyBatisMenuProvider` 작성
+- [x] `SecurityContextCurrentUserProvider` 코어→어댑터 이전 + `@Primary CurrentUserProvider` 빈 등록(감사 브리지, §2.5 발견 1)
+- [x] 어댑터 `@AutoConfiguration`(nested `@ConditionalOnClass(SqlSessionFactory.class)` + `@MapperScan(annotationClass=Mapper.class)`)
+- [x] `META-INF/.../AutoConfiguration.imports` 등록
 
 ### 6-2. 코어 변경 (`framework-security`)
-- [ ] `build.gradle`: `api project(':framework:framework-mybatis')` **제거**
-- [ ] `rbac.spi` 포트 신설(`ResourceMetadataProvider`, `MenuProvider`)
-- [ ] `SecurityMetadataService`/`DynamicAuthorizationManager`/`MenuService`/`MenuController` 를 포트 의존으로 변경
-- [ ] `SecurityAutoConfiguration`: `@MapperScan`·`SecurityMapper` 참조 제거, RBAC 빈에 `@ConditionalOnBean(포트)`
-- [ ] `SecurityAutoConfiguration`: `CurrentUserProvider` import·`securityContextCurrentUserProvider()` @Bean 제거 + `SecurityContextCurrentUserProvider.java` 코어에서 삭제(어댑터로 이전, §2.5) → 코어 `com.company.framework.mybatis.*` 잔여 import 0
-- [ ] dynamic-authorization=true + 포트 부재 → fail-fast 가드 빈
+- [x] `build.gradle`: `api project(':framework:framework-mybatis')` **제거**
+  - ⚠️ **착수 시 발견(계획 갭) → 해소**: `spring-jdbc`(JdbcTemplate)가 framework-security 로 **mybatis 전이로만** 들어왔다 — framework-security 자체의 JDBC 저장소(`JdbcTokenStore`/`JdbcPasswordHistoryStore`/`JdbcConcurrentSessionService`)가 `JdbcTemplate` 을 직접 쓰므로 mybatis 제거 시 컴파일 깨짐. → **`compileOnly 'spring-boot-starter-jdbc'`** 로 직접 선언 + `JdbcTemplate` @Bean 들을 nested `@ConditionalOnClass(JdbcTemplate)`(`SecurityAutoConfiguration.JdbcSecurityStoreConfig`, `TokenStoreAutoConfiguration.JdbcTokenStoreConfig`)로 격리. 이로써 jdbc 백엔드(token-store/…=jdbc)를 쓰는 host 만 starter-jdbc 를 제공하고, **인증만 쓰는 서비스는 DataSource 완전 불필요**(§6-7 H2 제거 가능). framework-lock/audit/mfa/… 가 이미 쓰는 compileOnly 패턴과 동일 → 기존 consumer 영향 0(각자 starter-jdbc 보유).
+  - ⚠️ **빌드 검증서 발견(2): `api project(framework-mybatis)` 제거가 전이 consumer 를 깸** — `framework-mfa` 가 `CurrentUserProvider`(`com.company.framework.mybatis.support`)를 **security→mybatis 전이로** 받아쓰고 있었다(mfa build.gradle 주석에 명시). 전이가 끊겨 `framework-mfa:compileJava` 가 `package com.company.framework.mybatis.support does not exist` 로 실패. → mfa 에 **`compileOnly project(':framework:framework-mybatis')` + `testImplementation`** 직접 선언(mfa 의 "호스트 제공·드래그인 방지" 원칙대로). 전수 점검 결과 security-의존 모듈 중 mybatis 타입을 쓰는 건 mfa 뿐(audit/oauth-client/redis/saml-sp/session/webauthn=0). **교훈: `api` 전이 의존을 끊을 땐 그 전이로 따라오던 타입(여기선 mybatis.support.CurrentUserProvider)을 쓰는 consumer 를 전부 찾아 직접 선언으로 옮겨야 한다.**
+- [x] `rbac.spi` 포트 신설(`ResourceMetadataProvider`, `MenuProvider`)
+- [x] `SecurityMetadataService`/`DynamicAuthorizationManager`/`MenuService`/`MenuController` 를 포트 의존으로 변경
+- [x] `SecurityAutoConfiguration`: `@MapperScan`·`SecurityMapper` 참조 제거, RBAC 빈에 `@ConditionalOnBean(포트)`
+- [x] `SecurityAutoConfiguration`: `CurrentUserProvider` import·`securityContextCurrentUserProvider()` @Bean 제거 + `SecurityContextCurrentUserProvider.java` 코어에서 삭제(어댑터로 이전, §2.5) → 코어 `com.company.framework.mybatis.*` 잔여 import 0
+- [x] dynamic-authorization=true + 포트 부재 → fail-fast 가드 빈
 
 ### 6-3. 신규 모듈 등록(프로젝트 규약 — 동시 등록 필수)
-- [ ] `settings.gradle` include
-- [ ] `framework-archtest/build.gradle` 의존 추가
-- [ ] archtest `.imports` 가드 대상 추가
-- [ ] guard test(`getResources` 로 `.imports` 직접 검증) 추가
-- [ ] root `build.gradle` jacocoAggregation 추가
+- [x] `settings.gradle` include
+- [x] `framework-archtest/build.gradle` 의존 추가
+- [x] archtest `.imports` 가드 대상 추가
+- [x] guard test(`getResources` 로 `.imports` 직접 검증) 추가
+- [x] root `build.gradle` jacocoAggregation 추가
 
 ### 6-4. 기존 서비스 마이그레이션
-- [ ] `services/user-service/build.gradle` 에 `-rbac-mybatis` 의존 한 줄 추가(현재 dynamic-authorization=true·기본값)
-- [ ] `services/admin-service/build.gradle` 동일(기본값 true)
-- [ ] `services/auth-server/build.gradle` 동일(기본값 true + `V3__rbac_metadata.sql`, §2.5 발견 2)
-- [ ] `DbAuthenticationProvider` — `SecurityMapper` FQN 유지(§2.5)이므로 **코드 무변경**, 어댑터 의존만으로 import 해소
+- [x] `services/user-service/build.gradle` 에 `-rbac-mybatis` 의존 한 줄 추가(현재 dynamic-authorization=true·기본값)
+- [x] `services/admin-service/build.gradle` 동일(기본값 true)
+- [x] `services/auth-server/build.gradle` 동일(기본값 true + `V3__rbac_metadata.sql`, §2.5 발견 2)
+- [x] `DbAuthenticationProvider` — `SecurityMapper` FQN 유지(§2.5)이므로 **코드 무변경**, 어댑터 의존만으로 import 해소
 - [ ] 로컬 부팅·기존 동작 회귀 확인(Chae)
 
 ### 6-5. ArchUnit 회귀 방지
-- [ ] 규칙 추가: `framework-security` 는 `framework-mybatis`/`org.mybatis..`/`org.apache.ibatis..` 에 의존 금지
-- [ ] 규칙 추가: rbac.spi 포트는 MyBatis 타입을 시그니처에 노출 금지
+- [x] 규칙 추가: `framework-security` 는 `framework-mybatis`/`org.mybatis..`/`org.apache.ibatis..` 에 의존 금지
+- [x] 규칙 추가: rbac.spi 포트는 MyBatis 타입을 시그니처에 노출 금지
 
 ### 6-6. 문서 동반 갱신(코드=문서 동시)
-- [ ] `framework-security/README.md`(켜는법/쓰는법/끄는법 + RBAC 어댑터 분리 설명 + `## 실전 사용 예 (코드)`)
-- [ ] `framework-security-rbac-mybatis/README.md`(신규, `## 실전 사용 예 (코드)` 포함)
-- [ ] root `README.md`, `docs/FRAMEWORK_MODULES.md`(36→37 모듈, 카테고리 반영)
-- [ ] `docs/guide/AUTH_COMPOSITION_GUIDE.md`, `MODULE_COMPOSITION`
-- [ ] `docs/guide/PITFALLS.md`(보안-영속 결합 분리 교훈 추가)
-- [ ] `framework/README.md` 모듈 링크
+- [x] `framework-security/README.md`(켜는법/쓰는법/끄는법 + RBAC 어댑터 분리 설명 + `## 실전 사용 예 (코드)`)
+- [x] `framework-security-rbac-mybatis/README.md`(신규, `## 실전 사용 예 (코드)` 포함)
+- [x] root `README.md`, `docs/FRAMEWORK_MODULES.md`(36→37 모듈, 카테고리 반영)
+- [x] `docs/guide/AUTH_COMPOSITION_GUIDE.md`, `MODULE_COMPOSITION`
+- [x] `docs/guide/PITFALLS.md`(보안-영속 결합 분리 교훈 추가)
+- [x] `framework/README.md` 모듈 링크
 
 ### 6-7. T1 데모 후속(이 리팩터 완료 후)
-- [ ] `examples/auth-types`·`services/auth-session-service` 에서 **H2/DataSource 제거**(인증만 → DataSource 불필요 확인)
-- [ ] `AUTH_SUMMARY.md` §5/§6 갱신(부팅 전제 "DataSource 필수" 항목 해소 기록)
+> ✅ **선행(spring-jdbc 분리) 완료**: framework-security 의 `spring-jdbc` 를 `compileOnly` 로 돌리고 `JdbcTemplate` @Bean 들을
+> nested `@ConditionalOnClass(JdbcTemplate)`(`JdbcSecurityStoreConfig`/`JdbcTokenStoreConfig`)로 가드 → 인증 전용 서비스는 spring-jdbc 부재로
+> DataSourceAutoConfiguration 이 백오프 = DataSource 불필요. (다른 jdbc-using 모듈은 이미 각자 `compileOnly starter-jdbc` 선언 → 영향 0.)
+- [x] `examples/auth-types`·`services/auth-session-service` 에서 **H2/DataSource 제거**(인증만 → DataSource 불필요 확인)
+- [x] `AUTH_SUMMARY.md` §5/§6 갱신(부팅 전제 "DataSource 필수" 항목 해소 기록)
 
 ---
 

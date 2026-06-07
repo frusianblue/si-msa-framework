@@ -1,16 +1,11 @@
 # =====================================================================
-# local : 로컬 개발 기본 = H2 인메모리 (외부 설치 0)
+# local : 로컬 개발 기본 = 외부 설치 0, DB 없음
 #   실행: ./gradlew :services:auth-session-service:bootRun
+#
+# 보안-영속 결합 분리(2026-06-07) 이후: framework-security 가 mybatis/spring-jdbc 를 전이로 끌어오지 않으므로
+# DataSourceAutoConfiguration 이 활성화되지 않는다 → DataSource/H2 설정·드라이버가 전혀 필요 없다.
+# (인증만 사용 + dynamic-authorization=false → RBAC DB 조회 없음. 인메모리 인증기로만 동작.)
+#
+# 별도 오버라이드가 없어 비어 있다(공통 application.yml 만으로 기동). RBAC DB 를 쓰는 실서비스로 전환 시
+# framework-security-rbac-mybatis + DB 드라이버 + datasource 설정을 여기/prod 프로파일에 추가한다.
 # =====================================================================
-spring:
-  datasource:
-    # INIT=RUNSCRIPT: 빈 rbac 스키마(행 0) 선생성 → SecurityMetadataService 의 부팅 시 findAllResources
-    #   조회가 0행으로 깔끔히 끝나 시끄러운 WARN 제거(dynamic-authorization=false 라 캐시는 미사용 — 로그 위생).
-    #   ⚠️ local(H2) 전용. dev/prod(PostgreSQL)은 실제 rbac 스키마를 앱 마이그레이션으로 제공.
-    url: "jdbc:h2:mem:authsession;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;INIT=RUNSCRIPT FROM 'classpath:db/rbac-empty-schema.sql'"
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-  h2:
-    console:
-      enabled: true

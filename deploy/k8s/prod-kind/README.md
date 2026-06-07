@@ -68,10 +68,35 @@ bash 91-verify-argocd.sh   # G5~G7 PASS 게이트
 - **TLS SAN 폴백**: `91` G7 이 TLS 오류면 `SVC_TLS_INSECURE=true bash 12-register-svc.sh` 재실행(리허설 한정 skip-verify). 실 prod 는 apiserver certSANs 에 접속 IP/도메인 명시 → 항상 CA 검증.
 - **클러스터 재생성 후**: svc CP IP 가 바뀌면 `12` 재실행(server 재산출).
 
-## 다음 단계 (스펙 §3-3~)
+## 3단계: GitOps 자산 (`deploy/argocd/`)
 
-3. `deploy/argocd/` GitOps 자산(AppProject + prod Application `targetRevision:master` + app-of-apps)
-4. promote 배선(`Jenkinsfile.promote`: 불변 `:<sha>` → prod overlay `kustomize edit set image` + git commit/push → ArgoCD sync)
+> 전제: 2단계 PASS. **ArgoCD = git(master) 진실** → `deploy/argocd/` 를 **commit + push 먼저**.
+
+```bash
+# ① GitOps 자산 커밋·푸시 (필수 — ArgoCD 는 master 를 읽음)
+git add deploy/argocd && git commit -m "argocd: prod GitOps 자산(AppProject+prod App+app-of-apps)" && git push
+
+# ② 부트스트랩 seed + 검증
+cd deploy/k8s/prod-kind
+bash 20-gitops-bootstrap.sh   # AppProject + app-of-apps 를 ArgoCD 에 seed → git 에서 si-msa-prod 생성
+bash 92-verify-gitops.sh      # G8~G10
+```
+
+자산: `deploy/argocd/projects/si-msa.yaml`(AppProject) · `apps/si-msa-prod.yaml`(prod Application: source=overlays/prod@master, dest=kind-svc, automated+selfHeal+prune) · `bootstrap.yaml`(app-of-apps).
+
+| 게이트 | 검증 |
+|---|---|
+| **G8** | AppProject si-msa + app-of-apps si-msa-bootstrap 존재 |
+| **G9** | prod Application si-msa-prod 생성(app-of-apps) + dest=kind-svc + sync 시도 |
+| **G10** | kind-svc 에 ns si-msa + Deployment reconcile (파드 ImagePullBackOff=정상) |
+
+- **파드 ImagePullBackOff 는 정상(fail-loud)**: prod overlay 이미지 = sentinel `__GITSHA__` + Harbor 미설치. 4단계(promote: 불변 sha 커밋) + Harbor(hub) 설치 후 green. 3단계는 **GitOps reconcile 가 매니페스트를 kind-svc 에 적용하는가**까지만 검증.
+- **commit-first**: 로컬 apply 가 아니라 git push 가 트리거. 미푸시면 si-msa-prod 가 안 생김(20 이 경고).
+- **dest=kind-svc**: 리허설. 실 prod 는 그 클러스터 이름으로 교체.
+
+## 다음 단계 (스펙 §3-4~)
+
+4. promote 배선(`Jenkinsfile.promote`: CD 가 push 한 불변 `:<sha>` → prod overlay `kustomize edit set image` + git commit/push → ArgoCD sync) + Harbor(hub) 설치
 5. 데이터/관측 정합 (prod overlay DB/Redis 를 K8s밖 엔드포인트로, 관측 분산형)
 6. 문서 캐스케이드(`docs/ops/PROD_GITOPS_ARGOCD.md` 신설)
 

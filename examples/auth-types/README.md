@@ -67,8 +67,9 @@ curl -i -b cookies.txt localhost:8080/api/resource
 ---
 
 ## 부팅 메모
-- framework-security 는 framework-mybatis 를 전이로 끌어온다 → **DataSource(H2) 필수**. 데모는 H2 인메모리.
-- rbac DB 동적 인가는 `framework.security.dynamic-authorization=false` 로 꺼서 "인증만 되면 통과". 단 토글과 무관하게
-  `SecurityMetadataService` 가 부팅 시 `findAllResources()` 를 1회 호출하므로, 빈 rbac 스키마(행 0)를 H2 `INIT=RUNSCRIPT
-  FROM 'classpath:db/rbac-empty-schema.sql'` 로 선생성해 **조용히 부팅**한다(없어도 무해하지만 시끄러운 WARN 이 찍힘).
+- **DataSource 불필요**(2026-06-07 보안-영속 결합 분리 이후) — framework-security 는 더 이상 `framework-mybatis`/`spring-jdbc` 를
+  전이로 끌어오지 않는다. 데모는 인메모리 인증기 + `dynamic-authorization=false` 라 RBAC DB 조회가 없고 `DataSourceAutoConfiguration`
+  도 비활성 → **H2/datasource 설정 없이 기동**(과거의 `rbac-empty-schema.sql`·`INIT=RUNSCRIPT` 는 제거).
+- rbac DB 동적 인가는 끈 상태(`framework.security.dynamic-authorization=false`) → "인증만 되면 통과". RBAC 비교 트랙을
+  추가할 땐 `framework-security-rbac-mybatis` + DB 드라이버를 그 프로파일에만 더한다.
 - 세션 모드에서도 JWT `AuthController`(`/api/v1/auth/login`)가 함께 뜨지만 경로가 달라 충돌 없음 — T1 은 세션 경로만 쓴다.

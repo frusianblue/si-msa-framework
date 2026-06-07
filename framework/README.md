@@ -25,6 +25,7 @@
 | 모듈 | 한 줄 |
 |---|---|
 | [framework-security](framework-security/README.md) | 로그인·JWT/세션·RBAC·계정잠금·비번정책. **인증의 핵심(`Authenticator` 1개만 구현).** |
+| [framework-security-rbac-mybatis](framework-security-rbac-mybatis/README.md) | RBAC 영속의 **MyBatis 어댑터**. 코어의 RBAC 포트(SPI)를 MyBatis 로 구현 — DB 동적 인가/메뉴를 쓰는 서비스만 의존(인증만 쓰면 불필요). |
 | [framework-session](framework-session/README.md) | 서버 세션을 Redis 로 외부화(클러스터 세션, `mode=session`) |
 | [framework-mfa](framework-mfa/README.md) | 2단계 인증(TOTP/OTP + ISMS-P 복구코드 + WebAuthn 패스키 2차, 외부 의존성 0) |
 | [framework-oauth-client](framework-oauth-client/README.md) | 외부 IdP 소셜 로그인(OAuth2/OIDC **RP**) → 자체 JWT 발급 |

@@ -2,9 +2,8 @@ package com.company.framework.security.rbac.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.company.framework.security.rbac.domain.Menu;
 import com.company.framework.security.rbac.domain.Resource;
-import com.company.framework.security.rbac.mapper.SecurityMapper;
+import com.company.framework.security.rbac.spi.ResourceMetadataProvider;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,12 +15,13 @@ import org.springframework.security.web.access.intercept.RequestAuthorizationCon
 
 /**
  * DB 기반 동적 인가 판정 단위 테스트. URL/메서드 매핑·역할 보유 여부·미매핑 정책·미인증 차단을 검증한다.
- * DB 는 고정 매핑을 돌려주는 스텁 {@link SecurityMapper} 로 대체(컨텍스트/실DB 불필요).
+ * 영속은 고정 매핑을 돌려주는 스텁 {@link ResourceMetadataProvider} 로 대체(컨텍스트/실DB/MyBatis 불필요).
+ * (보안-영속 결합 분리: 코어 테스트는 SPI 포트만 알면 되고 MyBatis 매퍼에 의존하지 않는다.)
  */
 class DynamicAuthorizationManagerTest {
 
     private final DynamicAuthorizationManager manager =
-            new DynamicAuthorizationManager(new SecurityMetadataService(new StubSecurityMapper(List.of(
+            new DynamicAuthorizationManager(new SecurityMetadataService(new StubResourceMetadataProvider(List.of(
                     resource("/admin/**", "ALL", "ROLE_ADMIN"), resource("/api/orders/**", "POST", "ROLE_MANAGER")))));
 
     @Test
@@ -79,21 +79,11 @@ class DynamicAuthorizationManagerTest {
         return r;
     }
 
-    /** findAllResources 만 사용하는 고정 매핑 스텁. */
-    private record StubSecurityMapper(List<Resource> resources) implements SecurityMapper {
-        @Override
-        public List<String> findRolesByLoginId(String loginId) {
-            return List.of();
-        }
-
+    /** findAllResources 만 돌려주는 고정 매핑 스텁(SPI 포트). */
+    private record StubResourceMetadataProvider(List<Resource> resources) implements ResourceMetadataProvider {
         @Override
         public List<Resource> findAllResources() {
             return resources;
-        }
-
-        @Override
-        public List<Menu> findMenusByRoles(List<String> roles) {
-            return List.of();
         }
     }
 }

@@ -1,29 +1,32 @@
 package com.company.framework.security.rbac.core;
 
 import com.company.framework.security.rbac.domain.Resource;
-import com.company.framework.security.rbac.mapper.SecurityMapper;
+import com.company.framework.security.rbac.spi.ResourceMetadataProvider;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.util.AntPathMatcher;
 
 /**
- * URL-권한 매핑을 DB 에서 로딩해 메모리에 캐시한다.
+ * URL-권한 매핑을 영속 포트({@link ResourceMetadataProvider})에서 로딩해 메모리에 캐시한다.
  * 운영에서 권한 변경 시 reload() 호출(관리자 API/스케줄러)로 무중단 반영.
+ *
+ * <p>특정 영속 기술에 결합되지 않도록 MyBatis 매퍼가 아닌 {@link ResourceMetadataProvider} 포트에 의존한다.
+ * 구현은 어댑터 모듈(예: {@code framework-security-rbac-mybatis})이 제공한다.
  */
 public final class SecurityMetadataService {
 
-    private final SecurityMapper securityMapper;
+    private final ResourceMetadataProvider resourceProvider;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
     private final AtomicReference<List<Resource>> cache = new AtomicReference<>(List.of());
 
-    public SecurityMetadataService(SecurityMapper securityMapper) {
-        this.securityMapper = securityMapper;
+    public SecurityMetadataService(ResourceMetadataProvider resourceProvider) {
+        this.resourceProvider = resourceProvider;
         reload();
     }
 
     public void reload() {
         try {
-            cache.set(securityMapper.findAllResources());
+            cache.set(resourceProvider.findAllResources());
         } catch (Exception e) {
             // 기동 시 테이블 미생성/DB 미연결 등은 빈 캐시로 시작하고 경고만 남긴다.
             org.slf4j.LoggerFactory.getLogger(SecurityMetadataService.class)

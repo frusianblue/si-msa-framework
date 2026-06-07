@@ -1,14 +1,21 @@
 dependencies {
     api project(':framework:framework-core')
-    api project(':framework:framework-mybatis')   // RBAC/메뉴 DB 조회용
     api 'org.springframework.boot:spring-boot-starter-security'
     // JWT (jjwt)
     api 'io.jsonwebtoken:jjwt-api:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    // 자체 JDBC 저장소(JdbcTokenStore/JdbcPasswordHistoryStore/JdbcConcurrentSessionService)의 컴파일용.
+    // 보안-영속 결합 분리: host 앱이 jdbc 백엔드(token-store/…=jdbc)를 쓸 때만 spring-boot-starter-jdbc 를 제공한다
+    //   → 인증만 쓰는 서비스엔 spring-jdbc 가 없어 JDBC 저장소 설정(@ConditionalOnClass(JdbcTemplate))이 백오프 = DataSource 불필요.
+    // (framework-lock 의 redis/jdbc 백엔드 compileOnly 패턴과 동일. RBAC↔MyBatis 결합은 framework-security-rbac-mybatis 어댑터로 분리.)
+    compileOnly 'org.springframework.boot:spring-boot-starter-jdbc'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    // ⚠️ compileOnly 는 test 클래스패스로 전이되지 않는다 — JDBC 저장소/오토컨피그 테스트가 JdbcTemplate 을 쓰면 재선언 필요.
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    testRuntimeOnly 'com.h2database:h2'
 }

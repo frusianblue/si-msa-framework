@@ -1,0 +1,33 @@
+# deploy/argocd/apps/si-msa-prod.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# prod Application — 단일 진실 = git(master) 의 deploy/k8s/overlays/prod.
+#   targetRevision: master  → `master` 머지 = 운영 즉시반영(스펙 §1).
+#   destination: kind-svc(서비스 클러스터, 리허설). 실 prod 는 그 클러스터 이름으로 교체.
+#   syncPolicy: automated + selfHeal + prune  → 드리프트 자동교정·git 에 없는 리소스 정리.
+#
+# ⚠️ prod overlay 의 이미지 태그는 sentinel `__GITSHA__`(폐 가변태그). promote(4단계)가
+#    `kustomize edit set image .../<svc>=<harbor>/si-msa/<svc>:<sha>` 후 git commit/push → 여기로 sync.
+#    promote 전엔 `:__GITSHA__` 가 없어 ImagePullBackOff = **fail-loud(의도)**. Harbor 도 4단계.
+#    즉 3단계 검증 = "GitOps reconcile 로 매니페스트가 kind-svc 에 적용되는가"까지(파드 green 은 4~5단계).
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: si-msa-prod
+  namespace: argocd
+spec:
+  project: si-msa
+  source:
+    repoURL: https://github.com/frusianblue/si-msa-framework.git
+    targetRevision: master
+    path: deploy/k8s/overlays/prod
+  destination:
+    name: kind-svc
+    namespace: si-msa
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

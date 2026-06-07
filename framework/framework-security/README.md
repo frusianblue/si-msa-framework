@@ -3,12 +3,14 @@
 인증/인가 **[코어]**. JWT 무상태 인증·DB 기반 RBAC(동적 인가)·메뉴 관리·비밀번호 정책·로그인 잠금·동시세션 제어를 제공하고, MFA·소셜·SAML 의 토대(자체 JWT 발급)가 된다.
 
 ## 켜는 법
-`framework-core`/`framework-mybatis` 위 [코어] 모듈. 인증이 필요한 서비스가 의존하면 적용된다.
+`framework-core` 위 [코어] 모듈(인증만 강제 — `framework-mybatis`/DataSource 불필요). 인증이 필요한 서비스가 의존하면 적용된다.
+> **RBAC(동적 인가/메뉴)는 별도 어댑터로 분리됐다** — DB 동적 인가/메뉴를 쓰려면 `framework-security-rbac-mybatis` 의존 한 줄 추가
+> (보안-영속 결합 분리: 코어는 더 이상 MyBatis/DataSource 를 강제하지 않는다). 자세히는 [`../framework-security-rbac-mybatis/README.md`](../framework-security-rbac-mybatis/README.md).
 ```yaml
 framework:
   security:
     enabled: true
-    dynamic-authorization: true   # DB 기반 동적 인가(DynamicAuthorizationManager)
+    dynamic-authorization: true   # DB 기반 동적 인가(DynamicAuthorizationManager) — framework-security-rbac-mybatis 어댑터 필요(없으면 부팅 fail-fast)
     menu: true                    # 메뉴-권한 관리 API
     jwt:
       # secret/만료 등 — JwtSecretSafetyGuard 가 약한 키 기동 차단
@@ -24,6 +26,7 @@ framework:
       enabled: false              # 중복 로그인 제어
 ```
 > 멀티 인스턴스(replicas≥2)는 `token-store.type` / `login-attempt.type` 을 `redis`(또는 `jdbc`)로 — `memory` 는 인스턴스별이라 잠금 우회 가능.
+> ℹ️ **jdbc 백엔드**(token-store/password.history/concurrent-session `type=jdbc`)는 host 앱이 `spring-boot-starter-jdbc`(+DataSource)를 제공할 때만 활성화된다 — 보안-영속 결합 분리로 코어는 `spring-jdbc` 를 `compileOnly` 로만 둔다(`@ConditionalOnClass(JdbcTemplate)` 가드). `framework-mybatis`/`framework-datasource` 를 쓰는 서비스는 이미 충족.
 
 ## 쓰는 법
 
@@ -139,6 +142,10 @@ curl http://localhost:8081/api/v1/admin/menus -b cookies.txt
 
 ## 끄는 법
 `framework.security.enabled: false` 또는 의존성 미포함. 개발 우회는 프로파일 `local,local-noauth`(`dev-auth`) — **운영 금지**(`DevAuthSafetyGuard` 가 prod 차단).
+
+**RBAC(동적 인가/메뉴)만 끄기** — `dynamic-authorization: false`(+ `menu: false`). 이러면 코어는 RBAC 빈을 만들지 않고
+보안 체인은 `authenticated()` 로만 동작한다 → `framework-security-rbac-mybatis`/DataSource/MyBatis 없이 인증만으로 부팅.
+(인증만 쓰는 데모/위임 서비스의 기본 형태.)
 
 ## 덮어쓰기(프로젝트 커스텀)
 `Authenticator`·`PasswordHistoryStore`·`ConcurrentSessionService`·`MfaGate` 등 SPI 빈을 등록하면 기본 구현이 양보한다(`@ConditionalOnMissingBean`).

@@ -13,23 +13,11 @@ spring:
     virtual:
       enabled: true
 
-  # framework-security 는 framework-mybatis 전이 의존 → SqlSessionFactory 용 DataSource 필수.
-  # 데모는 외부 설치 0 = H2 인메모리(빈 스키마). 인증기는 인메모리라 DB 행이 필요 없다.
-  datasource:
-    # INIT=RUNSCRIPT: DB 최초 연결 시 빈 rbac 스키마(행 0)를 만들어, framework-security 의
-    #   SecurityMetadataService.reload() 가 비어 있는 테이블을 깔끔히 0행 조회하게 한다(시끄러운 WARN 제거).
-    #   dynamic-authorization=false 라 이 캐시는 미사용 — 순전히 부팅 로그 위생용.
-    url: "jdbc:h2:mem:authtypes;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;INIT=RUNSCRIPT FROM 'classpath:db/rbac-empty-schema.sql'"
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-  # 데모는 앱 테이블이 없으므로 Flyway 끔.
+  # DB 없음 — 보안-영속 결합 분리 이후 framework-security 가 mybatis/spring-jdbc 를 전이로 끌어오지 않는다.
+  #   인증기는 인메모리(BCrypt)이고 dynamic-authorization=false 라 RBAC DB 조회가 없으므로
+  #   DataSourceAutoConfiguration 이 활성화되지 않는다(H2/datasource 설정 불필요).
   flyway:
     enabled: false
-
-# framework-security 의 rbac SecurityMapper.xml(전이 jar 내부) 을 찾도록.
-mybatis:
-  mapper-locations: classpath*:mapper/**/*.xml
 
 framework:
   security:

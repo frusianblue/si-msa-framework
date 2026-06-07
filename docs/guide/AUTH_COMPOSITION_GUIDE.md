@@ -28,6 +28,10 @@
 | **A. 자체 회원 + 토큰** | 우리 DB 회원이 로그인 → 우리가 JWT 발급 | `framework-security`(코어) | 자체 회원제 서비스 | ✅ |
 | **B. 외부 위임** | 외부 IdP(소셜/SAML)가 신원확인 → **우리가 자체 JWT 발급** | `framework-oauth-client`(소셜/OIDC) / `framework-saml-sp`(SAML) + security | B2C 간편가입, 공공/대기업 SSO | ✅ |
 | **C. 중앙 토큰 발급(OP)** | 중앙 인가서버가 그룹사/MSA 전체에 토큰 발급, 각 서비스는 검증만 | `services/auth-server`(OP) + 서비스 `framework.security.resource-server` | 그룹사 통합, 대규모 MSA | ✅ |
+
+> **RBAC(동적 인가/메뉴)는 별도 어댑터** — `framework.security.dynamic-authorization=true`(기본) 또는 `menu=true` 로 **DB 기반 RBAC** 를 쓰려면
+> `framework-security-rbac-mybatis` 의존 한 줄을 추가한다(코어는 인증만 강제 — MyBatis/DataSource 비강제). 누락 시 부팅 fail-fast.
+> 인증만 쓰는 데모/위임 서비스는 `dynamic-authorization=false`(+`menu=false`) → 어댑터/DataSource 불필요. (보안-영속 결합 분리, 2026-06-07)
 | **D. 서버 세션 기반** | 서버 HttpSession 으로 상태 유지(쿠키 세션ID, 무토큰) | `framework.security.session.mode=session`(코어) · 멀티 인스턴스면 `framework-session`(Redis) 추가 | 레거시 호환·SSR·관리자 콘솔 | ✅ (단일 인스턴스는 코어만, 클러스터는 `framework-session`) |
 
 > A/B/C 는 모두 **최종적으로 우리 JWT** 로 수렴한다(외부는 신원확인까지, 발급은 우리). 그래서 B/C 를 골라도 다운스트림 인가(RBAC)·MFA 는 동일하게 얹힌다. 상세: [`framework-security/README.md`](../../framework/framework-security/README.md), 토큰 검증 자세 [`../reference/TOKEN_VERIFICATION_GUIDE.md`](../reference/TOKEN_VERIFICATION_GUIDE.md).

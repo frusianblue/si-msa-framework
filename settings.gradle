@@ -4,6 +4,7 @@ rootProject.name = 'si-msa-framework'
 include 'framework:framework-core'
 include 'framework:framework-mybatis'
 include 'framework:framework-security'
+include 'framework:framework-security-rbac-mybatis'   // RBAC 영속의 MyBatis 어댑터: 동적 인가/메뉴(RBAC)를 DB(MyBatis)로 쓰는 서비스만 의존. 코어(framework-security)는 인증만 강제.
 include 'framework:framework-openapi'      // 선택형: API 문서 필요한 프로젝트만 의존 추가
 include 'framework:framework-redis'        // 선택형: Redis TokenStore
 include 'framework:framework-session'      // 선택형: 서버 세션 기반 인증(mode=session)에서 HttpSession 을 Redis 로 외부화(클러스터 세션). framework-redis 의 '세션 버전'

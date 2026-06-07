@@ -42,6 +42,7 @@
 | 모듈 | 핵심 기능 | 전제 | 함께 | 핵심 토글 |
 |---|---|---|---|---|
 | **framework-security** [코어] | JWT 무상태 인증·TokenStore·**DB기반 RBAC(동적 인가)**·메뉴관리·비번정책(강도/**만료/이력**)·로그인잠금·**동시세션 제어** | core | redis·audit·mfa·oauth-client·saml-sp·idempotency | `framework.security.*`, `...password.{expiry,history}.enabled`, `...concurrent-session.enabled` |
+| **framework-security-rbac-mybatis** [선택] | RBAC 영속의 **MyBatis 어댑터** — 코어 RBAC 포트(`ResourceMetadataProvider`/`MenuProvider`) 구현 + 감사 브리지(`@Primary CurrentUserProvider`). 코어는 인증만 강제(MyBatis/DataSource 비강제) → DB 동적 인가/메뉴 쓰는 서비스만 의존 한 줄(없으면 `dynamic-authorization=true` 시 부팅 fail-fast) | security, mybatis | — | (코어 토글) `framework.security.dynamic-authorization`, `...menu` |
 | **framework-redis** [선택] | Redis 기반 TokenStore / LoginAttempt | security | 멀티 인스턴스 인증 | `framework.security.token-store.type=redis` 등 |
 | **framework-session** [선택] | 서버 세션 모드의 **Redis 세션 클러스터링**(Spring Session). 세션 모드 전환 자체는 코어(`security.session.mode=session`); 이 모듈은 멀티 인스턴스에서 세션 공유만 담당 | security(+spring-session-data-redis) | 세션 모드 멀티 인스턴스 | `framework.security.session.mode=session` + 모듈 추가(`framework.session.enabled` 기본 on) |
 | **framework-audit** [선택] | 접속/감사 로그 표준 **DB 적재·조회** + Kafka 싱크 | core(+mybatis) | messaging(kafka 싱크 시) | `framework.audit.enabled` + `store.type=logging\|jdbc\|kafka` |

@@ -27,15 +27,16 @@ plugins {
 group = 'com.example'
 
 dependencies {
-    // framework-security 가 framework-core + framework-mybatis(SqlSessionFactory) + security starter + jjwt 를 전이로 가져온다.
+    // framework-security 가 framework-core + security starter + jjwt 를 전이로 가져온다.
+    // (보안-영속 결합 분리 이후 mybatis/spring-jdbc 는 전이되지 않음 → DataSource 불필요.)
     implementation project(':framework:framework-security')
 
     // (T1 멀티팟 세션 외부화 체감 시 주석 해제 — Spring Session Redis 로 HttpSession 공유)
     // implementation project(':framework:framework-session')
 
-    // framework-security 는 framework-mybatis 전이 의존 → SqlSessionFactory 용 DataSource 가 반드시 필요하다.
-    // 데모는 외부 설치 0 = H2 인메모리(빈 스키마). rbac 조회는 dynamic-authorization=false 로 끈다.
-    runtimeOnly 'com.h2database:h2'
+    // DB 없음 — 데모 인증기는 인메모리(BCrypt), dynamic-authorization=false 로 RBAC 조회를 끄므로
+    // DataSourceAutoConfiguration 이 활성화되지 않는다(H2 조차 불필요). RBAC DB 비교(T-trust 등) 트랙을
+    // 추가할 땐 framework-security-rbac-mybatis + DB 드라이버를 그 프로파일에만 더한다.
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'

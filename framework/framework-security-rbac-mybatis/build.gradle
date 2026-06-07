@@ -1,0 +1,19 @@
+// RBAC 영속의 MyBatis 어댑터. framework-security(코어)의 RBAC 포트(SPI)를 MyBatis 로 구현한다.
+//
+// 보안-영속 결합 분리: 코어는 인증(Authenticator)만 강제하고 RBAC(선택)·MyBatis(특정 기술)·DataSource(인프라)는
+// 강제하지 않는다. 동적 인가/메뉴(RBAC)를 DB(MyBatis)로 쓰는 서비스만 이 모듈을 의존성 한 줄로 추가한다.
+//   implementation project(':framework:framework-security-rbac-mybatis')
+// 인증만 쓰는 서비스(데모/위임)는 이 모듈을 의존하지 않으면 MyBatis/DataSource 가 전혀 필요 없다.
+//
+// 루트 build.gradle 이 java-library/dependency-management/spotless 를 자동 적용하므로 dependencies 만 선언.
+dependencies {
+    api project(':framework:framework-security')   // RBAC 포트(ResourceMetadataProvider/MenuProvider)·도메인(Resource/Menu)
+    api project(':framework:framework-mybatis')     // SecurityMapper(@Mapper) + CurrentUserProvider SPI(감사 브리지)
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+}

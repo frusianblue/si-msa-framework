@@ -1,0 +1,25 @@
+# deploy/argocd/projects/si-msa.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# AppProject — si-msa 운영(prod) GitOps. master=prod 레퍼런스.
+#   sourceRepos: 이 레포만. destinations: si-msa 네임스페이스(어느 클러스터든 — 리허설=kind-svc).
+#   리소스 화이트리스트는 전체 허용(프레임워크가 토폴로지/정책을 못박지 않는 원칙 — 운영팀이 좁힐 수 있음).
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: si-msa
+  namespace: argocd
+spec:
+  description: si-msa prod (GitOps, master=prod)
+  sourceRepos:
+    - https://github.com/frusianblue/si-msa-framework.git
+  destinations:
+    # 리허설=kind-svc. server '*' 로 두고 네임스페이스로 제한(name 해소 버전편차 회피).
+    - server: '*'
+      namespace: si-msa
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
