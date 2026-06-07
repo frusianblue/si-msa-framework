@@ -80,6 +80,13 @@ kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:909
 ```
 Prometheus Targets 화면에서 si-msa 서비스 4종의 `/actuator/prometheus` 가 UP 인지 확인.
 
+**JVM/Micrometer 대시보드(자동 적재).** Grafana 는 이 스택에 번들로 포함된다(별도 설치 불필요). 대시보드도 **수동 import 없이** sidecar 가 자동으로 끌어간다 — 차트 기본값 `grafana.sidecar.dashboards`(enabled / label `grafana_dashboard` / labelValue `"1"` / searchNamespace `ALL`). si-msa 자작 JVM 대시보드는 `deploy/k8s/observability/grafana-dashboard-jvm.yaml`(라벨 `grafana_dashboard: "1"` 단 ConfigMap, uid `si-msa-jvm`). 적용:
+```bash
+kubectl apply -f deploy/k8s/observability/grafana-dashboard-jvm.yaml
+# 또는 standalone-kind: bash deploy/k8s/standalone-kind/06-grafana-jvm-dashboard.sh   # + 4서비스 4/4 타깃 UP 정밀검증
+```
+적용 후 Grafana > 'si-msa' 폴더 > 'si-msa · JVM / Micrometer'. 상단 Service 드롭다운으로 gateway/auth-server/user-service/admin-service 선택. 패널은 표준 Micrometer 메트릭(`jvm_memory_*`/`jvm_gc_pause_*`/`jvm_threads_*`/`process_cpu_usage`/`http_server_requests_*`/`hikaricp_connections_*`/`logback_events_total`)만 사용.
+
 ---
 
 ## 3. ingress-nginx  (선택 — 외부 노출, port-forward 대체)

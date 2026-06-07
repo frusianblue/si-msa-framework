@@ -41,6 +41,7 @@ chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind && kind --version
 | `smoke-authcode-pkce.sh` | **검증**: 실클러스터 authorization_code+PKCE+`DbAuthenticator` 전체 흐름(폼로그인→code→토큰→id_token sub=tester→jwks). `SmokeClientDbAuthFlowTest` 의 실클러스터 등가물 |
 | `04-metrics-hpa.sh` | **S4-1**: metrics-server 설치(kind `--kubelet-insecure-tls`) → `kubectl top` → 일회용 HPA 로 metrics→HPA 파이프라인 확인(`--load` 스케일 관찰·`--keep` 유지) |
 | `05-prometheus-stack.sh` | **S4-2**: kube-prometheus-stack(Helm) 설치 → ServiceMonitor 적용 → Prometheus `si-msa-services` 타깃 UP 스모크(`--grafana` 접속정보) |
+| `06-grafana-jvm-dashboard.sh` | **S5(관측 마감)**: 자작 JVM/Micrometer 대시보드 ConfigMap(`../observability/grafana-dashboard-jvm.yaml`) 적용(Grafana sidecar 자동 import) + Prometheus 4서비스 **4/4 타깃 UP 정밀 검증**(`--grafana` 접속정보). 05 는 UP≥1 에서 멈추지만 06 은 4/4 를 요구 |
 | `certs.d/harbor.local/hosts.toml` | 노드의 `harbor.local` 해소 → `harbor-auth-reg:5000`(02 용) |
 | `00-cleanup.sh` | docker-desktop kind 잔여 디버그 파드 정리 + (옵션)standalone teardown |
 
@@ -74,6 +75,10 @@ bash deploy/k8s/standalone-kind/04-metrics-hpa.sh
 # S4-2: kube-prometheus-stack + ServiceMonitor 스크랩 스모크
 bash deploy/k8s/standalone-kind/05-prometheus-stack.sh            # --grafana 로 접속정보
 #   그린: si-msa-services 타깃 UP → 관측 파이프라인 정상.
+
+# S5(관측 마감): JVM 대시보드 자동적재 + 4/4 타깃 정밀검증
+bash deploy/k8s/standalone-kind/06-grafana-jvm-dashboard.sh       # --grafana 로 접속정보
+#   그린: JVM 대시보드 import + Prometheus 4서비스 4/4 UP.
 
 # 끝나면 정리
 bash deploy/k8s/standalone-kind/00-cleanup.sh --teardown-sanity

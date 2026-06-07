@@ -17,7 +17,7 @@
 | **S3 dev overlay apply** | ⛔ **Docker Desktop kind 에선 BLOCKED(노드 pull 구조적 한계) · standalone kind 트랙으로 전환** | 매니페스트는 완성·정적검증 통과(DB/admindb/파일저장/pull-secret). 그러나 **노드 containerd 가 모든 pull 을 내장 미러(`registry-mirror:1273`)로 가로채 `harbor.local` 직접 pull 이 500** → 외부 레지스트리 pull *실증 불가*(인증은 정상이었음). `:dev`(실재 태그)로도 동일. **결정: 레지스트리 pull 검증은 standalone kind 로(§S3').** dev overlay 핀은 stale `7e935d6`→`:dev` 로 정정(sha 핀은 CI 몫). |
 | **S3' standalone kind 트랙** | ✅ **본체 그린(6파드 Running) · AS 토큰 1줄만 잔여** | ②무인증 pull ✅ → ③인증 pull ✅(결정 B) → ④ `03-dev-overlay-up.sh` 실행: 빌드→push→`apply -k overlays/dev`→**6파드 1/1 Running RESTARTS 0** + authdb/sidb/admindb ✅. 결함3건 수정(default SA 레이스→imagePullSecrets 파드주입 / prod 프로파일 시크릿가드 차단→통과값 / gateway 생존단서). **잔여**: client_credentials access_token — wrong-secret→401 로 인증 메커니즘 정상 확인, 깨끗한 port-forward 로 1줄 확인만 남음(다음 세션 첫 항목). |
 | S4 애드온 | 대기 | metrics-server/HPA → kube-prometheus-stack → (ingress-nginx 는 S2 에서 선설치됨). |
-| S5 prod-rehearsal overlay | 대기 | prod 토폴로지 + 로컬 대역. |
+| S5 prod-rehearsal overlay | 🟡 **부분(관측 마감 ✅)** | **JVM 대시보드 자동적재(`observability/grafana-dashboard-jvm.yaml`)+Prometheus 4/4 타깃 정밀검증(`06-...sh`) 완료.** prod overlay live 리허설=S7 흡수(외부 DB/issuer 미사용 → live apply 무의미, dry-run 렌더검증+SHA 승격은 S7 자동화 대상). 실부하 HPA 스케일업=최종 수용시험 연기. |
 | S6 상위 흐름 스모크 | 대기 | OIDC RP·이중 발급기 우선. |
 | S7 Jenkins | 대기 | 자동화 마지막. |
 
@@ -120,9 +120,9 @@ containerdConfigPatches:
 > ⚠️ **ArgoCD/GitOps 로도 이 문제는 안 풀린다** — CD 는 매니페스트 apply 만, 이미지 pull 은 언제나 노드 containerd(PITFALLS §9).
 
 ### S4 애드온 — metrics-server(HPA) → kube-prometheus-stack(SM). ingress-nginx 는 S2 에서 설치됨.
-### S5 prod-rehearsal overlay — prod 토폴로지 + 로컬 대역(§2). HPA·TLS ingress·공개 issuer 까지.
+### S5 관측 마감 ✅ — JVM Grafana 대시보드 자동적재 + Prometheus 4/4 타깃 정밀검증(`06-grafana-jvm-dashboard.sh`). prod overlay live 리허설=S7 흡수, 실부하 HPA 스케일업=최종 수용시험.
 ### S6 상위 흐름 스모크 — OIDC RP·이중 발급기 우선.
-### S7 Jenkins — build→양태그→Harbor push→`kustomize edit set image`→`apply`.
+### S7 Jenkins — build→양태그→Harbor push→`kustomize edit set image`→(dry-run 렌더검증)→`apply`.
 
 ## 4. 산출물 인벤토리 (이번까지)
 - `deploy/k8s/components/postgres-persistent/{postgres.yaml,kustomization.yaml}` (S1 ✅)

@@ -1,0 +1,1196 @@
+# deploy/k8s/observability/grafana-dashboard-jvm.yaml
+# si-msa 자작 JVM/Micrometer Grafana 대시보드 — kube-prometheus-stack Grafana sidecar 가 자동 적재.
+#   전제(검증됨, kube-prometheus-stack values): grafana.sidecar.dashboards
+#     enabled=true · label=grafana_dashboard · labelValue="1" · searchNamespace=ALL
+#   → 아래 라벨 grafana_dashboard:"1" 만 달려 있으면 어느 네임스페이스에 두든 자동 import(수동 import 불필요, helm 변경 불필요).
+#   데이터소스 uid=prometheus(차트 기본값), 서비스 식별 라벨=service(Operator 가 ServiceMonitor 타깃에 주입).
+#   폴더 어노테이션 grafana_folder 는 sidecar.dashboards.folderAnnotation 기본키(미인식 시 General 폴더로 떨어짐 — 무해).
+#   적용:  kubectl apply -f deploy/k8s/observability/grafana-dashboard-jvm.yaml
+#         (또는 standalone-kind/06-grafana-jvm-dashboard.sh 가 대신 적용 + 4/4 타깃 검증)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-jvm
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: si-msa
+  annotations:
+    grafana_folder: "si-msa"
+data:
+  jvm-dashboard.json: |
+      {
+        "uid": "si-msa-jvm",
+        "title": "si-msa · JVM / Micrometer",
+        "tags": [
+          "si-msa",
+          "jvm",
+          "micrometer"
+        ],
+        "timezone": "browser",
+        "schemaVersion": 39,
+        "version": 1,
+        "editable": true,
+        "graphTooltip": 1,
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "templating": {
+          "list": [
+            {
+              "name": "service",
+              "type": "query",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "label": "Service",
+              "query": {
+                "query": "label_values(process_uptime_seconds{namespace=\"si-msa\"}, service)",
+                "refId": "service"
+              },
+              "definition": "label_values(process_uptime_seconds{namespace=\"si-msa\"}, service)",
+              "includeAll": true,
+              "multi": true,
+              "allValue": ".*",
+              "current": {
+                "selected": true,
+                "text": [
+                  "All"
+                ],
+                "value": [
+                  "$__all"
+                ]
+              },
+              "refresh": 2,
+              "sort": 1
+            }
+          ]
+        },
+        "annotations": {
+          "list": []
+        },
+        "panels": [
+          {
+            "id": 1,
+            "type": "row",
+            "title": "개요 (Overview)",
+            "collapsed": false,
+            "gridPos": {
+              "x": 0,
+              "y": 0,
+              "w": 24,
+              "h": 1
+            },
+            "panels": []
+          },
+          {
+            "id": 2,
+            "type": "stat",
+            "title": "Uptime",
+            "description": "프로세스 가동시간",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 1,
+              "w": 6,
+              "h": 4
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "reduceOptions": {
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": "",
+                "values": false
+              },
+              "graphMode": "area",
+              "colorMode": "value",
+              "justifyMode": "auto",
+              "textMode": "auto"
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "process_uptime_seconds{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "type": "stat",
+            "title": "Process CPU",
+            "description": "JVM 프로세스 CPU 사용률",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 6,
+              "y": 1,
+              "w": 6,
+              "h": 4
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 60
+                    },
+                    {
+                      "color": "red",
+                      "value": 85
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "reduceOptions": {
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": "",
+                "values": false
+              },
+              "graphMode": "area",
+              "colorMode": "value",
+              "justifyMode": "auto",
+              "textMode": "auto"
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "process_cpu_usage{namespace=\"si-msa\", service=~\"$service\"} * 100",
+                "legendFormat": "{{service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "type": "stat",
+            "title": "Heap 사용률",
+            "description": "heap used / heap max",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 1,
+              "w": 6,
+              "h": 4
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 70
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "reduceOptions": {
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": "",
+                "values": false
+              },
+              "graphMode": "area",
+              "colorMode": "value",
+              "justifyMode": "auto",
+              "textMode": "auto"
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "sum by (service) (jvm_memory_used_bytes{namespace=\"si-msa\", service=~\"$service\", area=\"heap\"}) / sum by (service) (jvm_memory_max_bytes{namespace=\"si-msa\", service=~\"$service\", area=\"heap\"}) * 100",
+                "legendFormat": "{{service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 5,
+            "type": "stat",
+            "title": "Live Threads",
+            "description": "현재 살아있는 스레드 수",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 18,
+              "y": 1,
+              "w": 6,
+              "h": 4
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "reduceOptions": {
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": "",
+                "values": false
+              },
+              "graphMode": "area",
+              "colorMode": "value",
+              "justifyMode": "auto",
+              "textMode": "auto"
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "jvm_threads_live_threads{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 6,
+            "type": "row",
+            "title": "메모리 (Memory)",
+            "collapsed": false,
+            "gridPos": {
+              "x": 0,
+              "y": 5,
+              "w": 24,
+              "h": 1
+            },
+            "panels": []
+          },
+          {
+            "id": 7,
+            "type": "timeseries",
+            "title": "Heap (used / committed / max)",
+            "description": "힙 영역 used/committed/max",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 6,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "bytes",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "sum by (service) (jvm_memory_used_bytes{namespace=\"si-msa\", service=~\"$service\", area=\"heap\"})",
+                "legendFormat": "{{service}} used",
+                "range": true,
+                "refId": "A"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "sum by (service) (jvm_memory_committed_bytes{namespace=\"si-msa\", service=~\"$service\", area=\"heap\"})",
+                "legendFormat": "{{service}} committed",
+                "range": true,
+                "refId": "B"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "sum by (service) (jvm_memory_max_bytes{namespace=\"si-msa\", service=~\"$service\", area=\"heap\"})",
+                "legendFormat": "{{service}} max",
+                "range": true,
+                "refId": "C"
+              }
+            ]
+          },
+          {
+            "id": 8,
+            "type": "timeseries",
+            "title": "Non-Heap used (by pool)",
+            "description": "Metaspace/CodeCache 등 non-heap 풀별 사용량",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 6,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "bytes",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "jvm_memory_used_bytes{namespace=\"si-msa\", service=~\"$service\", area=\"nonheap\"}",
+                "legendFormat": "{{service}} {{id}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 9,
+            "type": "timeseries",
+            "title": "Buffer Pool used (direct/mapped)",
+            "description": "NIO 버퍼 풀 사용량",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 14,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "bytes",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "jvm_buffer_memory_used_bytes{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} {{id}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 10,
+            "type": "timeseries",
+            "title": "Classes loaded",
+            "description": "로드된 클래스 수",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 14,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "jvm_classes_loaded_classes{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 11,
+            "type": "row",
+            "title": "GC",
+            "collapsed": false,
+            "gridPos": {
+              "x": 0,
+              "y": 22,
+              "w": 24,
+              "h": 1
+            },
+            "panels": []
+          },
+          {
+            "id": 12,
+            "type": "timeseries",
+            "title": "GC pause — 평균 시간/이벤트",
+            "description": "GC 이벤트당 평균 정지시간(5m rate)",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 23,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "rate(jvm_gc_pause_seconds_sum{namespace=\"si-msa\", service=~\"$service\"}[5m]) / clamp_min(rate(jvm_gc_pause_seconds_count{namespace=\"si-msa\", service=~\"$service\"}[5m]), 1e-9)",
+                "legendFormat": "{{service}} {{action}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 13,
+            "type": "timeseries",
+            "title": "GC pause — 빈도(회/초)",
+            "description": "초당 GC 정지 발생 빈도(5m rate)",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 23,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ops",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "rate(jvm_gc_pause_seconds_count{namespace=\"si-msa\", service=~\"$service\"}[5m])",
+                "legendFormat": "{{service}} {{action}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 14,
+            "type": "row",
+            "title": "스레드 (Threads)",
+            "collapsed": false,
+            "gridPos": {
+              "x": 0,
+              "y": 31,
+              "w": 24,
+              "h": 1
+            },
+            "panels": []
+          },
+          {
+            "id": 15,
+            "type": "timeseries",
+            "title": "Threads (live / daemon / peak)",
+            "description": "스레드 수 추이",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 32,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "jvm_threads_live_threads{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} live",
+                "range": true,
+                "refId": "A"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "jvm_threads_daemon_threads{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} daemon",
+                "range": true,
+                "refId": "B"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "jvm_threads_peak_threads{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} peak",
+                "range": true,
+                "refId": "C"
+              }
+            ]
+          },
+          {
+            "id": 16,
+            "type": "timeseries",
+            "title": "Thread states",
+            "description": "상태별 스레드 수(runnable/blocked/waiting 등)",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 32,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "jvm_threads_states_threads{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} {{state}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 17,
+            "type": "row",
+            "title": "HTTP (Spring MVC / WebFlux)",
+            "collapsed": false,
+            "gridPos": {
+              "x": 0,
+              "y": 40,
+              "w": 24,
+              "h": 1
+            },
+            "panels": []
+          },
+          {
+            "id": 18,
+            "type": "timeseries",
+            "title": "Request rate (by status)",
+            "description": "상태코드별 초당 요청 수(5m rate). gateway 는 spring_cloud_gateway_* 도 별도 노출.",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 41,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "sum by (service, status) (rate(http_server_requests_seconds_count{namespace=\"si-msa\", service=~\"$service\"}[5m]))",
+                "legendFormat": "{{service}} {{status}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 19,
+            "type": "timeseries",
+            "title": "평균 응답시간 (avg latency)",
+            "description": "URI별 평균 응답시간(5m rate). 히스토그램 버킷 미노출 환경에서도 동작하도록 sum/count 평균 사용.",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 41,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "sum by (service, uri) (rate(http_server_requests_seconds_sum{namespace=\"si-msa\", service=~\"$service\"}[5m])) / clamp_min(sum by (service, uri) (rate(http_server_requests_seconds_count{namespace=\"si-msa\", service=~\"$service\"}[5m])), 1e-9)",
+                "legendFormat": "{{service}} {{uri}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 20,
+            "type": "row",
+            "title": "DB 커넥션 풀 (HikariCP)",
+            "collapsed": false,
+            "gridPos": {
+              "x": 0,
+              "y": 49,
+              "w": 24,
+              "h": 1
+            },
+            "panels": []
+          },
+          {
+            "id": 21,
+            "type": "timeseries",
+            "title": "Connections (active / idle / pending)",
+            "description": "HikariCP 커넥션 상태. gateway 는 DB 없으면 메트릭이 비어있을 수 있음(정상).",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 50,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "hikaricp_connections_active{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} active",
+                "range": true,
+                "refId": "A"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "hikaricp_connections_idle{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} idle",
+                "range": true,
+                "refId": "B"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "hikaricp_connections_pending{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} pending",
+                "range": true,
+                "refId": "C"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "hikaricp_connections_max{namespace=\"si-msa\", service=~\"$service\"}",
+                "legendFormat": "{{service}} max",
+                "range": true,
+                "refId": "D"
+              }
+            ]
+          },
+          {
+            "id": 22,
+            "type": "timeseries",
+            "title": "로그 이벤트 rate (by level)",
+            "description": "레벨별 초당 로그 이벤트(error 급증 감시)",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 50,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ops",
+                "custom": {
+                  "drawStyle": "line",
+                  "lineWidth": 1,
+                  "fillOpacity": 10,
+                  "showPoints": "never",
+                  "spanNulls": true
+                },
+                "color": {
+                  "mode": "palette-classic"
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "bottom",
+                "calcs": [
+                  "lastNotNull",
+                  "max"
+                ]
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            },
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "editorMode": "code",
+                "expr": "sum by (service, level) (rate(logback_events_total{namespace=\"si-msa\", service=~\"$service\"}[5m]))",
+                "legendFormat": "{{service}} {{level}}",
+                "range": true,
+                "refId": "A"
+              }
+            ]
+          }
+        ]
+      }
