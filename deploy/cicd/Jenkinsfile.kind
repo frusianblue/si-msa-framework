@@ -8,6 +8,16 @@
 //   배포: pin-image-tag.sh 로 overlay sentinel(__GITSHA__)→:<git-sha> 주입(워크스페이스만, 되커밋 X)
 //         → kubectl apply -k overlays/dev (선언형 sha 핀) → rollout. ※ kubectl set image 명령형 덮어쓰기 제거.
 //
+// ★ Kaniko 다중빌드 = 컨테이너당 executor 1회(서비스별 kaniko 컨테이너 분리) — 2026-06-07 세션6.
+//   왜: kaniko executor 는 빌드 중 **자기 컨테이너의 루트FS(/)를 대상 이미지로 덮어쓴다** → /busybox/sh 클로버.
+//       한 컨테이너에서 2번째 sh 스텝이 "Process exited immediately after creation" 으로 실패(직전 세션 진단).
+//   해법: kaniko-<svc> 컨테이너 4개를 podTemplate 에 두고 각 container("kaniko-<svc>") 블록에서 executor 1회.
+//         컨테이너가 다르면 셸도 매번 새것 → 클로버-재사용 자체가 발생 안 함.
+//   순차(★병렬 금지): Dockerfile.build builder 스테이지(4 bootJar 한 번에)는 SERVICE 무관 →
+//         첫 빌드만 풀 Gradle, 나머지 3개는 --cache-repo(레지스트리)에서 builder 레이어 재사용(런타임 스테이지만).
+//         병렬이면 4개가 동시에 cache-miss → Gradle 풀빌드 4회(느림+Docker Desktop 메모리 급증). 그래서 순차.
+//   (대안: 단일 kaniko + --cleanup + 단일 sh 루프 = 컨테이너 1개로 가볍지만 --cleanup 안정성 편차 → 미채택.)
+//
 // 전제(09-jenkins-install.sh 가 셋업):
 //   · SA jenkins-deployer (si-msa 배포 권한), 시크릿 harbor-push-cred(jenkins ns, dockerconfigjson)
 //   · Harbor 가 harbor.local 로 인-클러스터에서 push 가능(B안 ingress: CoreDNS→ingress-nginx ClusterIP:80)
@@ -20,13 +30,37 @@ pipeline {
   agent {
     kubernetes {
       defaultContainer 'jnlp'
+      // 서비스별 kaniko 컨테이너 4개(클로버 회피) + kubectl 1개.
+      //   YAML 에 인라인 템플릿이 없어 4개를 명시 나열한다(서비스 추가 시 컨테이너 + 빌드 루프 동시 갱신).
+      //   모든 kaniko 컨테이너가 워크스페이스(jnlp clone, 플러그인 자동 마운트) + harbor-push-cred 를 공유.
       yaml '''
 apiVersion: v1
 kind: Pod
 spec:
   serviceAccountName: jenkins-deployer
   containers:
-    - name: kaniko
+    - name: kaniko-gateway
+      image: gcr.io/kaniko-project/executor:debug
+      command: ["/busybox/cat"]
+      tty: true
+      volumeMounts:
+        - name: kaniko-docker
+          mountPath: /kaniko/.docker
+    - name: kaniko-auth-server
+      image: gcr.io/kaniko-project/executor:debug
+      command: ["/busybox/cat"]
+      tty: true
+      volumeMounts:
+        - name: kaniko-docker
+          mountPath: /kaniko/.docker
+    - name: kaniko-user-service
+      image: gcr.io/kaniko-project/executor:debug
+      command: ["/busybox/cat"]
+      tty: true
+      volumeMounts:
+        - name: kaniko-docker
+          mountPath: /kaniko/.docker
+    - name: kaniko-admin-service
       image: gcr.io/kaniko-project/executor:debug
       command: ["/busybox/cat"]
       tty: true
@@ -78,13 +112,15 @@ spec:
       }
     }
 
-    // 4개 서비스를 Kaniko 로 빌드 + **불변 :<sha> 단일 태그** 푸시(가변 :dev 폐기).
-    //   Dockerfile.build builder 스테이지는 SERVICE 무관 → --cache 로 4회 중 1회만 실제 Gradle 빌드 재사용.
-    stage('Build & Push (Kaniko)') {
+    // 4개 서비스를 **서비스별 kaniko 컨테이너에서 순차**로 빌드 + 불변 :<sha> 단일 태그 push.
+    //   각 container("kaniko-<svc>") 블록은 그 컨테이너로 exec → executor 1회 → 셸 클로버-재사용 없음.
+    //   첫 빌드만 풀 Gradle, 나머지는 --cache-repo 에서 builder 레이어 재사용(순차라 캐시가 선행 빌드를 본다).
+    stage('Build & Push (Kaniko, per-service container)') {
       steps {
-        container('kaniko') {
-          script {
-            ['gateway', 'auth-server', 'user-service', 'admin-service'].each { svc ->
+        script {
+          ['gateway', 'auth-server', 'user-service', 'admin-service'].each { svc ->
+            container("kaniko-${svc}") {
+              echo "── Kaniko build: ${svc} (container kaniko-${svc}) ──"
               sh """
                 /kaniko/executor \
                   --context=dir://${env.WORKSPACE} \
@@ -123,7 +159,7 @@ spec:
   }
 
   post {
-    success { echo "✅ CD 성공 — harbor.local/si-msa/<svc>:${GIT_SHA} 배포됨." }
+    success { echo "✅ CD 성공 — harbor.local/si-msa/<svc>:${GIT_SHA} 4서비스 배포됨." }
     failure { echo "❌ CD 실패 — 단계 로그 확인(Kaniko push 401/connection 또는 노드 pull Events)." }
   }
 }
