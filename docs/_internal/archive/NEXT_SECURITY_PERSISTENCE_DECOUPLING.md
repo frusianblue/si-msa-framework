@@ -1,6 +1,6 @@
 # NEXT_SECURITY_PERSISTENCE_DECOUPLING.md
 
-> **상태: 활성(ACTIVE) · 코드 작성 완료(2026-06-07, 미빌드 검증)** — **§6-1~§6-7 코드/문서 작성 완료**(spring-jdbc 결합까지 분리 → 인증 전용 데모 H2/DataSource 제거 포함). **잔여: 받는 쪽(Chae) 로컬 빌드/테스트 검증만**(Maven Central 차단 → 작성 환경 빌드 불가). 빌드 그린 확인 시 `docs/archive/` 로 이동(ARCHIVED 배너).
+> ⚠️ **ARCHIVED (2026-06-07 종료) — 완료·빌드 그린 검증됨.** #2 보안-영속 결합 분리: §6-1~§6-7 코드/문서 + spring-jdbc 결합 분리(compileOnly+`@ConditionalOnClass`) + 데모 H2/DataSource 제거까지 모두 반영, **받는 쪽 로컬 `./gradlew build` 그린 확인 완료**. 빌드 검증 중 발견된 회귀 1건(`framework-mfa` 가 `CurrentUserProvider` 를 security→mybatis 전이로 받던 것 → mfa 에 `framework-mybatis` 직접 선언)도 수정 반영. 아래는 착수~완료 기록(보존용).
 > 관련: `docs/_internal/AUTH_SUMMARY.md` §6(트랙 Pitfalls), `docs/guide/AUTH_COMPOSITION_GUIDE.md`,
 > `docs/guide/PITFALLS.md`(§ ConditionalOnMissingBean introspection / MapperScan annotationClass).
 

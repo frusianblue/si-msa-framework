@@ -170,9 +170,8 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
 > 세션 외부화 on/off 차이를 체감한다(`framework-session`/Spring Session Redis). 단일 파드=톰캣 `HttpSession`,
 > 외부화 안 하면 파드 전환 시 로그아웃 ← T1 핵심 체감. 외부화하면 `framework-session` 추가로 파드 무관 세션 유지.
 >
-> **이월(받는 쪽 1회)**: #2 보안-영속 결합 분리 코드/문서 ☑(이번 세션 완료) — 적용 후 로컬 빌드/테스트 그린만 확인하면 종료
-> (`apply.sh` 또는 패치, 기준 HEAD `e6b16cb`). 그린 시 [`planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md`](./planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md) → `docs/_internal/archive/`.
-> (T1 양쪽 8080·8081 curl 검증은 ☑ 완료 — 트랙진행 #4.)
+> **#2 보안-영속 결합 분리 = 완료(빌드 그린 검증됨, 2026-06-07)** — 계획서 [`archive/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md`](./archive/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md)(ARCHIVED) 로 이동.
+> (T1 양쪽 8080·8081 curl 검증 ☑ — 트랙진행 #4.)
 
 ### 먼저 처리
 1. ✅ **카탈로그 빌드 통일(완료)** — `examples/auth-types` 를 standalone → **루트 멀티프로젝트로 편입**.
@@ -180,9 +179,9 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
    → `project(':framework:..')` 로, 플러그인 버전 선언 제거(루트 상속). standalone `settings.gradle` 삭제.
    이제 `publishToMavenLocal` 불필요, repo 루트에서 `:examples:auth-types:bootRun` 으로 바로 실행.
    ⚠️ 예제는 jacocoAggregation/archtest 대상이 아님 — 루트 `build.gradle` 의 해당 목록엔 넣지 않았다.
-2. **보안-영속 결합 분리(리팩터)** — ✅ **코드 작성 완료(2026-06-07, 미빌드 검증)**. `planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md` §6-1~§6-7 ☑.
-   `framework-security` 의 MyBatis 결합(→어댑터 분리) + spring-jdbc 결합(→compileOnly+`@ConditionalOnClass` 가드)까지 분리 완료.
-   §6-7 데모 H2/DataSource 제거까지 반영(인증 전용 서비스는 DataSource 불필요). 잔여: 받는 쪽(Chae) 로컬 빌드/테스트 그린 확인만.
+2. ✅ **보안-영속 결합 분리(리팩터) — 완료(빌드 그린 검증, 2026-06-07)**. `archive/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md`(ARCHIVED).
+   `framework-security` 의 MyBatis 결합(→어댑터 `framework-security-rbac-mybatis`) + spring-jdbc 결합(→compileOnly+`@ConditionalOnClass` 가드) 분리,
+   데모 H2/DataSource 제거, fail-fast 가드. 빌드 검증서 회귀 1건(`framework-mfa` 의 `CurrentUserProvider` 전이 끊김) 발견·수정 후 `./gradlew build` 그린.
 3. **[결정됨 (a)] `session.cookie-name` 실배선** — 죽은 프로퍼티(§6)를 `server.servlet.session.cookie.name` 으로 연결해
    실제 쿠키 이름을 바꾼다(톰캣·Spring Session 동시 적용). framework-security 변경 → 문서 캐스케이드 동반. 우선순위: 8081 검증 → #2 뒤.
 
@@ -211,4 +210,9 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
   겹친 문서 3건(FRAMEWORK_MODULES·AUTH_SUMMARY·PITFALLS)은 3-way 머지로 양쪽 보존. **놓쳤던 stale 문서 2건(`auth-session-service`/`examples:auth-types` README 부팅메모) 수정**,
   §6 옛 known-issue 항목에 "무효화됨" 표시, 계획서 중복 체크 한 줄 정리. 빈 클론+`apply.sh`→검증 트리 바이트 일치·`git apply --3way` 클린 확인. 한방 적용 zip(overlay+patch+apply.sh+BASE_COMMIT) 산출.
   **→ 이번 세션 종료. 다음 세션 = 트랙진행 #5 T1 멀티팟 세션 외부화.** (#2 는 받는 쪽 빌드 그린 1회만 남음 — 그린 시 계획서 archive.)
+- 빌드 그린 확정(2026-06-07): 받는 쪽 로컬 `./gradlew build` 통과 = **#2 완전 종료**. 빌드 검증서 회귀 1건 발견·수정 —
+  `framework-mfa` 가 `CurrentUserProvider`(`com.company.framework.mybatis.support`)를 security→mybatis **전이**로 받고 있었는데
+  `api project(framework-mybatis)` 제거로 끊겨 `framework-mfa:compileJava` 실패 → mfa 에 `framework-mybatis` 직접 선언(`compileOnly`+test)으로 해소.
+  교훈(계획서 §6-2·PITFALLS 기록): **`api` 전이를 끊을 땐 그 전이 타입을 쓰는 소비처를 전수조사**해야 한다. 계획서 → `archive/` 이동(ARCHIVED).
+  **다음 세션 = T1 멀티팟 세션 외부화**(트랙진행 #5).
 
