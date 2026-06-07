@@ -97,9 +97,10 @@ ok "si-msa 4서비스 전부 UP: ${UP_LIST}"
 if [ "$DO_GRAFANA" = 1 ]; then
   note "3) Grafana 접속 정보"
   GP="$(K -n "$MON_NS" get secret "${RELEASE}-grafana" -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
-  echo "    port-forward:  kubectl -n ${MON_NS} port-forward svc/${RELEASE}-grafana 3000:80"
-  echo "    URL: http://localhost:3000   user: admin   pass: ${GP:-<secret ${RELEASE}-grafana / admin-password>}"
+  echo "  ▶ Grafana: http://grafana.local   user: admin   pass: ${GP:-<secret ${RELEASE}-grafana / admin-password>}"
+  echo "    (hosts: 127.0.0.1 grafana.local prometheus.local — 05 안내 참조)"
   echo "    대시보드: 'si-msa' 폴더 > 'si-msa · JVM / Micrometer' (uid=si-msa-jvm). 상단 Service 드롭다운으로 서비스 선택."
+  echo "    (대안) port-forward: kubectl -n ${MON_NS} port-forward svc/${RELEASE}-grafana 3000:80 → http://localhost:3000"
 fi
 
 printf '\033[32m\n🟢 S5 관측 마감 — JVM 대시보드 자동적재 + Prometheus 4/4 타깃 UP 실측\033[0m\n'

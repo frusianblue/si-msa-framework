@@ -8,39 +8,38 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**🟢 CI 1차 완주 근접 — 빌드/push 완전 그린, deploy 2종 결함 수정(2026-06-07 세션5–7, devops).** (세션5) **태그 전략 B**: 가변 `:dev`+명령형 `set image` 폐기 → 불변 git-sha 단일 태그 declarative 주입(sentinel `__GITSHA__`+`pin-image-tag.sh`). (세션6) **Kaniko 다중빌드**: 서비스별 kaniko 컨테이너 4개+순차 executor 1회. **→ 실잡에서 4서비스 전부 build→push 성공(Harbor `gateway/auth-server/user-service/admin-service:e46445c` + cache 17, 빌더 캐시 재사용 실증).** (세션7) **deploy 단계 2종 결함 수정**: ① `jenkins-deployer` 가 클러스터 스코프 `namespaces` patch 불가(`edit` 는 ns 한정) → **ClusterRole+Binding(namespaces get/patch, resourceNames=si-msa)** 추가. ② dev overlay 가 ServiceMonitor(operator CRD)를 그대로 apply → operator 미설치 클러스터에서 `no matches for kind "ServiceMonitor"` → **dev 도 local 처럼 SM `$patch:delete`**, 관측은 **05 가 base SM 직접 apply**(단일 소유자). 오프라인 검증: bash -n, kustomize patch 구조(7개·SM delete 포함), RBAC 6객체 파싱 PASS. **받는 쪽: jenkins-rbac.yaml admin 재apply + 코드 push 후 CI 재실행 → 6파드 rollout 확인.**
+**✅ CI/CD 1차 완주 + 관측(Grafana/Prometheus) ingress 노출(2026-06-07 세션5–8, devops).** (5)태그 B 불변sha 주입 (6)Kaniko 서비스별 컨테이너 다중빌드 → **실잡 4서비스 build→push 성공** (7)deploy 2종 결함(ns ClusterRole + SM `$patch:delete`/05 직접 apply) 수정 → **6파드 `1/1 Running`, 4서비스 전부 `harbor.local/si-msa/*:cd161c73c135` 단일 sha 핀 실측(가변 :dev 자취 없음)**. (8)**관측 호스트 접속 = B안 ingress**: `monitoring-values.yaml`(grafana/prometheus.ingress + grafana.ini domain/root_url + ssl-redirect=false) 신규, `05` 가 `-f` 로 머지, `05`/`06` 접속안내를 ingress(`grafana.local`/`prometheus.local`) 우선으로. **노드 이름해소 불요**(Harbor 와 달리 pull 대상 아님) — 호스트 hosts `127.0.0.1 grafana.local prometheus.local` 한 줄. 오프라인 검증: bash -n·values YAML 키·helm -f 연결 PASS.
 
 ## 최종 갱신
-- 일자: 2026-06-07 · 갱신자: 세션5–7(태그 B + Kaniko 다중빌드 + CI deploy RBAC/SM 수정)
-- 대상 브랜치: master · 환경: 프레임워크/스택 무변경(devops). 미커밋(누적 + 세션4 + 세션5–7; 세션5–6 은 직전에 push 되어 CI 가 그걸로 빌드 성공).
+- 일자: 2026-06-07 · 갱신자: 세션5–8(태그B·Kaniko·deploy수정·관측ingress)
+- 대상 브랜치: master · 환경: 프레임워크/스택 무변경(devops). 세션5–7 커밋됨(실배포 그린 근거). 세션8 미커밋.
 
 ## 직전에 한 것 (Done)
 | 단계 | 산출/검증 |
 |---|---|
-| (세션5) 태그 B | overlays/dev sentinel `__GITSHA__` + `pin-image-tag.sh`(신규) + Jenkinsfile/03/07 정합. |
-| (세션6) Kaniko | Jenkinsfile.kind podTemplate kaniko 1→4 + 서비스별 container 순차 executor. **실잡 4서비스 push 성공.** |
-| (세션7) ns RBAC | jenkins-rbac.yaml 에 ClusterRole+ClusterRoleBinding(`namespaces` get/patch, resourceNames=si-msa). |
-| (세션7) SM 분리 | dev overlay SM `$patch:delete`(코어 apply operator 비의존) + 05 가 base SM 직접 apply + 사전점검 경고 반전. |
-| 검증(오프라인) | bash -n(05)·dev overlay patch 7개(SM delete 포함)·images sentinel 유지·jenkins-rbac 6객체 파싱. |
-| 문서 | PITFALLS §9 ★ deploy 2종 항목 + 자가진단 2행 갱신/추가 · 이 SUMMARY · HANDOFF §7 append(-C 태그/-D Kaniko/-E deploy수정). |
+| (5–7) CI/CD 완주 | 태그B(sentinel+pin-image-tag.sh)·Kaniko 4컨테이너 순차·ns ClusterRole·SM 분리 → **6파드 Running + :cd161c73c135 단일 sha 실측**. |
+| (8) monitoring-values.yaml (신규) | kube-prometheus-stack values: grafana/prometheus ingress(ssl-redirect=false) + grafana.ini(domain/root_url) + prometheus externalUrl. |
+| (8) 05 연결 | helm `-f monitoring-values.yaml` 머지 + 접속안내 ingress 우선(+ ingress 생성/도달 체크, hosts 안내). |
+| (8) 06 안내 | Grafana 접속을 `grafana.local` 우선으로. |
+| 검증(오프라인) | bash -n(05/06)·values 키·helm -f 연결·PITFALLS/§10 구조. |
+| 문서 | PITFALLS §9 관측-ingress ★항목 + 자가진단 1행 · README 관측 섹션 · 이 SUMMARY · HANDOFF §7 append(-F). |
 
 ## 현재 상태 (적용/검증)
-- **빌드/push**: ✅ 그린(4서비스 :e46445c, cache 재사용). Kaniko 다중빌드·태그 전략 실증 완료.
-- **deploy**: 2종 결함 수정 완료(파일). **받는 쪽이 (a) jenkins-rbac admin 재apply (b) 코드 push (c) CI 재실행** 하면 6파드 rollout 예상.
-- **클러스터**: standalone kind-sanity. operator(kube-prometheus-stack) 미설치 상태에서도 코어 deploy 가능(SM 제거).
-- **커밋**: 세션5–6 push 됨(CI 빌드 근거). 세션7 + 누적 백로그 **미커밋**.
+- **CI/CD**: ✅ 완주(6파드 Running, 불변 sha 핀). 세션5–7 커밋됨.
+- **관측**: 파일 준비 완료. **받는 쪽: `05 --grafana` 재실행(helm upgrade) → hosts 1줄 → `http://grafana.local`/`http://prometheus.local`**. 06 으로 JVM 대시보드 + 4/4 타깃.
+- **커밋**: 세션8 미커밋(+ 누적 백로그).
 
 ## 바로 다음 할 일 (Next)
-1. **CD 완주(최우선)** — ① admin 컨텍스트로 `kubectl apply -f deploy/k8s/standalone-kind/jenkins-rbac.yaml`(또는 09 재실행) → 새 ClusterRole 적용. ② 세션7 코드 commit&push. ③ `si-msa-cd` Build Now → apply 그린 → 6파드 `:<sha>` rollout 확인. (관측 원하면 별도 `05-prometheus-stack.sh`.)
-2. **prod overlay `:latest` → sentinel/주입 전환**(가변-태그 부채 청산).
-3. **commit/push 누적분 정리**(그린 박제).
-4. **정리** — `NEXT_CI_KANIKO_MULTIBUILD.md` archive(해결), HANDOFF §7 append(-C/-D/-E) 본문 병합.
+1. **관측 올리기** — `bash 05-prometheus-stack.sh --grafana`(helm upgrade) → hosts `127.0.0.1 grafana.local prometheus.local` → `bash 06-grafana-jvm-dashboard.sh --grafana`(4/4 UP + JVM 대시보드). 브라우저 `http://grafana.local`.
+2. **세션8 commit & push**(그린 박제).
+3. **prod overlay `:latest` → sentinel/주입 전환**(가변-태그 부채).
+4. **정리** — `NEXT_CI_KANIKO_MULTIBUILD.md` archive, HANDOFF §7 append(-C/-D/-E/-F) 본문 병합.
 
 ## 이번 세션 함정/원칙 (되돌리지 말 것)
-- **CI 배포 SA 는 자기 ns 객체(클러스터 스코프)에 명시적 ClusterRole 필요** — namespaced `edit` 으론 Namespace patch 못 함. `resourceNames`+ClusterRole 로 최소권한. **클러스터 스코프 RBAC 생성은 admin 이 해야**(SA 자신은 못 만듦).
-- **옵셔널 operator CRD 의존 리소스(ServiceMonitor)는 코어 배포에 넣지 않는다** — add-on 스크립트(05)가 단독 소유. 관측은 배포의 선결조건이 아니다. dev·local 둘 다 SM `$patch:delete`.
-- **"네임스페이스 없음" ≠ 실제 에러** — `cannot patch resource "namespaces"` 는 **권한**(Forbidden), ns 는 09 가 선생성돼 존재. 에러 문구 정독.
-- **무엇이 뜨는가 = 불변 태그 declarative 핀**(세션5). **Kaniko = 컨테이너당 executor 1회·순차**(세션6, 공유 builder 캐시 보존).
-- **써머리 위치 = `docs/_internal/HANDOFF_SUMMARY.md`**. 배치 트랙 = `HANDOFF_BATCH_SUMMARY.md` 독립.
+- **ingress 노출 = ssl-redirect:false 필수**(평문) — 없으면 http→https 308. Harbor 와 동일.
+- **Grafana 는 server.domain/root_url 을 호스트에 맞춰야**(리다이렉트/링크 정확). Prometheus 는 externalUrl.
+- **관측 UI 는 노드 이름해소 불요** — 노드가 pull 하는 레지스트리(Harbor)와 달리 호스트 브라우저만 보면 됨 → **호스트 hosts 한 줄**. certs.d/노드 hosts/split-horizon 전부 불필요.
+- **CI/CD 완주 원칙(되돌리지 말 것)**: 불변 sha declarative 핀(5)·Kaniko 컨테이너당 1회·순차(6)·CI SA 는 ns ClusterRole 필요+옵셔널 CRD 리소스는 add-on 단독소유(7).
+- **써머리 위치 = `docs/_internal/HANDOFF_SUMMARY.md`**. 배치 = `HANDOFF_BATCH_SUMMARY.md` 독립.
 
 <!-- 갱신 끝 -->

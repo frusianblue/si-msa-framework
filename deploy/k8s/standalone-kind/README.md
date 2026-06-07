@@ -109,3 +109,14 @@ bash deploy/k8s/standalone-kind/00-cleanup.sh --teardown-sanity
   - `03-dev-overlay-up.sh`/CI 가 이 헬퍼를 호출(워크스페이스만 치환, 되커밋 없음; 수동은 apply 후 작업트리 복원).
 - 재부팅 복구(`07-reboot-recover.sh`)는 **살아있는 Deployment 의 image ref 태그**로 kind load(하드코딩 `:dev` 아님).
 - 단일 서비스 빠른 반복은 `redeploy.sh`(소스 콘텐츠 다이제스트 태그) — 미커밋 변경까지 추적.
+
+
+## 관측(Grafana/Prometheus) 호스트 접속 = ingress (B안)
+- `05`/`06` 를 `--grafana` 로 실행하면 kube-prometheus-stack 을 `monitoring-values.yaml`(grafana/prometheus.ingress + grafana.ini)로 설치하고 접속정보를 출력한다.
+- 호스트 hosts 파일에 1줄(노드는 불요 — Harbor 와 달리 pull 대상 아님):
+  ```
+  127.0.0.1 grafana.local prometheus.local
+  ```
+- 접속: `http://grafana.local`(admin / `kubectl -n monitoring get secret kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}'|base64 -d`), `http://prometheus.local`.
+- HTTP 평문이라 ingress 에 `ssl-redirect: "false"` 가 박혀 있다(없으면 https 308). 점검: `curl -H "Host: grafana.local" http://localhost/api/health`.
+- (대안) hosts 없이 즉시: `kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80`.

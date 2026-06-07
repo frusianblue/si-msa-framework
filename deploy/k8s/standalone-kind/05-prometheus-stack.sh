@@ -51,6 +51,7 @@ helm repo update prometheus-community >/dev/null 2>&1 || helm repo update >/dev/
 # kind 친화: alertmanager off·짧은 보존·SM 셀렉터 전체수용(라벨/네임스페이스 가정에 안 묶이게)·Grafana 유지.
 helm upgrade --install "$RELEASE" prometheus-community/kube-prometheus-stack \
   --kube-context "$CTX" -n "$MON_NS" --create-namespace \
+  -f deploy/k8s/standalone-kind/monitoring-values.yaml \
   --set alertmanager.enabled=false \
   --set prometheus.prometheusSpec.retention=2h \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
@@ -92,13 +93,35 @@ done
 [ "${UP:-0}" -ge 1 ] || fail "si-msa 타깃이 UP 안 됨 — /actuator/prometheus 노출·SM selector·NetworkPolicy(이 트랙=비집행) 확인. 디버그: curl localhost:9090/api/v1/targets"
 ok "si-msa-services 타깃 UP=${UP} (dev=서비스당 1레플리카면 보통 4; 1+ 면 스크랩 정상)"
 
-# 5) (옵션) Grafana 접속 안내 -----------------------------------------------
+# 5) (옵션) Grafana/Prometheus 접속 안내 ------------------------------------
 if [ "$DO_GRAFANA" = 1 ]; then
-  note "5) Grafana 접속 정보"
+  note "5) 접속 정보 (ingress = B안 호스트 노출)"
   GP="$(K -n "$MON_NS" get secret "${RELEASE}-grafana" -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
-  echo "    port-forward:  kubectl -n ${MON_NS} port-forward svc/${RELEASE}-grafana 3000:80"
-  echo "    URL: http://localhost:3000   user: admin   pass: ${GP:-<secret ${RELEASE}-grafana / admin-password>}"
-  echo "    대시보드: 'Kubernetes / Compute Resources' · Prometheus 데이터소스 자동연결. JVM 은 micrometer 대시보드(id 4701) import."
+  # ingress 오브젝트 생성 확인
+  K -n "$MON_NS" get ingress "${RELEASE}-grafana" >/dev/null 2>&1 \
+    && ok "ingress ${RELEASE}-grafana 생성됨(host grafana.local)" \
+    || warn "grafana ingress 미생성 — monitoring-values.yaml 적용 여부 확인"
+  K -n "$MON_NS" get ingress "${RELEASE}-prometheus" >/dev/null 2>&1 \
+    && ok "ingress ${RELEASE}-prometheus 생성됨(host prometheus.local)" \
+    || warn "prometheus ingress 미생성 — monitoring-values.yaml 적용 여부 확인"
+  echo
+  echo "  ★ 호스트 hosts 파일에 1줄 필요(Windows: C:\\Windows\\System32\\drivers\\etc\\hosts, WSL: /etc/hosts):"
+  echo "      127.0.0.1 grafana.local prometheus.local"
+  echo "      (Grafana/Prometheus 는 노드가 pull 하는 대상이 아니므로 노드 certs.d/노드 hosts 는 불요 — 호스트만.)"
+  echo
+  echo "  ▶ Grafana    : http://grafana.local      user: admin   pass: ${GP:-<secret ${RELEASE}-grafana / admin-password>}"
+  echo "  ▶ Prometheus : http://prometheus.local   (Status > Targets 에서 si-msa-services 확인)"
+  echo "    대시보드: 'si-msa' 폴더(06 적용 후) · Prometheus 데이터소스 자동연결."
+  echo
+  echo "  (대안) port-forward — hosts 등록 없이 즉시:"
+  echo "      kubectl -n ${MON_NS} port-forward svc/${RELEASE}-grafana 3000:80      # http://localhost:3000"
+  echo "      kubectl -n ${MON_NS} port-forward svc/${RELEASE}-prometheus 9090:9090 # http://localhost:9090"
+  # ingress 도달 즉시검증(호스트가 이 스크립트를 도는 머신에서 hosts 등록돼 있으면)
+  if curl -fsS -H 'Host: grafana.local' http://localhost/api/health >/dev/null 2>&1; then
+    ok "grafana.local ingress 도달 확인(curl -H Host)"
+  else
+    warn "grafana.local 즉시도달 실패 — hosts 미등록이거나 ingress 반영 대기(수초). 'curl -H \"Host: grafana.local\" http://localhost/api/health' 로 점검"
+  fi
 fi
 
 printf '\033[32m\n🟢 S4-2 완료 — kube-prometheus-stack 설치 · ServiceMonitor 활성 · si-msa 타깃 UP(%s)\033[0m\n' "${UP}"

@@ -1,0 +1,46 @@
+# deploy/k8s/standalone-kind/monitoring-values.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# kube-prometheus-stack Helm values — Grafana/Prometheus 를 B안 ingress 로 호스트 노출.
+#   05-prometheus-stack.sh 가 `helm upgrade --install ... -f 이 파일` 로 머지(기존 --set 토글과 공존).
+#
+# 설계(Harbor/Jenkins B안 과 동일 패턴):
+#   · ingress-nginx(control-plane hostPort 80/443, extraPortMappings) 뒤에 Host 라우팅으로 붙는다.
+#   · HTTP 평문 — `ssl-redirect: "false"` 필수(없으면 http→https 308 → 인증서 없어 깨짐. Harbor 와 동일 함정).
+#   · ⚠️ Grafana/Prometheus 는 **노드가 pull 하는 대상이 아니다**(그냥 브라우저로 보는 HTTP 서비스) →
+#     Harbor 와 달리 노드 certs.d/노드 /etc/hosts 불요. **호스트(Windows+WSL) hosts 한 줄만** 필요:
+#       127.0.0.1 grafana.local prometheus.local
+#   · split-horizon(노드/인-클러스터/호스트 3주체 이름해소)도 불필요 — 접속 주체가 호스트 브라우저뿐.
+# ─────────────────────────────────────────────────────────────────────────────
+
+grafana:
+  enabled: true
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    hosts:
+      - grafana.local
+    path: /
+    pathType: Prefix
+  # 호스트 루트(grafana.local)로 서빙 — 도메인/root_url 을 맞춰야 로그인 리다이렉트·생성 링크가 정확.
+  grafana.ini:
+    server:
+      domain: grafana.local
+      root_url: "%(protocol)s://%(domain)s/"
+      # serve_from_sub_path 는 서브패스(/grafana) 서빙 때만 필요 — 호스트 루트라 불필요.
+
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    hosts:
+      - prometheus.local
+    paths:
+      - /
+    pathType: Prefix
+  prometheusSpec:
+    # 외부에서 접근하는 베이스 URL — Prometheus 가 생성하는 링크(알림/스크랩 URL 등)가 ingress 주소를 가리키게.
+    externalUrl: http://prometheus.local
