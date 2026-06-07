@@ -215,4 +215,3 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
   `api project(framework-mybatis)` 제거로 끊겨 `framework-mfa:compileJava` 실패 → mfa 에 `framework-mybatis` 직접 선언(`compileOnly`+test)으로 해소.
   교훈(계획서 §6-2·PITFALLS 기록): **`api` 전이를 끊을 땐 그 전이 타입을 쓰는 소비처를 전수조사**해야 한다. 계획서 → `archive/` 이동(ARCHIVED).
   **다음 세션 = T1 멀티팟 세션 외부화**(트랙진행 #5).
-

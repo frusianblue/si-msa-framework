@@ -105,8 +105,7 @@ public class FrameworkArchitectureTest {
                     "com.company.framework.security.rbac.mybatis..", "com.company.framework.security.rbac.mapper..")
             .should()
             .dependOnClassesThat()
-            .resideInAnyPackage(
-                    "com.company.framework.mybatis..", "org.mybatis..", "org.apache.ibatis..")
+            .resideInAnyPackage("com.company.framework.mybatis..", "org.mybatis..", "org.apache.ibatis..")
             .because("framework-security 코어는 MyBatis 에 결합되면 안 된다 — RBAC 영속은 어댑터(framework-security-rbac-mybatis)로 분리.")
             .allowEmptyShould(true);
 
@@ -117,8 +116,7 @@ public class FrameworkArchitectureTest {
             .resideInAPackage("com.company.framework.security.rbac.spi..")
             .should()
             .dependOnClassesThat()
-            .resideInAnyPackage(
-                    "com.company.framework.mybatis..", "org.mybatis..", "org.apache.ibatis..")
+            .resideInAnyPackage("com.company.framework.mybatis..", "org.mybatis..", "org.apache.ibatis..")
             .because("RBAC 포트(SPI)는 특정 영속 기술(MyBatis)에 중립이어야 한다 — 도메인 타입만 시그니처에 노출.")
             .allowEmptyShould(true);
 }
