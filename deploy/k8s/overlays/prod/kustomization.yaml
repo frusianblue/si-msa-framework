@@ -64,3 +64,22 @@ patches:
         value: jdbc:postgresql://prod-postgres.internal:5432/sidb
   # prod 진입 도메인 + TLS (base si-msa-gateway Ingress 를 머지 패치)
   - path: ingress-prod.yaml
+
+  # ── ServiceMonitor: 코어 앱 배포에서 제거(operator CRD 불요) ──
+  #   근거(dev/local 과 동일, PITFALLS §9): ServiceMonitor 는 Prometheus Operator(kube-prometheus-stack)가
+  #   설치돼야 존재하는 CRD 다. base 에 그대로 두면 operator 미설치 워크로드 클러스터(리허설 kind-svc)에서
+  #   ArgoCD sync 가 `no matches for kind "ServiceMonitor"` = "synchronization tasks are not valid" 로 실패한다.
+  #   관측은 코어 배포의 선결조건이 아니어야 함 → prod 도 SM 을 $patch:delete.
+  #   ▶ 관측(워크로드 클러스터 Prometheus agent + 중앙 Grafana)을 켤 때 그 add-on 이 base SM 파일
+  #     (`deploy/k8s/base/common/servicemonitor.yaml`)을 워크로드 클러스터에 **직접 apply**(SM 단일 소유자=관측 레이어).
+  - patch: |-
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: si-msa-services
+    target:
+      group: monitoring.coreos.com
+      version: v1
+      kind: ServiceMonitor
+      name: si-msa-services
