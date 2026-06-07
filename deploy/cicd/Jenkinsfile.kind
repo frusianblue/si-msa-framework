@@ -32,7 +32,11 @@ spec:
         - name: kaniko-docker
           mountPath: /kaniko/.docker
     - name: kubectl
-      image: bitnami/kubectl:latest
+      # ★ bitnami/kubectl 제거: Bitnami 가 2025-09-29 docker.io/bitnami 공개 카탈로그를 삭제(legacy 이전)
+      #   → bitnami/kubectl:latest 는 ImagePullBackOff 위험.
+      #   교체: alpine/kubectl (유지됨, alpine 기반 → /bin/sh + sleep 존재).
+      #   ⚠️ registry.k8s.io/kubectl 은 distroless(셸·sleep 없음) → 이 podTemplate(sleep 유지 + sh 스텝)엔 부적합.
+      image: alpine/kubectl:1.33.1
       command: ["sleep"]
       args: ["infinity"]
       securityContext:

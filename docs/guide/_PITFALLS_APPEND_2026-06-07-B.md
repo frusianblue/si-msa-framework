@@ -39,3 +39,9 @@
 - **원인:** 선언형 파이프라인의 `timestamps()` 옵션은 **Timestamper 플러그인**이 제공한다. 이 Jenkins(Helm 기본 플러그인 셋)엔 미설치(또는 옵션 미지원 버전)라 파서가 거부.
 - **해결:** 장식용이므로 `options {}` 에서 `timestamps()` 제거가 가장 단순(즉시 해소·플러그인 의존 제거). 시각표시가 필요하면 `jenkins-values.yaml` 의 `controller.additionalPlugins` 에 `timestamper` 추가 후 `helm upgrade` → 옵션 복원.
 - **★ 운영 함정(SCM 파이프라인):** 잡이 *Pipeline script from SCM* 이면 Jenkins 는 **git(master)** 의 Jenkinsfile 을 가져온다. 로컬 작업트리/드롭인 zip 만 고쳐선 반영 안 됨 → 수정 후 **commit & push** 필수.
+
+### [겪음 encountered] Jenkins agent 파드 ContainerCreating 고착 — `bitnami/kubectl:latest` (Bitnami 카탈로그 삭제)
+- **증상:** `si-msa-cd` 빌드가 파싱은 통과했으나 agent 파드(jenkins ns)가 `Pending`/`ContainersNotReady`, 컨테이너 `kaniko/kubectl/jnlp` 가 `ContainerCreating` 에서 안 올라옴. 컨트롤러는 agent "offline" 으로 작업 미할당.
+- **원인:** podTemplate 의 kubectl 컨테이너가 `bitnami/kubectl:latest` 참조. Bitnami 가 2025-08-28~09-29 사이 `docker.io/bitnami` 공개 카탈로그를 삭제하고 `bitnamilegacy` 로 이전 → 해당 이미지 pull 실패(ImagePullBackOff). (단, 큰 이미지 첫 pull 지연과 구분할 것: `kubectl describe pod` Events 에서 `Pulling`/`ImagePullBackOff`/`FailedMount` 확인.)
+- **해결:** kubectl 컨테이너 이미지를 유지되는 것으로 교체. **`alpine/kubectl:<ver>`**(alpine 기반 → `/bin/sh`+`sleep` 존재) 사용. 잡이 SCM 파이프라인이므로 **commit & push** 후 재빌드.
+- **★ 부수 함정:** 교체 시 `registry.k8s.io/kubectl` 은 **distroless**(셸·`sleep` 없음)라 이 podTemplate 패턴(`command: sleep infinity` 유지 + Jenkins `container('kubectl'){ sh ... }`)엔 부적합 → `CreateContainerError` 또는 sh 스텝 실패. 셸 포함 이미지를 쓸 것.
