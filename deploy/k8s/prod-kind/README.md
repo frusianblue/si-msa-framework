@@ -41,15 +41,38 @@ bash 90-verify.sh          # G1~G4 PASS 게이트
 
 - **IP 변동성**: 데이터 컨테이너/노드 IP 는 재기동마다 바뀔 수 있음 → 데이터 컨테이너 재기동 후엔 `02` 재실행, 클러스터 재생성 후엔 `03` 재실행(둘 다 `docker inspect` 로 매번 재산출 = 멱등).
 - **Harbor pull 은 2단계**: 1단계는 신뢰 *배선* 까지. Harbor 본체는 hub(`kind-cicd`)에 2단계에서 설치 → 그때 실제 `harbor.local` pull 실증.
-- **호스트 포트 점유**: 80/443/8080/8443 중 점유된 게 있으면 `kind create` 가 bind 실패 → config 의 hostPort 조정 + hosts 도 그 포트로.
+- **호스트 포트 점유**: 80/443/8080/8443 중 점유된 게 있으면 `kind create` 가 bind 실패. `00-up-clusters.sh` 0.5단계가 미리 잡아 명확히 실패시킨다. **가장 흔한 범인 = 기존 `kind-sanity`**(standalone-kind B안, 호스트 80/443 게시). 해결 택1 — A) 미사용 시 `kind delete cluster --name sanity` 후 재실행(권장, 스펙 §6 "둘 동시에 안 돌림"), B) sanity 유지 시 `kind-cicd-config.yaml` 의 hostPort 를 8000/8043 등으로 변경 + hosts 도 그 포트로.
 - **데이터 = 리허설 시드**: `initdb-prod.sql` 의 siuser/비번/DB 는 리허설용. 실 prod 는 DBA 가 분리관리. user↔admin 의 sidb 공유는 Flyway 충돌 소지(PITFALLS §9) → admindb 미리 생성, 분리는 step5(데이터 정합)에서.
 
-## 다음 단계 (스펙 §3-2~)
+## 2단계: ArgoCD(hub) + kind-svc 원격등록
 
-2. ArgoCD(hub) 설치(`argocd.local`) + kind-svc 원격 등록(kubeconfig server=컨테이너 IP)
-3. `deploy/argocd/` GitOps 자산(AppProject + prod Application + app-of-apps)
-4. promote 배선(`Jenkinsfile.promote`)
-5. 데이터/관측 정합
+> 전제: 1단계 PASS(`90-verify.sh`). ArgoCD=Helm, 등록=선언형 cluster Secret(argocd CLI 불요).
+
+```bash
+cd deploy/k8s/prod-kind
+bash 10-cicd-ingress.sh    # kind-cicd 에 ingress-nginx(호스트 localhost:80)
+bash 11-argocd-install.sh  # ArgoCD(Helm) + argocd.local ingress + admin 비번 출력
+bash 12-register-svc.sh    # kind-svc 를 cluster Secret 로 등록(server=svc CP 컨테이너 IP)
+bash 91-verify-argocd.sh   # G5~G7 PASS 게이트
+```
+
+호스트 접속: Windows + WSL hosts 에 `127.0.0.1 argocd.local` 추가 → `http://argocd.local`(admin/위 비번).
+
+| 게이트 | 검증 |
+|---|---|
+| **G5** | cicd ingress-nginx Ready + 호스트 `localhost:80` = 404 |
+| **G6** | argocd-server Ready + `argocd.local` 도달(Host 라우팅) |
+| **G7** | kind-svc cluster Secret 존재 + cicd 파드 → svc API(`:6443/healthz`) 도달 |
+
+- **kind 멀티클러스터 함정**: kubeconfig server 가 `127.0.0.1:<hostport>`(파드가 못 감) / `svc-control-plane`(파드가 이름해소 못 함)이라, `12` 가 `--internal` kubeconfig 의 CA/인증서는 쓰되 **server 만 svc CP 컨테이너 IP** 로 바꿔 등록.
+- **TLS SAN 폴백**: `91` G7 이 TLS 오류면 `SVC_TLS_INSECURE=true bash 12-register-svc.sh` 재실행(리허설 한정 skip-verify). 실 prod 는 apiserver certSANs 에 접속 IP/도메인 명시 → 항상 CA 검증.
+- **클러스터 재생성 후**: svc CP IP 가 바뀌면 `12` 재실행(server 재산출).
+
+## 다음 단계 (스펙 §3-3~)
+
+3. `deploy/argocd/` GitOps 자산(AppProject + prod Application `targetRevision:master` + app-of-apps)
+4. promote 배선(`Jenkinsfile.promote`: 불변 `:<sha>` → prod overlay `kustomize edit set image` + git commit/push → ArgoCD sync)
+5. 데이터/관측 정합 (prod overlay DB/Redis 를 K8s밖 엔드포인트로, 관측 분산형)
 6. 문서 캐스케이드(`docs/ops/PROD_GITOPS_ARGOCD.md` 신설)
 
 ## teardown

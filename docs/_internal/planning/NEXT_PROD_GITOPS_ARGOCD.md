@@ -39,8 +39,8 @@
 
 ## 3. 다음 섹션 작업 순서 (인프라 → GitOps → 문서)
 
-1. **인프라 토대(먼저)** — kind 2클러스터(`kind-cicd` + `kind-svc`) 생성 스크립트 + 우분투 도커 postgres/redis(`--network kind`) 기동/연결. 클러스터간 네트워크·노드 Harbor 신뢰·서비스→DB 도달 검증(PASS 게이트). **🟡 산출 완료(2026-06-08) · 받는 쪽 실행 대기** — `deploy/k8s/prod-kind/`(kind-cicd/svc config·`00`~`03`·`90-verify` G1~G4·`00-down`·README). 결정: 호스트 포트 cicd=80/443·svc=8080/8443, 파드→밖DB=CoreDNS 주입(`prod-postgres.internal` 무수정), 노드 Harbor 신뢰=registry-trust DaemonSet 멀티클러스터판(harbor.local→cicd CP IP, 실 pull 은 2단계).
-2. **ArgoCD(hub)** — `kind-cicd` 에 ArgoCD 설치(`argocd.local` B안 ingress) + `kind-svc` 원격 클러스터 등록(kubeconfig server=컨테이너 IP).
+1. **인프라 토대(먼저)** — kind 2클러스터(`kind-cicd` + `kind-svc`) 생성 스크립트 + 우분투 도커 postgres/redis(`--network kind`) 기동/연결. 클러스터간 네트워크·노드 Harbor 신뢰·서비스→DB 도달 검증(PASS 게이트). **✅ PASS 검증 완료(2026-06-08, 받는 쪽 실측 G1~G4)** — `deploy/k8s/prod-kind/`(kind-cicd/svc config·`00`~`03`·`90-verify` G1~G4·`00-down`·README). 결정: 호스트 포트 cicd=80/443·svc=8080/8443, 파드→밖DB=CoreDNS 주입(`prod-postgres.internal` 무수정), 노드 Harbor 신뢰=registry-trust DaemonSet 멀티클러스터판.
+2. **ArgoCD(hub)** — `kind-cicd` 에 ArgoCD 설치(`argocd.local` B안 ingress) + `kind-svc` 원격 클러스터 등록(kubeconfig server=컨테이너 IP). **🟡 산출 완료(2026-06-08) · 받는 쪽 실행 대기** — `10-cicd-ingress`·`11-argocd-install`(Helm `argo/argo-cd`, `server.insecure`+별도 ingress 매니페스트)·`12-register-svc`(선언형 cluster Secret, server=svc CP 컨테이너 IP, `SVC_TLS_INSECURE` SAN 폴백)·`91-verify-argocd` G5~G7.
 3. **GitOps 자산** — `deploy/argocd/`: AppProject(`projects/si-msa.yaml`) + prod Application(`apps/si-msa-prod.yaml`, source=`overlays/prod`, targetRevision=`master`, dest=`kind-svc`, sync 자동+selfHeal+prune) + app-of-apps(`bootstrap.yaml`).
 4. **promote 배선** — `deploy/cicd/Jenkinsfile.promote`(또는 stage): CD 가 push 한 불변 `:<sha>` 를 prod overlay 에 `kustomize edit set image` + **git commit/push** → ArgoCD sync.
 5. **데이터/관측 정합** — prod overlay 의 `DB_URL`/Redis 호스트를 데이터(K8s 밖) 엔드포인트로(이미 `prod-postgres.internal` 전제) + 관측 분산형(워크로드 agent → 중앙 Grafana).

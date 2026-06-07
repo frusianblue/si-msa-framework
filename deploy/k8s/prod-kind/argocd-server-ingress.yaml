@@ -1,0 +1,28 @@
+# deploy/k8s/prod-kind/argocd-server-ingress.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# argocd.local → argocd-server(HTTP 80). 차트 버전 무관(직접 작성).
+#   ssl-redirect false: ingress-nginx 기본 308 https 강제 해제(평문 환경, B안 교훈).
+#   backend-protocol HTTP: server.insecure=true 라 argocd-server:80 이 평문 서빙.
+# 호스트 접속: Windows + WSL hosts 에 `127.0.0.1 argocd.local` → :80(cicd extraPortMappings) → ingress.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

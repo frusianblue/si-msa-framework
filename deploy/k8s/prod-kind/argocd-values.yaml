@@ -1,0 +1,16 @@
+# deploy/k8s/prod-kind/argocd-values.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# ArgoCD(hub=kind-cicd) Helm values. 차트: argo/argo-cd.
+#   server.insecure=true → argocd-server 가 HTTP(8080)로 서빙 → ingress 가 평문 라우팅.
+#   (harbor/jenkins B안과 동일 근거: 인증서 없는 로컬에선 ingress 뒤 HTTP + ssl-redirect false.)
+#   ingress 는 차트 버전마다 server.ingress 구조가 달라(hosts[] ↔ hostname) 추측 위험 →
+#   여기선 끄고, 손으로 쓴 argocd-server-ingress.yaml 을 11-argocd-install.sh 가 따로 apply.
+# ─────────────────────────────────────────────────────────────────────────────
+configs:
+  params:
+    server.insecure: true
+
+# ingress 는 별도 매니페스트로(버전 무관). 차트 내장 ingress 비활성 유지.
+server:
+  ingress:
+    enabled: false
