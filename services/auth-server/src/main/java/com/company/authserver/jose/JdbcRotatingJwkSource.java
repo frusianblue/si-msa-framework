@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  *   <li><b>검증 오버랩</b>: JWKS 셋에는 ACTIVE + RETIRED 를 모두 노출 → 회전 직후에도 이전 키로 서명된 토큰 검증 가능.
  *   <li><b>캐시</b>: DB 조회 결과를 TTL 동안 캐시(회전 전파 지연 = 최대 TTL).
  *   <li><b>부트스트랩</b>: 사용 가능한(=복호화 가능한) ACTIVE 키가 없으면 RSA 2048 1개 생성·삽입. 단순 "행 존재"가
- *       아니라 현재 마스터키로 복호화되는지까지 본다(AES_SECRET 교체로 옛 키만 남은 경우 새 키 자동 생성 — PITFALLS §9).
+ *       아니라 현재 마스터키로 복호화되는지까지 본다(AES_SECRET 교체로 옛 키만 남은 경우 새 키 자동 생성 — PITFALLS §5).
  *   <li><b>개인키 보호</b>: 저장(부트스트랩)은 {@link SigningKeyCipher#protect}, 읽기는 {@link SigningKeyCipher#reveal}.
  *       읽기는 마커 인지라 평문/암호문 혼재여도 안전(데모→운영 전환·롤백).
  * </ul>
@@ -108,7 +108,7 @@ public final class JdbcRotatingJwkSource implements JWKSource<SecurityContext> {
      * <p>⚠️ 단순히 "ACTIVE 행이 존재하는가"만 보지 않는다. ACTIVE 행이 있어도 그 개인키가 현재 {@link SigningKeyCipher}(=
      * 현재 AES 마스터키)로 복호화되지 않으면 — 예: AES_SECRET 교체 후 옛 키만 남은 경우 — {@link #loadFromDb} 가 그 키를
      * 건너뛰어 JWKS 가 0개가 되고 token/jwks 가 500 으로 떨어진다(부트스트랩이 "행 있음"만 보고 새 키를 안 만들던 함정,
-     * PITFALLS §9). 따라서 가장 최신 ACTIVE 키의 복호화 가능 여부까지 확인하고, 불가하면 새 ACTIVE 키를 부트스트랩한다.
+     * PITFALLS §5). 따라서 가장 최신 ACTIVE 키의 복호화 가능 여부까지 확인하고, 불가하면 새 ACTIVE 키를 부트스트랩한다.
      * 복호화 불가 키는 파괴하지 않는다 — {@link #loadFromDb} 가 격리/스킵하므로 무해하고, 보존이 롤백/감사에 안전하다.
      *
      * <p>다중 파드 동시 부트 시 중복 삽입 가능성은 매퍼 unique(kid) + 재조회로 흡수.

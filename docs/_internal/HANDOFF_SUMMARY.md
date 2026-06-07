@@ -8,35 +8,36 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**✅ ②(실클러스터 authorization_code + PKCE + DbAuthenticator) 종료(2026-06-06).** standalone `kind-sanity` 에서 폼로그인(`tester`→`DbAuthenticator`)→authorize→code→토큰교환→id_token(**sub=tester**) + jwks=200 **전 구간 실측 통과**. 신설 `deploy/k8s/standalone-kind/smoke-authcode-pkce.sh` 가 `SmokeClientDbAuthFlowTest`(in-process MockMvc)의 **실클러스터 등가물**. 시더(`framework.auth.seed-smoke-client`)는 `03-dev-overlay-up.sh` 가 이미 켜둠. 또한 세션 시작 검증에서 직전 §S3' 누적분(④+⑤)이 **origin/master 에 이미 push 됨**을 확인(핸드오프 "uncommitted"는 stale 정정) → commit/push 백로그 사실상 해소. 세션 중 발견: WSL `openssl base64 -d -A` 가 JWT payload 를 ~236자에서 잘라 디코드 깨짐 → 스크립트 디코드를 파이썬 `urlsafe_b64decode` 로 교체(환경 무관).
+**✅ 배치 트랙 일단락(2026-06-07).** `framework-task`(Spring Cloud Task 5.0.1, Boot4 네이티브) + Batch6 결합을 **실투입 가능한 예제 3종**으로 완성: `examples/batch-task-reference`(단일 정산 잡 엔드투엔드) · `examples/batch-cookbook`(실무 패턴 5종: 파일↔DB·다단계·Tasklet·내결함) · `examples/batch-types`(처리 방식·DB 리더/라이터 종류 6종: 멀티스레드·파티셔닝·플로우·처리기체인·MyBatis·StoredProcedure). 사용자 결정: **배치는 여기서 일단락, 나중에 소스 보고 필요한 것만 추가**. 모든 배치 API 는 v6.0.3 raw + mybatis-spring 4.0.0 raw 로 실측(날조 0). **배치 트랙 상세는 `HANDOFF_BATCH_SUMMARY.md` 가 권위 있는 한 장** — 이 문서는 포인터만.
 
 ## 최종 갱신
-- 일자: 2026-06-06 · 갱신자: ② 실클러스터 토큰플로우 마감 세션(smoke-authcode-pkce.sh)
-- 대상 브랜치: master · 환경: 코드/스택 무변경(devops 스크립트 1 + 문서).
+- 일자: 2026-06-07 · 갱신자: 배치 트랙(task + cookbook + types) 일단락 세션
+- 대상 브랜치: master · 환경: framework-task 신모듈 + 예제 3종 + 문서. (메인 인증/클러스터 트랙 무변경.)
 
 ## 직전에 한 것 (Done)
 | 단계 | 산출/검증 |
 |---|---|
-| origin 상태 재검증 | fresh clone(=origin/master)에 §S3' 산출물(`redeploy.sh`·`hasUsableActiveKey`·`/error` permitAll·PITFALLS §5) + standalone-kind 트랙 전부 존재 → ④+⑤ 이미 push 됨(핸드오프 stale 정정). |
-| 코드-문서 정합 1건 | auth-server 2파일 javadoc/주석의 함정 참조 `PITFALLS §9`→`§5` 4곳 교정(엔트리 실위치=§5). 주석 전용. |
-| ② 실클러스터 스모크 | `smoke-authcode-pkce.sh` 신설 → kind-sanity 7단계 전부 ✅(discovery·PKCE·폼로그인(DbAuthenticator)·authorize→code·token교환·id_token sub=tester·jwks 200). PKCE-S256 RFC7636 벡터 일치·디코드 격리검증. |
-| 디코드 버그 수정 | openssl/tr 기반 base64url 디코드가 WSL 에서 236자 잘림(JSONDecodeError) → 파이썬 `urlsafe_b64decode` 한 방으로 교체(재현·검증 완료). |
-| 문서 | standalone-kind README(스크립트 사용법)·아카이브 `NEXT_KIND_AUTH_TOKEN_FLOW`(실클러스터 등가물 Done)·PITFALLS §8(WSL openssl 디코드 잘림)·HANDOFF §7·이 SUMMARY 갱신. |
+| framework-task 모듈 | SCT 5.0.1(Boot4) `@EnableFrameworkTask` + `FrameworkTaskExecutionListener`. 빌드 와이어링 5곳(settings·archtest·jacoco·SCT BOM·version catalog). |
+| 예제 3종 | reference(정산 청크) · cookbook(패턴 5) · types(유형 6). 전부 독립 빌드, mavenLocal `com.company:framework-task:1.0.0` 소비. `--spring.batch.job.name` 선택 실행, Flyway 샘플로 독립 실행. |
+| API 실측 | Batch6 `infrastructure.item.*` 재배치 · FlatFile/Tasklet/RunIdIncrementer · 멀티스레드(페이징 필수)·파티셔닝(`Partitioner`/`@StepScope`)·플로우(`on/to`/`split`)·CompositeItemProcessor·StoredProcedure(PG refcursor)·**mybatis-spring 4.0.0**(Batch6 신패키지; starter 3.0.5 비호환) 전부 raw 소스 검증. |
+| 정적 검증 | 예제 전체: 금지 import 0 · 구 batch 패키지 0 · 필드주입 0 · 잡 이름(코드↔yml↔k8s) 일치 · 패키지=경로 · 괄호 균형 · 핵심 import 경로 cookbook 동일. |
+| 문서 | PITFALLS §3·§6 · `HANDOFF_BATCH_SUMMARY` · `BATCH_SCHEDULING_AND_UI` · `FRAMEWORK_MODULES` · `MODULE_COMPOSITION` · `STACK` · HANDOFF §7 · 이 SUMMARY 갱신. |
 
 ## 현재 상태 (적용/검증)
-- **클러스터**: standalone `kind-sanity` 3노드, dev overlay, 6파드 Running. 시더 on(03 스크립트). `tester`/`Test1234!`(authdb V7) 존재.
-- **그린 기준**: 6파드 ✅ · DB 3개 ✅ · AS jwks=200 ✅ · **authorization_code+PKCE+DbAuthenticator 실클러스터 e2e ✅(sub=tester)** = **② 종료**.
-- **미커밋**: 이번 산출물(`smoke-authcode-pkce.sh` + auth-server javadoc §5 교정 + 위 문서들)은 로컬 working tree. ④+⑤는 origin 반영 확인됨.
+- **배치 트랙**: framework-task + 예제 3종 = 정적 검증 완료(작성 환경). 일단락.
+- **메인 트랙**(직전 세션): standalone `kind-sanity` 6파드 Running · authorization_code+PKCE+DbAuthenticator 실클러스터 e2e ✅(② 종료) — 변동 없음.
+- **미커밋**: 이번 배치 산출물(framework-task + 예제 3종 + 문서 갱신)은 로컬 working tree.
 
 ## 바로 다음 할 일 (Next)
-1. **이번 산출물 commit/push** — `smoke-authcode-pkce.sh` + auth-server javadoc(§5) + 문서들.
-2. **S4 애드온** — metrics-server(HPA, kind `--kubelet-insecure-tls`) → kube-prometheus-stack(설치 후 dev overlay ServiceMonitor `$patch:delete` 해제). 스모크 = HPA/메트릭 수집.
-3. 이후 **S5 prod-rehearsal → S6 상위흐름(OIDC RP·이중발급기 실클러스터) → S7 Jenkins(sha 핀 자동 — `redeploy.sh` 다이제스트 태그 승격)**.
+1. **이번 배치 산출물 commit/push** — framework-task 모듈 + 빌드 와이어링 + 예제 3종 + 문서.
+2. **받는 쪽(Chae) 검증** — `:framework:framework-task:test` · `:framework-archtest:test` · `spotlessApply` · 예제 독립 빌드(`publishToMavenLocal` 선행) · (선택) 컨테이너→k8s CronJob 1회 기동으로 종료코드/`TASK_EXECUTION` 확인. 특히 `mybatisJob` 은 mybatis-spring 4.0.0 이 starter 의 3.0.5 를 실제로 대체하는지(또는 강제 필요) 의존성 해석 확인.
+3. **배치 추가는 소스 검토 후 필요 시에만** — 사용자 결정대로 일단락. (남는 후보: 원격 파티셔닝/청크는 메시징 인프라 필요라 보류.)
+4. **메인 트랙 재개** 시 직전 세션 Next(S4 metrics-server/HPA → kube-prometheus-stack → S5 prod-rehearsal …)로 복귀 — `HANDOFF.md §7` 참조.
 
 ## 이번 세션 함정/원칙 (되돌리지 말 것)
-- **환경의존적 디코드(openssl `base64 -d -A` + `tr`) 금지 — 언어 내장 디코드 사용** — WSL 등에서 base64 디코드가 특정 길이에서 잘려(여기선 236자) JWT payload JSON 이 깨진다(`JSONDecodeError: Unterminated string`). 스크립트의 JWT/base64url 디코드는 `python3 base64.urlsafe_b64decode` 처럼 언어 내장으로.
-- **"git pull 로 안 온다"** — Claude 산출물(zip/패치)은 origin 에 push 되지 않는다. 로컬 `unzip -o` 또는 붙여넣기 패치로 적용해야 하며, 적용 확인은 파일 내용(예: `grep -c urlsafe_b64decode`)으로 한다.
-- **시더 on 의미** — `SmokeClientSeeder`(`framework.auth.seed-smoke-client=true`)가 demo-web 등 OAuth 클라이언트를 AS 에 등록한 상태. `03-dev-overlay-up.sh` 가 켜므로 `/oauth2/authorize` 가 invalid_client 없이 통과하면 이미 on.
-- **in-process e2e ≠ 실클러스터 e2e** — `SmokeClientDbAuthFlowTest`(MockMvc) 통과와 별개로, 실제 6파드/port-forward/CSRF/세션의 실클러스터 확인이 ②의 Done. `smoke-authcode-pkce.sh` 가 그 등가물.
+- **mybatis-spring 은 Batch 6 에서 4.0.0+ 필수** — 배치 리더/라이터가 신패키지 `infrastructure.item.*` 를 import. 3.0.x 는 Batch 5 전용. starter 가 3.0.5 를 전이하므로 `org.mybatis:mybatis-spring:4.0.0` 직접 선언. (PITFALLS §6)
+- **멀티스레드 청크는 커서 리더 금지 → 페이징 리더 + `saveState(false)` + `sortKeys`.** (PITFALLS §3)
+- **`beanMapped()`/MyBatis 파라미터는 게터 필요(record 불가)** — record 를 그대로 쓰려면 `itemPreparedStatementSetter`(위치형 `?`). 출력 타입은 게터 클래스로.
+- **API 날조 금지** — 배치/MyBatis FQCN·빌더 시그니처는 전부 해당 버전 raw 소스(`v6.0.3`·`mybatis-spring-4.0.0`)로 확인 후 작성. 컴파일 미검증 환경의 핵심 안전장치.
 
 <!-- 갱신 끝 -->

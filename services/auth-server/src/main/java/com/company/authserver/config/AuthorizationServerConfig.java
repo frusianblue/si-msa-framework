@@ -94,7 +94,7 @@ public class AuthorizationServerConfig {
                 //   ⚠️ 무조건 authenticationEntryPoint(LoginUrl) 로 두면 ExceptionHandlingConfigurer 가 그 디폴트를
                 //      그대로 반환하면서, AS configurer.init() 이 토큰/introspection/revocation 엔드포인트에 심어둔
                 //      HttpStatusEntryPoint(401) 매처-매핑을 통째로 덮어쓴다 → /oauth2/token 등 API 가 401 대신
-                //      302(→/login) 로 응답(=client_credentials 토큰 발급이 로그인 폼으로 튕김). (PITFALLS §9)
+                //      302(→/login) 로 응답(=client_credentials 토큰 발급이 로그인 폼으로 튕김). (PITFALLS §5)
                 .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
                         new LoginUrlAuthenticationEntryPoint("/login"),
                         new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
@@ -117,7 +117,7 @@ public class AuthorizationServerConfig {
         // ⚠️ "/error" 도 반드시 미인증 허용. 서블릿 컨테이너는 처리 중 예외(예: AS 토큰 엔드포인트의 JwtEncodingException)
         //    가 나면 내부적으로 ERROR 디스패치로 /error 에 포워딩한다. 이 체인(AS 엔드포인트 매처에 안 걸리는 그 외 요청)이
         //    /error 를 anyRequest().authenticated() + formLogin 으로 잡으면, 본래 5xx 여야 할 응답이 302(→/login) 으로
-        //    둔갑한다 → 진짜 예외(서명키 복호화 실패 등)가 가려져 디버깅이 시큐리티 토끼굴로 샌다. (PITFALLS §9)
+        //    둔갑한다 → 진짜 예외(서명키 복호화 실패 등)가 가려져 디버깅이 시큐리티 토끼굴로 샌다. (PITFALLS §5)
         http.authorizeHttpRequests(a -> a.requestMatchers("/actuator/**", "/error")
                         .permitAll()
                         .anyRequest()

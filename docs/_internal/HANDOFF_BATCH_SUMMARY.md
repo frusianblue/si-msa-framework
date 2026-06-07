@@ -6,8 +6,8 @@
 
 ---
 
-## 한 줄 요약 (2026-06-06)
-**`framework-task`(Spring Cloud Task 5.0.1, Boot4 네이티브) 신설 + `framework-batch`(Batch6) 결합을 "실제 프로젝트에 쓸 수 있는" 레퍼런스 앱(`examples/batch-task-reference/`)으로 완성.** 사용자가 제안한 모니터링 UI(QuartzDesk·Quartz Manager)를 정직하게 매핑: UI 는 **Quartz 스케줄러(=framework-batch 모델)** 전용이고, **QuartzDesk 는 상용**(OSS 아님), 본 스택 OSS 후보는 `fabioformosa/quartz-manager`. **새 외부 의존성**: SCT BOM 1개(`spring-cloud-task-dependencies:5.0.1`, 메인 Oakwood BOM 밖).
+## 한 줄 요약 (2026-06-07 · 일단락)
+**`framework-task`(Spring Cloud Task 5.0.1, Boot4 네이티브) 신설 + `framework-batch`(Batch6) 결합을 "실제 프로젝트에 쓸 수 있는" 예제 3종으로 완성** — `batch-task-reference`(단일 정산 엔드투엔드) · `batch-cookbook`(실무 패턴 5종) · `batch-types`(처리 방식·DB 리더/라이터 종류 6종). 사용자가 제안한 모니터링 UI(QuartzDesk·Quartz Manager)를 정직하게 매핑: UI 는 **Quartz 스케줄러(=framework-batch 모델)** 전용이고, **QuartzDesk 는 상용**(OSS 아님), 본 스택 OSS 후보는 `fabioformosa/quartz-manager`. **새 외부 의존성**: SCT BOM 1개(`spring-cloud-task-dependencies:5.0.1`, 메인 Oakwood BOM 밖) + 예제 한정 `mybatis-spring:4.0.0`(Batch6 호환, batch-types 만). **결정: 배치 트랙은 여기서 일단락 — 추후 소스 검토 후 필요한 것만 추가.**
 
 ## 핵심 결정 (Decisions)
 1. **SCDF 서버는 쓰지 않는다** — Spring Cloud Data Flow **서버 본체는 OSS EOL**(2025-04 Broadcom 중단, `spring-attic` 아카이브; 마지막 OSS 2.11.x=Boot2/3, 이후 Tanzu 상용). 그러나 **Spring Cloud Task 라이브러리(5.0.1)는 Boot4 네이티브로 생존** → 실행이력 영속 목적에 SCDF 없이 단독 사용.
@@ -29,9 +29,9 @@
 | 문서 동시갱신 | `FRAMEWORK_MODULES.md`(§0·§2.4·§4)·`framework/README.md`·`MODULE_COMPOSITION.md`(§4-1·§4-2·트리·함정)·`PITFALLS.md`(§1·§3·신규 §10)·`STACK.md`(§3.1·§5) | 코드변경=문서동시갱신 철칙 |
 
 ## 검증 상태
-- **정적 검증 완료**(작성 환경): 예제 Java 5파일 괄호 균형 OK · `com.fasterxml` import 0 · `@Autowired` 필드주입 0 · Batch6 import 전부 `infrastructure.item.*`(구 `batch.item.*` 0, 매치된 1건은 패키지 재배치를 설명하는 Javadoc 주석).
-- **API 근거**: SCT 5.0.1 = sparse checkout 실소스(`@EnableTask`/`SimpleTaskAutoConfiguration`/`TaskExecutionListener`/`TaskBatchAutoConfiguration`/`TaskRepository`/프로퍼티/DDL). Batch 6.0.3 = raw 소스(패키지·빌더 시그니처·PostgreSQL DDL). Quartz 2.5.2 = `tables_postgres.sql` 실소스.
-- **받는 쪽(Chae) 실행 필요**: `./gradlew :framework:framework-task:test` · `:framework-archtest:test` · `./gradlew spotlessApply` · 예제 독립빌드(`cd examples/batch-task-reference && ./gradlew bootJar`, 단 mavenLocal 에 `framework-task:1.0.0` publish 선행) · (선택) 예제 컨테이너→로컬 k8s CronJob 1회 기동으로 종료코드/`TASK_EXECUTION` 적재 확인.
+- **정적 검증 완료**(작성 환경): 예제 3앱 전체 — 괄호 균형 OK · `com.fasterxml` import 0 · `@Autowired` 필드주입 0 · Batch6 import 전부 `infrastructure.item.*`(구 `batch.item.*` 0) · 잡 이름 코드↔yml↔k8s 일치 · 패키지=경로 · 핵심 import 경로가 cookbook(상호 대조 기준)과 동일.
+- **API 근거**: SCT 5.0.1 = sparse checkout 실소스(`@EnableTask`/`SimpleTaskAutoConfiguration`/`TaskExecutionListener`/`TaskBatchAutoConfiguration`/`TaskRepository`/프로퍼티/DDL). Batch 6.0.3 = raw 소스(태그 `v6.0.3`: 패키지·빌더 시그니처·PostgreSQL DDL·멀티스레드/파티션/플로우/Composite/StoredProcedure). mybatis-spring **4.0.0** = raw 소스(배치 클래스가 신패키지 import 확인 + POM 의 mybatis 3.5.19/Spring 7.0.1/Batch 6.0.0 타깃 확인). Quartz 2.5.2 = `tables_postgres.sql` 실소스.
+- **받는 쪽(Chae) 실행 필요**: `./gradlew :framework:framework-task:test` · `:framework-archtest:test` · `./gradlew spotlessApply` · 예제 3앱 독립빌드(각 `./gradlew bootJar`, 단 mavenLocal 에 `framework-task:1.0.0` publish 선행) · `batch-types` 는 mybatis-spring 4.0.0 이 starter 의 3.0.5 를 실제로 대체하는지(highest-version-wins 또는 강제 필요) 의존성 해석 확인 · (선택) 예제 컨테이너→로컬 k8s CronJob 1회 기동으로 종료코드/`TASK_EXECUTION` 적재 확인.
 
 ## 함정 요약 (상세 PITFALLS §3·§10)
 - **SCDF 서버 OSS EOL** — 서버 깔지 말 것, Task 라이브러리만.
@@ -42,12 +42,15 @@
 - **Quartz UI = 모델 B·JDBC JobStore 전용** — RAM JobStore 면 외부 도구가 볼 테이블 없음.
 - **QuartzDesk 는 상용** — OSS 후보는 `fabioformosa/quartz-manager`.
 - **SCT 는 Oakwood BOM 밖** — `spring-cloud-task-dependencies:5.0.1` 별도 BOM, starter 는 stream 전이라 미사용.
+- ★ **MyBatis 배치는 Batch6 에서 `mybatis-spring 4.0.0+` 필수**(batch-types) — 3.0.x 는 구 `batch.item.*` 패키지=Batch5 전용. starter 가 3.0.5 를 전이하므로 `org.mybatis:mybatis-spring:4.0.0` 직접 선언. 페이징 select 는 `LIMIT #{_pagesize} OFFSET #{_skiprows}`.
+- **멀티스레드 청크는 커서 리더 금지** — 페이징 리더(`AbstractPagingItemReader`)+`saveState(false)`+`sortKeys`.
 
 ## 바로 다음 할 일 (Next)
-1. **커밋/푸시** — 이번 트랙 산출물(framework-task 모듈 + 빌드 와이어링 + 예제 + 가이드 + 문서 갱신)은 로컬 working tree(미커밋).
-2. **받는 쪽 검증 패스** — 위 "검증 상태"의 gradle 명령 + 예제 독립빌드(필요 시 `framework-task` 를 `publishToMavenLocal`).
+> **배치 트랙은 일단락(2026-06-07).** 아래 1~2 는 인계 마무리, 3~4 는 추후 필요 시 선택 — 사용자 결정대로 **소스 검토 후 필요한 것만** 추가한다.
+1. **커밋/푸시** — 이번 트랙 산출물(framework-task 모듈 + 빌드 와이어링 + 예제 3종 + 가이드 + 문서 갱신)은 로컬 working tree(미커밋).
+2. **받는 쪽 검증 패스** — 위 "검증 상태"의 gradle 명령 + 예제 3앱 독립빌드(필요 시 `framework-task` 를 `publishToMavenLocal`).
 3. **(선택) `quartz-manager` 연동 PoC** — 좌표 확정됨(`it.fabioformosa.quartz-manager:quartz-manager-starter-api` (+`-ui`/`-security`/`-persistence`), Java21+/Boot 3.5·4.0 호환, master 기준 5.0.1 계열 — 릴리스 버전은 GitHub Releases/Central 확인). 연동 경로 = `quartz-manager.quartz.enabled=false` + framework-batch 스케줄러를 `@Bean("quartzManagerScheduler")` 로 노출(§2-1). ⚠️ 한계(업스트림 명시): 기존 스케줄러 연동이 현재 유일 통합점(자동발견은 로드맵), 신규 잡 생성은 `AbstractQuartzManagerJob` 모델 요구 → framework-batch yaml 잡과 모델 차이. 현실적 용도=스케줄러 상태제어·트리거 가시화/수동트리거(잡 정의 단일소스는 framework-batch). PoC 시 `quartz-manager-compatibility-cases` Boot4 케이스 확인.
-4. **(선택) `deploy/k8s/task/` 독립 매니페스트** — 현재 CronJob 은 예제 인라인(`examples/batch-task-reference/k8s/cronjob.yaml`). 공통 배포 디렉터리에 파라미터화 버전 분리.
+4. **(선택) 추가 후보** — `deploy/k8s/task/` 독립 매니페스트(현재 CronJob 은 예제 인라인)·원격 파티셔닝/원격 청크(메시징 인프라 필요라 보류)·JPA 리더(스택이 MyBatis 라 우선순위 낮음). 전부 **소스 보고 실수요 확인 후**.
 
 ## 메인 트랙과의 교차참조
 - `HANDOFF_SUMMARY.md` 의 다음 후보 중 **"그릇 정비(k8s 멀티서비스/CI-CD)"** 와 이 트랙의 CronJob/스케줄 배포가 맞닿음. 인증/SSO 메인 흐름과는 독립.
