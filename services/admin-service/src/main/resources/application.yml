@@ -44,6 +44,21 @@ framework:
     store:
       type: ${AUDIT_STORE_TYPE:logging}
 
+  # ===== 파일 업로드 =====
+  #   admin 도 framework-file 의존 → 기본 type=local 저장소(FileSystemFileStorage)가 기동 시
+  #   base-path 에 디렉터리를 생성한다(생성자 createDirectories). read-only 루트FS(deployment-hardening)
+  #   에서는 기본 base-path(./uploads = /application/uploads)에 쓸 수 없어 localFileStorage 빈 생성이
+  #   실패하고, 이어 fileService 의존성 미충족으로 ApplicationContext 기동이 깨진다.
+  #   → 환경변수 FRAMEWORK_FILE_STORAGE_BASE_PATH 를 "명시 placeholder"로 받아 쓰기 가능 경로
+  #     (/tmp/uploads = hardening 의 tmp emptyDir)로 덮는다. 명시 placeholder 는 환경변수명을 그대로
+  #     매칭하므로 relaxed binding 의 kebab-case 모호성(base-path → BASEPATH vs BASE_PATH)을 회피한다.
+  file:
+    enabled: true
+    storage:
+      type: ${FILE_STORAGE_TYPE:local}                          # local | nas | s3 (admin 은 configmap 미지정 = local)
+      base-path: ${FRAMEWORK_FILE_STORAGE_BASE_PATH:./uploads}   # 매니페스트 env 명과 정확히 일치
+      max-size: 10485760                                         # 10MB
+
 management:
   endpoints:
     web:
