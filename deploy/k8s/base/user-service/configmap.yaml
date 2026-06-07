@@ -13,5 +13,8 @@ data:
   AUTH_SERVER_ISSUER: "http://auth-server:9000"
   AUTH_SERVER_JWKS_URI: "http://auth-server:9000/oauth2/jwks"
   RESOURCE_SERVER_ENABLED: "false"
-  FILE_STORAGE_TYPE: "s3"
+  # 파일 저장소: framework-file-s3 모듈이 주석(미의존)인 동안 type=s3 면 FileStorage 빈이 없어 기동 실패.
+  #   당장 S3 미사용 → local. base-path 는 deployment-hardening 의 FRAMEWORK_FILE_STORAGE_BASE_PATH(/tmp/uploads).
+  #   (운영 영속 업로드는 framework-file-s3 의존 해제 + type=s3 + S3 자격증명, 또는 PVC 로 전환.)
+  FILE_STORAGE_TYPE: "local"
   TRACE_SAMPLING: "0.1"
