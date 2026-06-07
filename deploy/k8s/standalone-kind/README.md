@@ -100,3 +100,12 @@ bash deploy/k8s/standalone-kind/00-cleanup.sh --teardown-sanity
 - 노드 수 변경/재설정은 클러스터 리셋 → `00-cleanup.sh --teardown-sanity` 후 재생성.
 - **ArgoCD/GitOps 로도 이 문제는 안 풀린다** — CD 는 매니페스트 apply 만, pull 은 언제나 kubelet+노드 containerd.
   GitOps 는 노드 pull 정상 전제 위에 얹는 층.
+
+## 이미지 태그 = 불변 sha(주입식, 가변 :dev 폐기)
+- 무엇이 뜨는지의 단일 진실 = **불변 태그**(CI=git short sha, 수동 03=커밋 short sha). 가변 `:dev` 배포핀과
+  명령형 `kubectl set image` 덮어쓰기는 폐기(git↔클러스터 드리프트·stale 함정 제거 — PITFALLS §9).
+- dev overlay 의 `images.newTag` 는 sentinel `__GITSHA__` — **그대로 `apply -k` 하면 ImagePullBackOff(fail-loud)**.
+  배포 직전 **`bash deploy/k8s/pin-image-tag.sh <overlay-dir> <tag>`** 로 sentinel 을 불변 태그로 치환한다.
+  - `03-dev-overlay-up.sh`/CI 가 이 헬퍼를 호출(워크스페이스만 치환, 되커밋 없음; 수동은 apply 후 작업트리 복원).
+- 재부팅 복구(`07-reboot-recover.sh`)는 **살아있는 Deployment 의 image ref 태그**로 kind load(하드코딩 `:dev` 아님).
+- 단일 서비스 빠른 반복은 `redeploy.sh`(소스 콘텐츠 다이제스트 태그) — 미커밋 변경까지 추적.

@@ -63,15 +63,24 @@ for n in $(docker ps --format '{{.Names}}' | grep "^${CLUSTER}-"); do
 done
 
 if [ "${SKIP_LOAD:-0}" != "1" ]; then
-  echo "== 4) (폴백) 로컬 빌드 이미지를 배포 ref 로 노드 적재(kind load) =="
+  echo "== 4) (폴백) 로컬 빌드 이미지를 **배포가 참조하는 불변 태그** ref 로 노드 적재(kind load) =="
+  # 가변 :dev 하드코딩 폐기(B 결정) → 살아있는 Deployment 의 image ref 를 읽어 그 태그로 재적재.
   for s in $SERVICES; do
+    REF="$(kubectl --context "$CTX" -n "$NS" get "deploy/$s" \
+            -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+    if [ -z "$REF" ]; then
+      echo "  - deploy/$s 부재 → load 생략(03-dev-overlay-up.sh 로 먼저 배포)"; continue
+    fi
+    case "$REF" in
+      *:__GITSHA__) echo "  ⚠️ deploy/$s 가 미주입 sentinel($REF) 참조 → 03 재실행 필요(load 생략)"; continue;;
+    esac
     if docker image inspect "si-msa/$s:local" >/dev/null 2>&1; then
-      docker tag "si-msa/$s:local" "harbor.local/si-msa/$s:dev"
-      kind load docker-image "harbor.local/si-msa/$s:dev" --name "$CLUSTER" >/dev/null 2>&1 \
-        && echo "  loaded harbor.local/si-msa/$s:dev" \
+      docker tag "si-msa/$s:local" "$REF"
+      kind load docker-image "$REF" --name "$CLUSTER" >/dev/null 2>&1 \
+        && echo "  loaded $REF" \
         || echo "  ⚠️ $s load 실패(이미 존재거나 클러스터명 불일치 가능)"
     else
-      echo "  - si-msa/$s:local 없음 → load 생략(미러 경로로 pull 시도됨)"
+      echo "  - si-msa/$s:local 없음 → load 생략(Harbor/미러 경로로 pull 시도됨)"
     fi
   done
 else

@@ -3,8 +3,10 @@
 // 인-클러스터(standalone kind) CD 파이프라인 — Kaniko 빌드/푸시 + dev overlay 배포.
 //   노드에 docker 데몬이 없으므로 docker build 대신 Kaniko(데몬리스)로 빌드한다.
 //   빌드: deploy/docker/Dockerfile.build (builder 1회 + ARG SERVICE 로 서비스별 런타임).
-//   푸시: harbor.local/si-msa/<svc>:<git-sha>(불변) + :dev(채널). HTTP → --insecure-registry.
-//   배포: kubectl apply -k overlays/dev → set image 로 불변 :<git-sha> 핀 → rollout.
+//   푸시: harbor.local/si-msa/<svc>:<git-sha>(불변) 단일 태그. HTTP → --insecure-registry.
+//         (가변 :dev 폐기 — B 결정 2026-06-07. 단일 진실 = 불변 sha.)
+//   배포: pin-image-tag.sh 로 overlay sentinel(__GITSHA__)→:<git-sha> 주입(워크스페이스만, 되커밋 X)
+//         → kubectl apply -k overlays/dev (선언형 sha 핀) → rollout. ※ kubectl set image 명령형 덮어쓰기 제거.
 //
 // 전제(09-jenkins-install.sh 가 셋업):
 //   · SA jenkins-deployer (si-msa 배포 권한), 시크릿 harbor-push-cred(jenkins ns, dockerconfigjson)
@@ -76,7 +78,7 @@ spec:
       }
     }
 
-    // 4개 서비스를 Kaniko 로 빌드 + 양태그(:<sha>,:dev) 푸시.
+    // 4개 서비스를 Kaniko 로 빌드 + **불변 :<sha> 단일 태그** 푸시(가변 :dev 폐기).
     //   Dockerfile.build builder 스테이지는 SERVICE 무관 → --cache 로 4회 중 1회만 실제 Gradle 빌드 재사용.
     stage('Build & Push (Kaniko)') {
       steps {
@@ -89,7 +91,6 @@ spec:
                   --dockerfile=deploy/docker/Dockerfile.build \
                   --build-arg SERVICE=${svc} \
                   --destination=${env.REGISTRY}/${env.PROJECT}/${svc}:${env.GIT_SHA} \
-                  --destination=${env.REGISTRY}/${env.PROJECT}/${svc}:dev \
                   --insecure-registry=${env.REGISTRY} \
                   --skip-tls-verify-registry=${env.REGISTRY} \
                   --cache=true \
@@ -102,15 +103,14 @@ spec:
       }
     }
 
-    // dev overlay 적용(오브젝트 보장) 후 불변 :<sha> 로 이미지 핀 + 롤아웃.
-    stage('Deploy to dev (kustomize + set image)') {
+    // overlay sentinel 을 이 빌드의 불변 sha 로 declarative 주입 후 apply(워크스페이스만 — 되커밋 없음).
+    //   ※ kubectl set image(명령형) 제거: "적용한 것 = 뜨는 것" 일치 → git↔클러스터 드리프트 소거.
+    stage('Deploy to dev (kustomize sha-pin)') {
       steps {
         container('kubectl') {
           sh '''
+            sh deploy/k8s/pin-image-tag.sh deploy/k8s/overlays/dev "${GIT_SHA}"
             kubectl apply -k deploy/k8s/overlays/dev
-            for svc in gateway auth-server user-service admin-service; do
-              kubectl -n si-msa set image deployment/$svc app=${REGISTRY}/${PROJECT}/$svc:${GIT_SHA}
-            done
             for svc in gateway auth-server user-service admin-service; do
               kubectl -n si-msa rollout status deployment/$svc --timeout=300s
             done

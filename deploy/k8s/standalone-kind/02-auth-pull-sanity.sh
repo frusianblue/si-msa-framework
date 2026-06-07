@@ -6,7 +6,7 @@
 #     (harbor-cred/SA 부착은 맞았지만 pull 자체가 노드에서 안 됨, PITFALLS §9). 01 이 도달층을 닫았으니
 #     이제 "harbor.local(비공개, Basic auth) + harbor-cred(dockerconfigjson)" 경로를 끝까지 검증.
 #     PASS 면 dev overlay 의 pull-secret-dev.yaml(harbor-cred + default SA) 경로가 standalone 에서 유효함이 증명되고,
-#     이 레지스트리가 곧 4단계(실 si-msa/<svc>:dev push → kubectl apply -k overlays/dev)의 토대가 된다.
+#     이 레지스트리가 곧 4단계(실 si-msa/<svc>:<불변태그> push → pin-image-tag.sh 주입 후 apply -k overlays/dev)의 토대가 된다.
 # 전제: 01-pull-sanity.sh 로 kind-sanity 가 떠 있음(없으면 생성 시도). certs.d/harbor.local 는 zip 에 포함(바인드마운트 라이브 반영).
 #
 # 실행: bash deploy/k8s/standalone-kind/02-auth-pull-sanity.sh
@@ -79,7 +79,7 @@ if kubectl --context "${CTX}" wait --for=condition=Ready pod/auth-pull-sanity --
   echo "         imagePullSecrets(harbor-cred)로 pull 했다.  node=${NODE}"
   echo
   echo "→ dev overlay 의 pull-secret-dev.yaml(harbor-cred + default SA) 경로가 standalone 에서 유효."
-  echo "  다음(4단계): 실 si-msa/<svc>:dev 를 이 레지스트리에 push → kubectl apply -k deploy/k8s/overlays/dev"
+  echo "  다음(4단계): 실 si-msa/<svc>:<불변태그> push → pin-image-tag.sh 주입 후 kubectl apply -k deploy/k8s/overlays/dev"
   echo "             (overlay 핀이 harbor.local 이고 이 레지스트리가 harbor.local 로 서빙 = 정합)."
   echo "  (참고 음성대조: --overrides 빼고 같은 파드 띄우면 401 로 ImagePullBackOff = 인증이 실제로 작동 중인 증거.)"
 else

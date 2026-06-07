@@ -8,45 +8,43 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**🟢 B안(호스트 접속 ingress화) 자산·런북·문서 전부 작성 완료 / 🟡 받는 쪽 실행 대기 (2026-06-07 세션4, devops).** standalone kind 호스트 접속을 **port-forward 졸업** → 브라우저 `http://harbor.local`/`http://jenkins.local`. 방식 = 클러스터 **재생성 + `extraPortMappings`(80/443) + ingress-nginx(`controller-v1.13.0` 핀) + Ingress + split-horizon 재조정**. 핵심: 세 주체가 같은 이름 `harbor.local` 로 ingress 에 닿되 해소 IP 만 다름 — **호스트=127.0.0.1**(OS hosts→localhost:80 extraPortMappings), **인-클러스터 Kaniko=ingress ClusterIP**(CoreDNS hosts), **노드 containerd=CP_IP**(노드 `/etc/hosts`, registry-trust DaemonSet 이 CM `node-etc-hosts` 로 기입). `externalURL=http://harbor.local`(realm 도 이름) → 세 경로 모두 해소. 재생성 동반(extraPortMappings 생성시 고정) → PVC 소실, 08/09 멱등 재구축. 저자환경 실행 불가 → 받는 쪽이 5스테이지 런북대로 실행.
+**✅ 이미지 태그 전략 B 확정·구현(2026-06-07 세션5, devops).** 직전 CI 흐름의 냄새(가변 `:dev` 핀 + `kubectl set image :<sha>` 명령형 덮어쓰기 = git↔클러스터 드리프트, 죽은 `:dev` 태그, IfNotPresent stale 잠복)를 제거. **단일 진실 = 불변 git-sha 태그**, apply 시점에 overlay 에 **declarative 주입**. (1) dev overlay `newTag` → sentinel `__GITSHA__`(미주입 apply 는 ImagePullBackOff 로 **fail-loud** → 조용한 stale 구조 차단). (2) 신규 공용 헬퍼 `deploy/k8s/pin-image-tag.sh <overlay-dir> <tag>`(sed·멱등·kustomize 불요)로 주입 단일화 — CI·수동 트랙 공용, **체크아웃 워크스페이스만 치환(되커밋 X)**. (3) `Jenkinsfile.kind`: Kaniko push 를 **`:<sha>` 단일 태그**(가변 `:dev` destination 제거) + deploy 를 `pin → apply -k`(명령형 `set image` 제거). (4) `03-dev-overlay-up.sh`: `:dev` push 폐기 → 불변 태그(커밋 short sha, 미커밋이면 경고) push + in-place 주입→apply→**작업트리 sentinel 복원**. (5) `07-reboot-recover.sh`: 하드코딩 `:dev` 대신 **살아있는 Deployment image ref 의 태그**로 kind load. 오프라인 검증: bash -n 3종 PASS, 헬퍼 치환/멱등/잘못된태그거부 PASS, 작업트리 sentinel 복원 확인. (kustomize build 검증은 받는 쪽 로컬.) ⚠️ prod overlay `:latest` 동일 부채는 차기 동일 전환 예정. **Kaniko 다중빌드 미해결은 그대로** — 다음 세션 #1 유지.
 
 ## 최종 갱신
-- 일자: 2026-06-07 · 갱신자: 세션4(B안 ingress 호스트 접속 산출)
-- 대상 브랜치: master · 환경: 프레임워크/스택 무변경(devops). 이번 세션 산출 미커밋.
+- 일자: 2026-06-07 · 갱신자: 세션5(이미지 태그 전략 B 확정·구현)
+- 대상 브랜치: master · 환경: 프레임워크/스택 무변경(devops). 미커밋(누적 + 세션4 + 세션5).
 
 ## 직전에 한 것 (Done)
 | 단계 | 산출/검증 |
 |---|---|
-| kind-config 개정 | control-plane `extraPortMappings` 80/443 + `node-labels: ingress-ready=true`, **extraMounts 제거**(재부팅 휘발 졸업), containerdConfigPatches 유지. |
-| 01-pull-sanity 개정 | extraMounts 대체 → reg.local certs.d 를 노드에 `docker exec` 직접 시드(sanity 자기완결). |
-| registry-trust DS 개정 | 노드 `/etc/hosts` 멱등 병합(`node-etc-hosts` 키) 추가 — ingress realm 이름해소. inode 보존 `cat>` 덮어쓰기. |
-| 10-ingress-nginx (신규) | kind provider 매니페스트 핀(`controller-v1.13.0`, 200 확인) 설치 + `curl localhost`→404 PASS 게이트. |
-| 08-harbor 개정(ingress) | externalURL=`http://harbor.local`, CoreDNS harbor.local→ingress **ClusterIP**, registry-hosts CM(certs.d + node-etc-hosts CP_IP) + DS rollout + 즉효 직접기입. harbor-values: expose.ingress/ssl-redirect=false/proxy-body-size=0. |
-| 09-jenkins 개정(ingress) | jenkins.local, `jenkinsUrl`, serviceType=ClusterIP, Kaniko push cred(harbor.local) 유지. |
-| 07-reboot-recover 개정 | CP_IP 재산출 → CM node-etc-hosts 갱신 → 노드 certs.d/+/etc/hosts 재기입 → 앱 롤아웃(재부팅 IP 변동 추종). |
-| 11-host-access-verify (신규) | 호스트(harbor/jenkins)·ingress·인-클러스터·노드 좌표 일괄 PASS 게이트. |
-| certs.d 개정 | harbor.local/hosts.toml = `http://harbor.local`(이름·ingress Host 라우팅). |
-| 문서 | `STANDALONE_KIND_HARBOR_JENKINS.md` ingress 런북 전면 개정 · `_PITFALLS_APPEND_2026-06-07-B.md`(8건) · HANDOFF §7 append · `NEXT_INGRESS_HOST_ACCESS.md` 산출완료/실행대기 갱신 · 이 SUMMARY. |
+| overlays/dev | `newTag: dev` → sentinel `__GITSHA__`(4서비스) + 주석 재작성(주입 계약·fail-loud 근거). |
+| pin-image-tag.sh (신규) | 공용 주입 헬퍼. sed 기반·태그형식 방어·멱등·`__GITSHA__`→`<tag>`. CI·수동 공용. |
+| Jenkinsfile.kind | Build&Push=`:<sha>` 단일(— `:dev`). Deploy=`pin-image-tag.sh` 주입→`apply -k`(— `kubectl set image`). 헤더 주석 갱신. |
+| 03-dev-overlay-up.sh | `:dev` push 폐기 → 불변 태그 push + in-place 주입→apply→작업트리 복원(trap). 헤더 갱신. |
+| 07-reboot-recover.sh | `:dev` 하드코딩 → 라이브 Deployment image ref 태그로 kind load(미주입 sentinel 가드). |
+| 검증(오프라인) | bash -n 3종·헬퍼 동작(치환/멱등/거부)·작업트리 sentinel 복원·코드경로 가변:dev 0건. |
+| 문서 | PITFALLS §9 신규 ★항목 + 자가진단 2행 · 이 SUMMARY · standalone README 메모 · HANDOFF §7 append(-C). |
 
 ## 현재 상태 (적용/검증)
-- **자산**: B안 전 자산 작성 완료(드롭인 zip). **저자환경에선 실행 불가**(kind/helm/Gradle 차단) — 정적 작성만.
-- **클러스터**: 받는 쪽 실행 전. 기존 `kind-sanity`(NodePort 판)는 재생성으로 대체 예정(PVC 소실 수용).
-- **커밋**: 세션4 산출 전부 + (이전 누적 백로그) **미커밋**.
+- **태그 흐름**: 가변 `:dev` 배포핀 전면 폐기. 무엇이 뜨는가 = 불변 `:<sha>`, apply 시 declarative 주입. git 기본값=sentinel(fail-loud).
+- **CI(`si-msa-cd`)**: deploy 단계 재설계 완료(파일). **단, Kaniko 다중빌드(gateway 만 빌드) 미해결** — 태그 전략과 독립, 다음 세션 #1.
+- **클러스터/앱 6파드**: 직전 세션 상태 그대로(태그 변경은 매니페스트/스크립트만, 미배포). 새 흐름 실증은 받는 쪽 로컬에서.
+- **커밋**: 누적 + 세션4 + 세션5 **미커밋**.
 
 ## 바로 다음 할 일 (Next)
-1. **받는 쪽 B안 실행(5스테이지)** — 런북/`NEXT_INGRESS_HOST_ACCESS.md` 순서: 재생성(00→01) → 10(ingress) → 07+`apply -k overlays/dev` → 08+09 → hosts 등록 → **11-host-access-verify PASS**.
-2. **파이프라인 1회** — Jenkins UI 잡 생성(SCM, `deploy/cicd/Jenkinsfile.kind`) → Build Now(Kaniko build→push harbor.local→dev 롤아웃 그린).
-3. **11 PASS 후** `NEXT_INGRESS_HOST_ACCESS.md` archive(ARCHIVED 배너) + `_PITFALLS_APPEND_2026-06-07-B.md` 를 `PITFALLS.md §9` 본문 병합 + HANDOFF §7 append 본문 반영.
-4. **commit/push 백로그** — 세션4 + 누적 전부.
+1. **Kaniko 다중 이미지 빌드 재설계**(세션4에서 이월, **최우선**) — `_internal/planning/NEXT_CI_KANIKO_MULTIBUILD.md`. 서비스별 분리 빌드로 4서비스 모두 build→push(:<sha> 단일 태그). 태그 전략은 이미 정리됨(push 는 `:<sha>` 만).
+2. **새 태그 흐름 실증** — 받는 쪽 로컬: `kubectl kustomize overlays/dev`(주입 후) 빌드 확인 → `03-dev-overlay-up.sh`(또는 CI) → 6파드 `:<sha>` 핀 rollout → 미주입 `apply -k` 가 ImagePullBackOff(fail-loud) 로 떨어지는지도 1회 확인.
+3. **prod overlay `:latest` → sentinel/주입 전환**(동일 부채 청산).
+4. **commit/push 누적분 정리**(그린 박제) — 세션2 S5 이후 전부 미커밋.
+5. **실클러스터 완주** — 4서비스 push 후 노드 pull → `apply -k` → 6파드 rollout(세션4 이월).
 
 ## 이번 세션 함정/원칙 (되돌리지 말 것)
-- **ingress 만으론 standalone kind 호스트 노출 불가** — 컨트롤러 hostPort + `extraPortMappings`(생성시 고정) 결합이라야 호스트 localhost 게시. 그래서 재생성 동반.
-- **ingress 모드 realm = 이름(`http://harbor.local`)** → 노드도 이름을 풀어야 함(노드는 CoreDNS 안 씀). **노드 /etc/hosts `<CP_IP> harbor.local`** + certs.d 엔드포인트는 IP 아닌 *이름*(ingress Host 라우팅).
-- **split-horizon = 같은 이름, 다른 해소 IP** — 호스트 127.0.0.1 / 인-클러스터 ingress ClusterIP / 노드 CP_IP. CoreDNS 는 ClusterIP(노드 hostPort 우회), 노드는 /etc/hosts(CP:80).
-- **CP_IP 는 재생성/재부팅으로 변동** — 08/07 이 매번 산출해 CM 갱신. certs.d 는 이름이라 불변(IP 변동을 /etc/hosts 가 흡수).
-- **extraMounts 졸업** = certs.d 공급을 DaemonSet 으로. sanity(DS 이전 단계)는 01 이 직접 시드. /etc/hosts 편집은 `mv` 금지(`cat>` 로 inode 보존).
-- **ssl-redirect=false / proxy-body-size=0** — HTTP 평문·이미지 레이어 push 본문.
-- **claimed-done ≠ executed** — 자산 작성 ≠ 받는 쪽 PASS. 11-host-access-verify PASS 전까지 planning 유지.
+- **무엇이 뜨는가 = 불변 태그, declarative 한 곳 핀.** 가변 채널 태그(`:dev`)를 배포 진실로 쓰거나, 선언형 매니페스트를 명령형 `set image` 로 사후에 덮지 않는다(= git↔클러스터 드리프트).
+- **overlay 기본값은 fail-loud sentinel(`__GITSHA__`)** — 미주입 apply 가 조용한 stale 대신 ImagePullBackOff. "조용한 성공"보다 "시끄러운 실패"가 안전.
+- **주입은 워크스페이스만, 되커밋 없음** — CI=잡 워크스페이스, 수동=in-place→apply→복원(overlay 는 `../../base` 상대참조라 임시복사 apply 불가). 헬퍼 단일 지점(`pin-image-tag.sh`).
+- **`IfNotPresent` + 불변 sha = 정합**(매 sha 새 pull 1회). `IfNotPresent` + 가변 태그 = stale 함정. 태그 불변성이 풀정책의 전제.
+- **redeploy.sh(콘텐츠 다이제스트)는 같은 원칙의 단일-서비스판** — 미커밋 변경까지 추적할 땐 그쪽.
+- **써머리 위치 = `docs/_internal/HANDOFF_SUMMARY.md`**(레포 루트 아님). 드롭인 zip 경로 준수.
 - **배치 트랙 ≠ 메인 트랙** — 배치 상세=`HANDOFF_BATCH_SUMMARY.md`. 독립 갱신.
 
 <!-- 갱신 끝 -->

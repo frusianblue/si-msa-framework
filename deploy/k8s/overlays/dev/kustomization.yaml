@@ -21,19 +21,23 @@ replicas:
   - { name: user-service,  count: 1 }
   - { name: admin-service, count: 1 }
 
-# 이미지 핀: Harbor(harbor.local) + 채널 태그(:dev).
-#   ⚠️ 이전 `:7e935d6` 핀은 **stale** — Harbor 에 부재(실재 태그=6849550/dev/f370bc7)였고 노드가 없는 태그를 당기려 함.
-#      손으로 박은 sha 가 어긋난 것 자체가 **수동 핀의 증상**: 불변 sha 핀은 사람이 타이핑할 게 아니라
-#      CI(S7)가 그 빌드의 sha 로 `kustomize edit set image ...=harbor.local/si-msa/<svc>:<그-sha>` 로 주입한다.
-#      수동 리허설 동안은 채널 태그 `:dev`(항상 실재, standalone kind 타깃에서 그대로 pull) 로 둔다.
+# 이미지 핀: Harbor(harbor.local) + **불변 태그(주입식)**. 가변 채널 태그 `:dev` 는 폐기.
+#   설계(B 결정 2026-06-07):
+#     · 무엇이 뜨는지의 단일 진실 = **불변 git-sha 태그**. 가변 `:dev` 핀 + `kubectl set image :<sha>` 덮어쓰기의
+#       선언/명령 혼용(=git↔클러스터 드리프트)을 제거한다.
+#     · `newTag: __GITSHA__` 는 **CI/스크립트가 체크아웃 워크스페이스에서만 치환**하는 sentinel 이다(되커밋 X).
+#       주입은 공용 헬퍼 `deploy/k8s/pin-image-tag.sh <overlay-dir> <tag>` 한 곳에서만 한다(CI·수동 트랙 공용).
+#     · git 에 박힌 기본값이 sentinel 인 이유 = **fail-loud**. 태그 미주입 상태로 `kubectl apply -k` 하면
+#       `:__GITSHA__` 부재로 ImagePullBackOff → "옛 :dev 가 조용히 뜨던" stale 사고(과거 §③)를 구조적으로 차단.
 #   ⚠️ **이 환경(Docker Desktop kind)에선 harbor.local 직접 pull 이 미러 인터셉트로 불가**(PITFALLS §9) →
-#      이 핀(harbor.local/...:dev)이 실제로 pull 되는 건 **standalone kind 트랙**(NEXT §S3' )에서 검증.
+#      이 핀(harbor.local/...:<sha>)이 실제로 pull 되는 건 **standalone kind 트랙**(03-dev-overlay-up.sh)에서 검증.
 #   base 의 가짜 registry.example.com 접두어를 Harbor 주소로 newName 치환.
+#   ※ 임시 수동 apply 가 필요하면: `bash deploy/k8s/pin-image-tag.sh <복사한_overlay_dir> <태그>` 후 그 dir 로 apply.
 images:
-  - { name: registry.example.com/si-msa/gateway,       newName: harbor.local/si-msa/gateway,       newTag: dev }
-  - { name: registry.example.com/si-msa/auth-server,   newName: harbor.local/si-msa/auth-server,   newTag: dev }
-  - { name: registry.example.com/si-msa/user-service,  newName: harbor.local/si-msa/user-service,  newTag: dev }
-  - { name: registry.example.com/si-msa/admin-service, newName: harbor.local/si-msa/admin-service, newTag: dev }
+  - { name: registry.example.com/si-msa/gateway,       newName: harbor.local/si-msa/gateway,       newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/auth-server,   newName: harbor.local/si-msa/auth-server,   newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/user-service,  newName: harbor.local/si-msa/user-service,  newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/admin-service, newName: harbor.local/si-msa/admin-service, newTag: __GITSHA__ }
 
 patches:
   # ── 이미지풀시크릿: default SA 변경(fresh ns AlreadyExists 레이스) 대신 앱 파드 템플릿에 직접 주입. ──

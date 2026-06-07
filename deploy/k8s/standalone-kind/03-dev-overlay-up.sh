@@ -5,7 +5,7 @@
 #   (B 결정: 02 의 인증 레지스트리로 충분 → 프레임워크 동작 검증으로 직행.)
 # 전제: 02-auth-pull-sanity.sh 까지 PASS(= harbor-auth-reg 가 kind 네트워크에 떠 있고 인증 pull 실증).
 # 호스트는 localhost:5443 로 push, 노드는 harbor.local 로 pull(certs.d→harbor-auth-reg:5000) — 리포지토리 경로 동일.
-# overlay 핀이 harbor.local/si-msa/<svc>:dev 라 매니페스트 무수정.
+# overlay sentinel(__GITSHA__)에 불변 태그를 주입해 apply(가변 :dev 폐기 — B 결정). 작업트리는 apply 후 복원.
 #
 # 실행:  bash deploy/k8s/standalone-kind/03-dev-overlay-up.sh          # 빌드+push+apply+(6파드/DB 검증)
 #        bash deploy/k8s/standalone-kind/03-dev-overlay-up.sh --smoke  # + AS 토큰 스모크(시드 클라이언트 켜고 client_credentials)
@@ -47,16 +47,31 @@ else
   echo "  4개 si-msa/<svc>:local 존재 — 재빌드 생략(REBUILD=1 로 강제 가능)"
 fi
 
-echo "== 2) login + push(호스트 localhost:$PORT → si-msa/<svc>:dev) =="
+echo "== 2) login + push(호스트 localhost:$PORT → si-msa/<svc>:<불변태그>) =="
+# 불변 태그 = 커밋 git short sha(없으면 manual-<ts>). 가변 :dev 폐기(B 결정 2026-06-07).
+TAG="$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD 2>/dev/null || true)"
+[ -n "$TAG" ] || TAG="manual-$(date +%Y%m%d%H%M%S)"
+if ! git -C "$REPO_ROOT" diff --quiet 2>/dev/null; then
+  echo "  ⚠️ 작업트리 미커밋 — TAG=$TAG 는 커밋 sha 기준이라 미커밋 변경을 안 담는다."
+  echo "     단일 서비스 정밀 추적이 필요하면 redeploy.sh(콘텐츠 다이제스트 태그)를 써라."
+fi
 printf '%s' "$RPASS" | docker login -u "$RUSER" --password-stdin "localhost:${PORT}"
 for s in $SERVICES; do
-  docker tag "si-msa/$s:local" "localhost:${PORT}/si-msa/$s:dev"
-  docker push "localhost:${PORT}/si-msa/$s:dev"
+  docker tag "si-msa/$s:local" "localhost:${PORT}/si-msa/$s:$TAG"
+  docker push "localhost:${PORT}/si-msa/$s:$TAG"
 done
-echo "  push 완료(4개 :dev). 노드는 harbor.local/si-msa/<svc>:dev 로 pull."
+echo "  push 완료(4개 :$TAG). 노드는 harbor.local/si-msa/<svc>:$TAG 로 pull."
 
-echo "== 3) dev overlay apply =="
-kubectl --context "$CTX" apply -k deploy/k8s/overlays/dev
+echo "== 3) overlay 에 불변 태그 주입(워크스페이스만) → dev overlay apply =="
+# pin-image-tag.sh 가 in-place 치환 → apply → 작업트리 sentinel 복원(되커밋 없음).
+#   ※ overlay 디렉터리는 ../../base 상대참조라 임시복사 apply 불가 → in-tree 치환 후 복원이 정석.
+OV="deploy/k8s/overlays/dev"
+cp "$OV/kustomization.yaml" "$OV/kustomization.yaml.bak"
+trap 'mv -f "$OV/kustomization.yaml.bak" "$OV/kustomization.yaml" 2>/dev/null || true' EXIT
+bash deploy/k8s/pin-image-tag.sh "$OV" "$TAG"
+kubectl --context "$CTX" apply -k "$OV"
+mv -f "$OV/kustomization.yaml.bak" "$OV/kustomization.yaml"; trap - EXIT
+echo "  apply 완료(:$TAG declarative 핀). 작업트리 sentinel(__GITSHA__) 복원됨."
 
 echo "== 4) 워크로드 Ready 대기(postgres → redis → 앱) =="
 kubectl --context "$CTX" -n "$NS" rollout status statefulset/postgres --timeout=300s
