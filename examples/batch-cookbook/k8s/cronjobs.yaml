@@ -1,0 +1,132 @@
+# =====================================================================================
+# batch-cookbook — Job 별 k8s CronJob. 같은 이미지를 쓰고 --spring.batch.job.name 인자만 다르다.
+# restartPolicy=Never + backoffLimit + fail-on-job-failure(앱) 로 종료코드 기반 성공/실패 판정.
+# 필요한 Job 만 골라 적용한다. (스케줄/리소스는 업무 특성에 맞게 조정)
+# =====================================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cookbook-file-ingest
+  namespace: apps
+spec:
+  schedule: "10 1 * * *" # 매일 01:10
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cookbook
+              image: registry.local/batch-cookbook:1.0.0
+              args:
+                - "--spring.batch.job.name=fileIngestJob"
+                - "--app.ingest.input=file:/landing/transactions.csv"
+              envFrom:
+                - secretRef:
+                    name: cookbook-db # SPRING_DATASOURCE_URL/USERNAME/PASSWORD
+              volumeMounts:
+                - name: landing
+                  mountPath: /landing
+              resources:
+                requests: { cpu: "250m", memory: "512Mi" }
+                limits: { cpu: "1", memory: "1Gi" }
+          volumes:
+            - name: landing
+              persistentVolumeClaim:
+                claimName: batch-landing
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cookbook-report-export
+  namespace: apps
+spec:
+  schedule: "30 2 * * *" # 매일 02:30
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cookbook
+              image: registry.local/batch-cookbook:1.0.0
+              args:
+                - "--spring.batch.job.name=reportExportJob"
+                - "--app.report.output=/out/settlement-report.csv"
+              envFrom:
+                - secretRef: { name: cookbook-db }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cookbook-dormant-account
+  namespace: apps
+spec:
+  schedule: "0 3 1 * *" # 매월 1일 03:00
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cookbook
+              image: registry.local/batch-cookbook:1.0.0
+              args: ["--spring.batch.job.name=dormantAccountJob"]
+              envFrom:
+                - secretRef: { name: cookbook-db }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cookbook-purge
+  namespace: apps
+spec:
+  schedule: "0 4 * * 0" # 매주 일요일 04:00
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cookbook
+              image: registry.local/batch-cookbook:1.0.0
+              args:
+                - "--spring.batch.job.name=purgeJob"
+                - "--app.purge.retention-days=90"
+              envFrom:
+                - secretRef: { name: cookbook-db }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cookbook-interest-accrual
+  namespace: apps
+spec:
+  schedule: "0 0 * * *" # 매일 00:00
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cookbook
+              image: registry.local/batch-cookbook:1.0.0
+              args: ["--spring.batch.job.name=interestAccrualJob"]
+              envFrom:
+                - secretRef: { name: cookbook-db }
+# 수동 1회 실행:
+#   kubectl -n apps create job --from=cronjob/cookbook-interest-accrual interest-manual-20260607
+#   kubectl -n apps logs job/interest-manual-20260607 -f

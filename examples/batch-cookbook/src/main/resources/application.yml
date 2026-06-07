@@ -1,0 +1,55 @@
+# =====================================================================================
+# batch-cookbook — 여러 배치 패턴을 한 앱에 담고, job.name 으로 하나만 골라 1회 실행.
+#   실행 예:  --spring.batch.job.name=fileIngestJob
+# =====================================================================================
+spring:
+  application:
+    name: batch-cookbook
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/appdb}
+    username: ${SPRING_DATASOURCE_USERNAME:app}
+    password: ${SPRING_DATASOURCE_PASSWORD:app}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  batch:
+    job:
+      # 어떤 Job 을 돌릴지 반드시 지정(미지정 시 등록된 Job 이 전부 실행된다).
+      # 실행할 때 --spring.batch.job.name=<jobName> 으로 덮어쓴다.
+      name: ${BATCH_JOB_NAME:fileIngestJob}
+    jdbc:
+      initialize-schema: never # BATCH_* 는 Flyway 가 만든다.
+
+  cloud:
+    task:
+      initialize-enabled: false # TASK_* 는 Flyway 가 만든다.
+      single-instance-enabled: true # 같은 태스크 동시 1개만.
+      batch:
+        fail-on-job-failure: true # 배치 실패 → 종료코드 ≠0 (CronJob 실패감지).
+
+framework:
+  task:
+    enabled: true # 표준 감사 로깅 리스너.
+
+# --- 잡별 파라미터(필요 시 --키=값 또는 환경변수로 덮어쓰기) ---
+app:
+  ingest:
+    # 파일 적재 입력. 기본은 classpath 샘플. 운영: --app.ingest.input=file:/landing/transactions-20260607.csv
+    input: classpath:sample/transactions.csv
+  report:
+    # 추출 결과 출력 경로(쓰기 가능 경로).
+    output: /tmp/settlement-report.csv
+  purge:
+    retention-days: 90
+
+logging:
+  level:
+    com.example.batchcookbook: INFO
+    com.company.framework.task: INFO
+    org.springframework.batch: INFO
+    org.springframework.cloud.task: INFO

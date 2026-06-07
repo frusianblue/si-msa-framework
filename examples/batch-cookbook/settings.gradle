@@ -1,0 +1,5 @@
+// 독립(standalone) Gradle 빌드 — 루트 settings.gradle 에 include 하지 않는다.
+//   목적: 실제 프로젝트가 si-msa-framework 를 라이브러리로 소비하면서, 한 앱 안에
+//   여러 배치 Job(패턴별)을 담아 실행해 보는 "요리책(cookbook)" 예제.
+//   각 Job 은 spring.batch.job.name 으로 골라 1회 실행한다(아래 README 참조).
+rootProject.name = 'batch-cookbook'

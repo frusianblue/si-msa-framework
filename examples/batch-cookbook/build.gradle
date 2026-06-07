@@ -1,0 +1,58 @@
+// =====================================================================================
+// batch-cookbook — "Spring Cloud Task + Spring Batch 6" 실무 배치 패턴 모음 (한 앱, 여러 Job)
+// -------------------------------------------------------------------------------------
+// 담긴 Job(= 실행 단위, spring.batch.job.name 으로 골라 1회 실행):
+//   1) fileIngestJob      파일(CSV) → DB 적재      (FlatFileItemReader → JdbcBatchItemWriter)
+//   2) reportExportJob    DB → 파일(CSV) 추출       (JdbcCursorItemReader → FlatFileItemWriter)
+//   3) dormantAccountJob  다단계(Tasklet→Chunk)     (후보 마킹 step → 휴면 전환 step)
+//   4) purgeJob           단일 Tasklet              (보관기한 지난 데이터 정리 DELETE)
+//   5) interestAccrualJob 내결함 Chunk + 재실행      (skip/retry + RunIdIncrementer)
+//
+// 공통: @EnableFrameworkTask 로 실행 이력(TASK_EXECUTION) 기록, fail-on-job-failure 로
+//       배치 실패→프로세스 종료코드≠0(k8s CronJob 실패감지), Flyway 로 스키마 선반영.
+//
+// 빌드/실행은 로컬에서:  ./gradlew bootRun --args='--spring.batch.job.name=fileIngestJob'
+// (작성 환경은 Maven Central 차단으로 Gradle 미실행 — 정적 작성/검증만.)
+// =====================================================================================
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.0.6'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal() // framework-task 를 publishToMavenLocal 했다면 여기서 해소.
+}
+
+dependencyManagement {
+    imports {
+        // Spring Cloud Task 는 Boot/Oakwood BOM 어디에도 없다 → 별도 BOM 필수.
+        mavenBom 'org.springframework.cloud:spring-cloud-task-dependencies:5.0.1'
+    }
+}
+
+dependencies {
+    // 프레임워크 태스크 표준(= spring-boot-starter-batch + spring-cloud-task core/batch 를 api 전이).
+    //   멀티모듈 안에서 시험하려면 implementation project(':framework:framework-task') 로 바꾸고
+    //   루트 settings.gradle 에 이 예제를 include 한다.
+    implementation 'com.company:framework-task:1.0.0'
+
+    runtimeOnly 'org.postgresql:postgresql'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.batch:spring-batch-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
