@@ -1,7 +1,13 @@
 # deploy/k8s/overlays/prod/kustomization.yaml
 # PROD: HPA, 외부(운영) DB 호스트, 외부 공개 issuer. 시크릿은 미포함(ESO/SealedSecrets 로 사전 주입).
-#   배포:  kubectl apply -k deploy/k8s/overlays/prod
-#   ⚠️ 이미지 태그는 CI 가 커밋 SHA 로 설정: kustomize edit set image registry.example.com/si-msa/<svc>=...:<sha>
+#   배포 주체:  ArgoCD (GitOps, pull). 이 overlay 가 prod Application 의 source path.
+#   ─ 가변 `:latest` 폐기(2026-06-08). 단일 진실 = 불변 git-sha 태그. dev 의 부채청산(B 결정)을 prod 로 확장.
+#   ─ ★ dev 와의 결정적 차이: dev 는 워크스페이스에서만 핀(되커밋 X, push-CD)이지만,
+#       prod 는 ArgoCD 가 **git 커밋 상태**를 진실로 reconcile 하므로 핀을 **git 에 커밋**해야 한다.
+#       promote 단계(`kustomize edit set image .../<svc>=...:<sha>` 또는 pin-image-tag.sh 후 git commit)가
+#       이 파일의 sentinel `__GITSHA__` 를 불변 sha 로 박아 커밋 → ArgoCD 가 그 diff 를 sync.
+#   ─ git 기본값이 sentinel 인 이유 = fail-loud: promote 전 prod 는 `:__GITSHA__` 부재로 sync/pull 실패 →
+#       "옛 :latest 가 조용히 뜨던" stale 사고를 구조적으로 차단(dev 와 동일 원칙).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -13,21 +19,18 @@ resources:
 
 # 초기 레플리카(이후 HPA 가 조정). base 의 2 를 유지하므로 별도 replicas 미지정.
 
+# 불변 sha 핀(promote 가 커밋). registry.example.com 은 운영 레지스트리 placeholder(ops 가 newName 으로 치환).
 images:
-  - { name: registry.example.com/si-msa/gateway,       newTag: latest }
-  - { name: registry.example.com/si-msa/auth-server,   newTag: latest }
-  - { name: registry.example.com/si-msa/user-service,  newTag: latest }
-  - { name: registry.example.com/si-msa/admin-service, newTag: latest }
+  - { name: registry.example.com/si-msa/gateway,       newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/auth-server,   newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/user-service,  newTag: __GITSHA__ }
+  - { name: registry.example.com/si-msa/admin-service, newTag: __GITSHA__ }
 
 patches:
-  # ── imagePullPolicy: base 는 IfNotPresent(노드캐시/불변 sha 전제) → prod 는 Always 로 덮음. ──
-  #   prod 는 가변 채널(:latest) + 운영 레지스트리라 매 배포 시 최신 다이제스트를 끌어와야 한다.
-  #   CI(S7)가 불변 :<sha> 로 박는 경우엔 Always 여도 다이제스트가 고정이라 무해(재pull 1회).
-  - target: { kind: Deployment, labelSelector: "app.kubernetes.io/component=service" }
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: Always
+  # ── imagePullPolicy: base 의 IfNotPresent 를 그대로 유지(별도 패치 없음). ──
+  #   과거엔 prod=가변 :latest 라 매번 Always 로 최신 다이제스트를 끌어와야 했으나,
+  #   :latest 폐기 + 불변 :<sha> 커밋식 핀으로 전환(2026-06-08)하면서 그 전제가 소멸 →
+  #   불변 sha 는 노드 캐시 재사용이 안전(=IfNotPresent 의 본래 설계). Always 패치 제거.
 
   # 외부 공개 issuer(토큰 iss). gateway 검증 issuer 와 auth-server 발급 issuer 를 동일 공개 URL 로.
   - target: { kind: ConfigMap, name: auth-server-config }

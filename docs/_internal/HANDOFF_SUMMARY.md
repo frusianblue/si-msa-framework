@@ -8,51 +8,44 @@
 <!-- 갱신 시작 -->
 
 ## 이번 세션 한 줄 요약
-**🟢 devops 섹션 종료 — CI/CD 1차 완주 + 관측 노출 + 문서 정리(2026-06-07 세션5–8, devops).** 한 호흡으로: (5)태그 전략 B(불변 git-sha declarative 주입, 가변 :dev 폐기) (6)Kaniko 서비스별 컨테이너 다중빌드 (7)deploy 결함 2종(ns ClusterRole + ServiceMonitor 분리) → **실잡에서 6파드 `1/1 Running`, 4서비스 전부 `harbor.local/si-msa/*:cd161c73c135` 단일 sha 핀 실측** = **CI/CD 빌드→push→배포 완주**. (8)관측 Grafana/Prometheus 를 B안 ingress(`grafana.local`/`prometheus.local`)로 노출, JVM 대시보드 4서비스 실데이터 확인 = **관측 마감**. 마지막으로 **문서 정리**: §7 append(C/D/E/F) → HANDOFF.md §7 본문 병합, 해결 planning 2건(Kaniko·ingress-host-access) archive 복사. **이번 섹션은 여기서 닫고, 다음 섹션은 아래 '다음 할 일' 메뉴에서 시작.**
+**🟢 운영(prod) 프로비저닝 설계 잠김 + prod 가변태그 청산(2026-06-08, devops · 대화 확정, 구현은 다음 섹션).** 운영을 **ArgoCD GitOps(pull)** 로 가기로 확정 — 매니페스트(kustomize)는 무변경이고 바뀌는 건 운영 레이어(드리프트 자동교정·CI 자격증명 분리·git=진실·sync 감사)뿐. **`master` 머지 = 운영 즉시반영**(prod Application `targetRevision: master`, 자동sync). **토폴로지 = 역할별 3클러스터** cicd(hub: Harbor·Jenkins·ArgoCD) / 데이터(PG·Redis, **K8s 밖 독립** = 현장 정석) / 서비스(stateless 4앱). kind 리허설 = `kind-cicd`+`kind-svc`+**우분투 도커 postgres/redis(`--network kind`)**. **stg 제거**, develop·dev 는 운영 완주 후. 이번 적용 산출 = **prod overlay `:latest`×4 → 커밋식 `__GITSHA__`**(`Always` 패치 제거→base IfNotPresent 상속, GitOps 전제 주석). **다음 섹션은 전부 prod 기준 · 무조건 인프라부터.** 진입 스펙 = `planning/NEXT_PROD_GITOPS_ARGOCD.md`.
 
 ## 최종 갱신
-- 일자: 2026-06-07 · 갱신자: 세션8(섹션 종료 + 문서 정리)
-- 대상 브랜치: master · 환경: 프레임워크/스택 무변경(devops). 코드(세션5–8) 커밋됨. **이번 정리 산출(문서) + 받는 쪽 git rm/mv 미반영.**
+- 일자: 2026-06-08 · 갱신자: 세션(운영 설계 확정 + prod overlay 전환)
+- 대상 브랜치: master · 환경: 프레임워크/스택 무변경(devops). **이번 산출(prod overlay + 문서) 미커밋 — 받는 쪽 적용/commit/push.**
 
 ## 직전에 한 것 (Done)
 | 단계 | 산출/검증 |
 |---|---|
-| CI/CD 완주(5–7) | 태그 B(sentinel+pin-image-tag.sh)·Kaniko 4컨테이너 순차·ns ClusterRole·SM 분리 → 6파드 Running·단일 sha 핀 실측. |
-| 관측 ingress(8) | monitoring-values.yaml(ingress+ssl-redirect=false+grafana domain) · 05/06 ingress 우선 → grafana.local/prometheus.local 실측. |
-| 문서 정리(8) | §7 에 세션5–8 병합 · 해결 planning 2건 archive 복사(배너) · 이 SUMMARY 종료판 · PITFALLS §9 누적(CI/CD·관측). |
+| 운영 설계 확정 | ArgoCD GitOps · master=즉시반영 · 3클러스터 분리 · DB=K8s밖 · stg제거 — `NEXT_PROD_GITOPS_ARGOCD.md` 에 잠금. |
+| prod 가변태그 청산 | prod kustomization `:latest`→`__GITSHA__`(커밋식 핀), `imagePullPolicy: Always` 패치 제거. PyYAML 검증 OK. |
+| 문서 | PITFALLS §9 신규 3건(push↔pull 핀 반전·멀티클러스터 배치·DB는 K8s밖) · HANDOFF §7 항목 추가 · 이 SUMMARY. |
 
 ## 현재 상태 (적용/검증)
-- **CI/CD**: ✅ 완주. `si-msa-cd` build(Kaniko 4컨테이너 순차)→push(:<sha> 단일)→pin→apply→6파드 rollout 그린.
-- **관측**: ✅ Grafana/Prometheus ingress 노출 + JVM 대시보드 실데이터. (알람/RED/tracing 은 보류.)
-- **문서**: §7 최신화, PITFALLS §9 누적 완료. 다음 섹션 진입점 = 이 SUMMARY + 아래 메뉴.
-- **커밋**: 코드 push 됨. **받는 쪽 잔여 git 작업** = (a) append 파일 5개 `git rm` (내용 §7 병합됨) (b) 해결 planning 2건 `git rm`(archive 복사본은 zip 동봉) (c) 정리 산출 commit/push.
+- **설계**: ✅ 잠김(대화 확정). 구현 0 — 다음 섹션 인프라부터.
+- **prod overlay**: ✅ 가변태그 청산(정적 검증). dev 핀 모델과 **반대**(prod=커밋, dev=워크스페이스). 미커밋.
+- **문서**: PITFALLS §9 누적 · HANDOFF §7 갱신 · planning 스펙 신설.
+- **커밋**: 이번 산출(prod overlay + planning + PITFALLS + HANDOFF + 이 SUMMARY) **미커밋** — 받는 쪽 `unzip -o` 적용 후 commit/push.
 
-## 바로 다음 할 일 (Next) — 다음 섹션 메뉴
-> 권고 순서: 1(위생) → 2(CI 품질게이트). 트랙은 시작 시 Chae 가 택1.
-1. **위생 마무리** — prod overlay `:latest` → dev 와 동일 sentinel+`pin-image-tag.sh` 주입 전환(가변-태그 부채 청산). + 아래 '문서 정리 git 작업' 반영.
-2. **CI 품질게이트(devops 최대 공백)** — 지금은 사실상 CD 만(Dockerfile.build `-x test`). 이미지 빌드 *전* test+JaCoCo+Spotless/Palantir+**ArchUnit**(모듈 경계) 게이트 + Harbor **Trivy** 스캔 + rollout 실패 자동롤백/승인.
-3. **prod 하드닝** — 시크릿(External Secrets/Sealed/Vault)·TLS(cert-manager)·HPA 실부하 수용시험·로그수집(Loki).
-4. **(보류) 관측 심화** — PrometheusRule+Alertmanager(알람), HTTP RED 대시보드, 분산추적(Tempo/Zipkin).
-5. **(devops 밖) auth 보안/영속 분리** — `framework-security-rbac-mybatis` 어댑터(설계 잠김, 구현만). README 실전예제 rollout(mybatis/oauth-client/audit/observability/secure-web).
+## 바로 다음 할 일 (Next) — 다음 섹션 = prod, 무조건 인프라부터
+> 진입점 = `docs/_internal/planning/NEXT_PROD_GITOPS_ARGOCD.md` §3.
+1. **인프라 토대** — kind 2클러스터(`kind-cicd`+`kind-svc`) 생성 스크립트 + 우분투 도커 postgres/redis(`--network kind`) 기동·연결. 클러스터간 네트워크·노드 Harbor 신뢰·서비스→DB 도달 PASS 게이트.
+2. **ArgoCD(hub)** — `kind-cicd` 설치(`argocd.local` B안 ingress) + `kind-svc` 원격 등록(kubeconfig server=컨테이너 IP).
+3. **GitOps 자산** — `deploy/argocd/`(AppProject + prod Application `targetRevision:master` + app-of-apps bootstrap).
+4. **promote 배선** — `Jenkinsfile.promote`: CD 의 불변 `:<sha>` → prod overlay `kustomize edit set image` + **git commit/push** → ArgoCD sync.
+5. **데이터/관측 정합** — DB/Redis=K8s밖 엔드포인트, 관측 분산형(워크로드 agent+중앙 Grafana).
+6. **문서** — `docs/ops/PROD_GITOPS_ARGOCD.md` + branch-per-env 가이드(master=prod 레퍼런스 + release-태그 대안).
 
-## 문서 정리 — 받는 쪽 git 작업(이번 정리 반영용)
-```
-# append 파일(내용 §7 본문 병합 완료) 제거
-git rm docs/_internal/HANDOFF_SECTION7_APPEND_2026-06-07-{B,C,D,E,F}.md
-# 해결 planning → archive 이동(archive 복사본은 zip 으로 추가됨)
-git rm docs/_internal/planning/NEXT_CI_KANIKO_MULTIBUILD.md
-git rm docs/_internal/planning/NEXT_INGRESS_HOST_ACCESS.md
-# (검토) 레포 루트 잔여물 — 의도된 커밋 아니면 제거
-git rm docs/_internal/c.txt docs/_internal/cookies.txt   # ← 내용 확인 후
-```
-- `NEXT_K8S_REAL_DEPLOY.md` 는 docker-desktop kind 전제(은퇴) → standalone 트랙이 대체. 다음 섹션에서 archive 여부 검토.
-- `apply-notes/`·`c.txt`·`cookies.txt` 는 작업 잔여물로 보임 — 내용 확인 후 정리 권고.
+## 빈칸 / 잔여
+- **운영 클러스터 VM**: cicd/dev VM 은 있으나 **prod 전용 미생성**(stg 폐기). master=prod 실 클러스터 위치 → VM 이전 시점 결정.
+- **문서 잔여물 정리 후보**(다음 섹션): `docs/_internal/apply-notes/`(3파일) · `docs/_internal/planning/NEXT_K8S_REAL_DEPLOY.md`(docker-desktop kind 실배포 전제=은퇴, 이 ArgoCD 트랙이 대체 → `git rm`/archive 권고).
 
 ## 이번 섹션 함정/원칙 (되돌리지 말 것 · 상세 PITFALLS §9)
-- **무엇이 뜨는가 = 불변 태그 declarative 핀**(가변 채널 태그·명령형 set image 금지). overlay 기본값=fail-loud sentinel.
-- **Kaniko = 컨테이너당 executor 1회·순차**(공유 builder 캐시 보존).
-- **CI 배포 SA = ns 객체(클러스터 스코프)에 명시적 ClusterRole 필요**(namespaced edit 불충분, 생성은 admin). **옵셔널 operator CRD 의존 리소스는 코어 배포에서 분리**(add-on 단독 소유).
-- **관측 UI ingress = ssl-redirect:false + grafana domain/root_url. 노드 이름해소 불요**(호스트 hosts 한 줄). Harbor(노드 pull)와 결정적 차이.
-- **써머리 위치 = `docs/_internal/HANDOFF_SUMMARY.md`**. 배치 트랙 = `HANDOFF_BATCH_SUMMARY.md` 독립.
+- **dev=push-CD(워크스페이스 핀, 되커밋X) ↔ prod=pull-GitOps(커밋 핀)**. ArgoCD 진실=git 커밋 상태 → prod 는 핀을 커밋해야 함(dev 규칙 반전). sentinel 기본값=fail-loud(공통).
+- **ArgoCD ≠ pull** — 노드→레지스트리 pull 은 인프라 레이어(클러스터마다 Harbor 신뢰). CD 는 apply 만.
+- **클러스터는 폭발반경/라이프사이클로 가른다**(CI/CD·데이터·워크로드). 운영 애드온은 그 기능 필요한 클러스터에. **DB 는 K8s 밖이 기본값**(현장 정석, 운영부담 아님).
+- **kind 데이터 = 도커 컨테이너 `--network kind`**(클러스터로 안 뺌). hub→워크로드 = kubeconfig server 를 컨테이너 IP 로.
+- **다음 섹션 전부 prod 기준 · 인프라부터**(경험먼저로 새다 되돌리는 비용 회피).
+
 
 <!-- 갱신 끝 -->
