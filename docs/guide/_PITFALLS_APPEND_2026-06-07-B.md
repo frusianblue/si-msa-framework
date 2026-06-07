@@ -14,3 +14,13 @@
 | 재생성으로 CP_IP 변동 → 노드 /etc/hosts·CM stale | [겪음] CP_IP 는 재생성/재부팅으로 바뀔 수 있음 → 08/07 이 매번 `docker inspect`로 재산출해 CM(node-etc-hosts) 갱신+DS rollout. certs.d 엔드포인트는 *이름*이라 불변(IP 변동을 /etc/hosts 가 흡수) |
 | extraMounts 제거 후 01-pull-sanity 가 reg.local certs.d 못 찾음 | [겪음] B안에서 extraMounts(휘발) 졸업 → certs.d 공급자가 DaemonSet 으로 이동. sanity 단계는 DS 이전이므로 01 이 `docker exec`로 reg.local certs.d 를 노드에 직접 시드(자기완결) |
 | /etc/hosts 를 DaemonSet 으로 편집 시 바인드마운트 깨짐 | [일반] `mv` 로 교체하면 inode 바뀌어 hostPath File 마운트 분리. **`cat tmp > /host-etc-hosts`(내용 덮어쓰기)** 로 inode 보존 |
+
+### [겪음 encountered] ingress-nginx kind provider 매니페스트(v1.13.0)가 `ingress-ready` nodeSelector 를 더 이상 포함하지 않음
+- **증상:** kind-config 로 control-plane 에 `ingress-ready=true` 라벨을 부여하고 ingress-nginx(kind, controller-v1.13.0)를 설치했는데, 컨트롤러 파드가 라벨 없는 `worker` 노드로 스케줄됨. 호스트에서 `curl http://localhost/` → `curl: (56) Recv failure: Connection reset by peer`(refused 아님).
+- **원인:** 과거 kind provider 매니페스트엔 `nodeSelector: ingress-ready: "true"` + control-plane toleration 이 있어 컨트롤러가 CP 노드에 고정됐으나, controller-v1.13.0 의 `deploy/static/provider/kind/deploy.yaml` 은 `nodeSelector: kubernetes.io/os: linux` 만 둔다. 따라서 컨트롤러가 임의 노드(worker)로 떠 hostPort 80 을 worker 에 잡고, `extraPortMappings` 가 게시한 것은 control-plane:80 이라 호스트→control-plane:80 은 빈 포트(백엔드 없음) → docker-proxy 가 연결을 reset. (refused 가 아니라 reset 인 것이 단서: 포트 게시는 됐고 백엔드만 없음.)
+- **해결:** 매니페스트 apply 직후 컨트롤러 Deployment 를 patch 해 control-plane 에 고정한다. nodeSelector 에 `ingress-ready=true`(+`kubernetes.io/os=linux`)를, tolerations 에 `node-role.kubernetes.io/control-plane:NoSchedule` 을 추가. taint toleration 을 빼면 CP 노드 스케줄이 막혀 Pending 이 되므로 둘 다 필요.
+  ```bash
+  kubectl -n ingress-nginx patch deploy ingress-nginx-controller --type merge -p \
+    '{"spec":{"template":{"spec":{"nodeSelector":{"ingress-ready":"true","kubernetes.io/os":"linux"},"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}}}}'
+  ```
+  `10-ingress-nginx.sh` 1.5단계에 내장(멱등 — 재실행/재apply 해도 유지). 매니페스트 버전을 올릴 때 nodeSelector 포함 여부를 매번 재확인할 것(버전 회귀 가능).
