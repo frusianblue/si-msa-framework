@@ -102,12 +102,15 @@ bash 92-verify-gitops.sh      # G8~G10
 ```bash
 cd deploy/k8s/prod-kind
 bash 30-harbor-hub-install.sh   # kind-cicd(hub)에 Harbor(Helm, harbor.local) + si-msa 프로젝트
+bash 35-seed-secrets.sh         # 리허설 시크릿 4개(prod 는 시크릿 미커밋 → 없으면 CreateContainerConfigError)
 bash 40-promote.sh              # 호스트 docker 빌드 → push → overlay 핀 → git commit/push → ArgoCD sync
 # (sync/pull/startup 대기 후)
 bash 41-verify-promote.sh       # G11~G13
 ```
 
-**호스트 push 사전조건**(40-promote 가 docker push harbor.local 하려면): Docker Desktop daemon 에 `insecure-registries: ["harbor.local"]`(HTTP 평문 레지스트리) + Windows/WSL hosts 에 `127.0.0.1 harbor.local`.
+**호스트 push 사전조건**(40-promote 가 docker push harbor.local 하려면): Docker Desktop daemon 에 `insecure-registries: ["harbor.local"]`(HTTP 평문 레지스트리) + Windows/WSL hosts 에 `127.0.0.1 harbor.local`. **git author identity**(`git config user.email/user.name`)도 있어야 promote commit 이 된다(40 의 0단계가 선점검).
+
+**리허설 시크릿**(`35-seed-secrets.sh`): prod overlay 는 시크릿을 git 에 안 넣는다(설계 — ESO/SealedSecrets/운영자 사전주입). base Deployment 의 `envFrom.secretRef`(4개 `*-secret`)가 없으면 파드가 **CreateContainerConfigError**(이미지 pull 이전 config 단계 실패). 리허설에선 `siuser/siuser_pw`(initdb 일치) 고정값으로 1회 주입.
 
 promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4서비스 `:<sha>` 빌드(builder 스테이지 SERVICE 무관 → 1회 컴파일 재사용) → ② `harbor.local/si-msa/<svc>:<sha>` push → ③ `overlays/prod` 의 images 줄을 sed 로 통째 교체(placeholder newName + sha newTag, flow 유지, 멱등 — kustomize CLI 불요) → ④ **git commit/push**(prod 반전 — dev 의 "되커밋 X"와 정반대, ArgoCD 는 master 가 진실) → ⑤ `refresh=hard` 로 즉시 reconcile.
 

@@ -76,7 +76,7 @@ if kubectl --context "$SVC_CTX" -n "$APPNS" get deploy >/dev/null 2>&1; then
     pass "kind-svc 파드 전부 Ready(green) — promote end-to-end 성립"
   else
     fail "Ready 아님(미준비 $NOTREADY/$TOTAL) — pull/startup/DB 트리아지(아래 힌트)"
-    note "ImagePullBackOff → 노드 신뢰(03)/Harbor(30)/push(40 G11) · CrashLoop → DB(02 CoreDNS)/issuer/Authenticator(PITFALLS §9)"
+    note "ImagePullBackOff → 노드 신뢰(03)/Harbor(30)/push(40 G11) · CreateContainerConfigError → 시크릿 부재(35-seed-secrets) · CrashLoop → DB(02 CoreDNS)/issuer/Authenticator(PITFALLS §9)"
   fi
 else
   fail "kind-svc 에 Deployment 없음 — GitOps reconcile 미도달(92-verify-gitops 선행)"
