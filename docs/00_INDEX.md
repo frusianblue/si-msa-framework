@@ -26,10 +26,11 @@
 ### ⓒ **운영·배포(DevOps)** 하는 사람
 1. [`ops/LOCAL_SETUP.md`](ops/LOCAL_SETUP.md) — 로컬 DB/Redis 기동
 2. [`../deploy/compose/README.md`](../deploy/compose/README.md) — **Docker Compose 로 4서비스+DB+Redis 한 번에**(소스부터 빌드, 로컬 통합 검증)
-2. [`ops/LOCAL_K8S_ENV_SETUP.md`](ops/LOCAL_K8S_ENV_SETUP.md) · [`ops/LOCAL_K8S_TEST.md`](ops/LOCAL_K8S_TEST.md) — kind 로 로컬 클러스터 검증
-3. [`ops/K8S_ADDONS.md`](ops/K8S_ADDONS.md) — 클러스터 애드온(metrics-server·Prometheus·Ingress·Secret 오퍼레이터)
-4. [`ops/K8S_CICD_MULTISERVICE.md`](ops/K8S_CICD_MULTISERVICE.md) — Kustomize base/overlay·4서비스 CI/CD
-5. [`ops/SONARQUBE_GUIDE.md`](ops/SONARQUBE_GUIDE.md) — 코드 품질·보안약점 게이트(SonarQube) 사용법(서버 기동·토큰·분석 실행·Quality Gate)
+3. [`ops/LOCAL_K8S_ENV_SETUP.md`](ops/LOCAL_K8S_ENV_SETUP.md) · [`ops/LOCAL_K8S_TEST.md`](ops/LOCAL_K8S_TEST.md) — kind 로 로컬 클러스터 검증
+4. [`ops/K8S_ADDONS.md`](ops/K8S_ADDONS.md) — 클러스터 애드온(metrics-server·Prometheus·Ingress·Secret 오퍼레이터)
+5. [`ops/K8S_CICD_MULTISERVICE.md`](ops/K8S_CICD_MULTISERVICE.md) — Kustomize base/overlay·4서비스 CI/CD
+6. [`ops/STANDALONE_KIND_HARBOR_JENKINS.md`](ops/STANDALONE_KIND_HARBOR_JENKINS.md) — **standalone kind 인-클러스터 Harbor+Jenkins+Kaniko 파이프라인 런북**(harbor.local/jenkins.local ingress·재부팅 복구)
+7. [`ops/SONARQUBE_GUIDE.md`](ops/SONARQUBE_GUIDE.md) — 코드 품질·보안약점 게이트(SonarQube)
 
 ---
 

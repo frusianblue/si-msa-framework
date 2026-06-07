@@ -45,7 +45,7 @@
 - 📋 **기본기능 카탈로그 신설(2026-06-03)**: `docs/BASELINE_FEATURES.md` — 기본기능 10항목 실측 체크(있음/부분/없음 + 위치 + 인수기준). #5 컨텍스트·#7 이미지 완료. 다음 활성=파일 하드닝 묶음(#8+#9+#10: 대용량 스트리밍/presigned·메타 정합성·AV 훅). 추가 요청은 §6 대기열로 수집.
 - 🛠️ **환경정비+보안·검증+spotless(2026-06-03)**: 프로파일 **local/dev/prod 통일 + `local-xx` 오버레이**(local-postgres/redis/noauth), **감사 로그 DB 적재 활성화**(`audit_log` 마이그레이션 추가 — store.type=jdbc 의 3요건 중 누락분), **JWT 시크릿 prod 가드**(`JwtSecretSafetyGuard`), **요청 검증 빈틈 보강**(Spring7 `HandlerMethodValidationException`·로그인 `@Valid`), **spotless 다소스 확장**(Java=Palantir + gradle/yaml/sql/md, 설정 캐시 충돌 `lineEndings=UNIX` 해결). 문서 `docs/LOCAL_SETUP.md`·`CHANGES_AND_DEPRECATIONS.md`·`SECURITY_VALIDATION_ADDITIONS.md`·`SPOTLESS_NOTES.md`.
 - ✅ **설정값(YAML) 패스워드 암호화 완료(2026-06-03)**: `framework-core` crypto 책임 확장 — 커스텀 Boot4 `EncryptedPropertyEnvironmentPostProcessor`(+`DecryptingPropertySource` enumerable 래퍼)가 `ENC(...)` 프로퍼티를 기존 `AesCryptoService`(AES-GCM, 마스터키 `framework.crypto.aes-secret`/`AES_SECRET`)로 지연 복호화. 등록은 `META-INF/spring.factories`(컨텍스트 이전). 토글 `framework.crypto.config-decryption.enabled`(기본 on). 토큰 생성 `CryptoCli`, prod 마스터키 가드 `AesMasterKeySafetyGuard`. **Jasypt 미도입**, 신규 의존성 0, Jackson 무관. 설계서 `docs/archive/NEXT_YAML_PASSWORD_ENCRYPTION.md`.
-- 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `HANDOFF_SUMMARY.md`.
+- 표기: ✅ 구현완료 · ⏭️ 다음 · (무표기) 예정. 세션 단위 상세는 `_internal/HANDOFF_SUMMARY.md`.
 
 ---
 

@@ -38,7 +38,7 @@
 
 ## 빈칸 / 잔여
 - **운영 클러스터 VM**: cicd/dev VM 은 있으나 **prod 전용 미생성**(stg 폐기). master=prod 실 클러스터 위치 → VM 이전 시점 결정.
-- **문서 잔여물 정리 후보**(다음 섹션): `docs/_internal/apply-notes/`(3파일) · `docs/_internal/planning/NEXT_K8S_REAL_DEPLOY.md`(docker-desktop kind 실배포 전제=은퇴, 이 ArgoCD 트랙이 대체 → `git rm`/archive 권고).
+- **문서 잔여물 정리(2026-06-08 완료)**: `docs/_internal/apply-notes/`(3파일) · 루트 `HANDOFF_SUMMARY.md`/`APPLY_HARBOR_JENKINS.md`(stale 중복) · `NEXT_K8S_REAL_DEPLOY.md`(docker-desktop kind 전제 은퇴) → **삭제 완료**. PITFALLS append 2파일 → 본문 §8/§9/부록 병합 후 삭제. INDEX·GAP_AUDIT·FRAMEWORK_MODULES·HARBOR_SETUP 끊긴 포인터 정정. (AUTH 트랙 문서는 미관여 — `AUTH_SERVER.md` 의 `NEXT_K8S_REAL_DEPLOY §S3'` 잔여 1줄은 AUTH 작업 시 정리 권고.)
 
 ## 이번 섹션 함정/원칙 (되돌리지 말 것 · 상세 PITFALLS §9)
 - **dev=push-CD(워크스페이스 핀, 되커밋X) ↔ prod=pull-GitOps(커밋 핀)**. ArgoCD 진실=git 커밋 상태 → prod 는 핀을 커밋해야 함(dev 규칙 반전). sentinel 기본값=fail-loud(공통).

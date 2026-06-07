@@ -30,7 +30,7 @@ kind 실배포로 검증된 것은 **`overlays/local` 6파드 `1/1 Running` + Db
 - **상위 인증 흐름** — OIDC RP 풀콜백·SAML SP·SLO·게이트웨이 이중 발급기·webauthn 은 `@SpringBootTest`/JDK e2e 레벨이지 kind 실배포 위 검증 아님.
 - **운영 부적합 잔재** — 이미지 태그 `:local`+`IfNotPresent`(불변 태그/실 레지스트리 아님) · 볼륨 emptyDir/`/tmp`(PVC 아님).
 
-→ **다음 단계 = 실배포 검증 + 애드온**: 착수 설계 `NEXT_K8S_REAL_DEPLOY.md`(volume/PVC · 불변 이미지 태그+레지스트리 · 애드온 클러스터 실증 · dev/prod overlay 실 apply).
+→ **다음 단계 = 운영(prod) 프로비저닝**: 착수 설계 `NEXT_PROD_GITOPS_ARGOCD.md`(ArgoCD GitOps + 3-클러스터 분리 + DB=K8s밖 + 불변 sha 커밋 핀). ※ 이전 `NEXT_K8S_REAL_DEPLOY.md`(docker-desktop kind 단일환경 리허설 전제)는 이 트랙이 대체해 폐기됨.
 
 ---
 

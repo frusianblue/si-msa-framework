@@ -59,4 +59,4 @@
 ## 6. 환경 메모
 
 - kind-sanity(WSL, 32GB)와 VirtualBox VM 7대(호스트 RAM)는 **별개 메모리**. VM 트랙 갈 땐 WSL kind 안 띄워도 됨 → 둘을 동시에 풀로 안 돌리면 자원 충분(64GB/2TB).
-- 문서 잔여물(다음 섹션 정리 후보): `docs/_internal/apply-notes/`(3파일, 작업 잔여) · `docs/_internal/planning/NEXT_K8S_REAL_DEPLOY.md`(docker-desktop kind 실배포 전제 = 은퇴, 이 ArgoCD 멀티클러스터 트랙이 대체 → archive 권고).
+- 문서 잔여물 정리(2026-06-08 완료): `docs/_internal/apply-notes/`(3파일) · `docs/_internal/planning/NEXT_K8S_REAL_DEPLOY.md`(docker-desktop kind 실배포 전제 = 은퇴, 이 ArgoCD 멀티클러스터 트랙이 대체) → **삭제 완료**. PITFALLS append 2파일은 본문 §8/§9/부록에 병합 후 삭제.

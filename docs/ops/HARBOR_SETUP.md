@@ -4,7 +4,7 @@
 
 > 목적: 현재 Docker Desktop kind 환경에서 **실 레지스트리 경로(불변 태그 push → imagePullSecrets pull)**를 리허설.
 > 이번 단계 = **NodePort + HTTP**(단순). TLS/ingress 노출은 S4(ingress-nginx)에서 얹는다.
-> 선행: S1 영속 postgres 검증 완료. 절차/트러블슈팅 `LOCAL_K8S_TEST.md`, 전체 런북 `../_internal/planning/NEXT_K8S_REAL_DEPLOY.md`.
+> 선행: S1 영속 postgres 검증 완료. 절차/트러블슈팅 `LOCAL_K8S_TEST.md`. ⚠️ 이 문서는 docker-desktop kind(NodePort+HTTP) 전제 — standalone kind 인-클러스터 Harbor 런북은 `STANDALONE_KIND_HARBOR_JENKINS.md` 가 정본.
 
 ---
 
