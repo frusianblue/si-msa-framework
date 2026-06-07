@@ -33,3 +33,9 @@
   kubectl create namespace si-msa --dry-run=client -o yaml | kubectl apply -f -
   ```
   나중 `kubectl apply -k overlays/dev` 가 동일 ns(라벨 포함)를 흡수(no-op). 권장 순서: ① ns+RBAC(09) → ② Jenkins 잡 1회 Build(이미지 push) → ③ `apply -k overlays/dev`.
+
+### [겪음 encountered] Jenkinsfile 선언형 `options { timestamps() }` → `Invalid option type "timestamps"`
+- **증상:** `si-msa-cd` 첫 빌드가 `WorkflowScript: 52: Invalid option type "timestamps"` 로 파싱 단계에서 실패(스테이지 진입 전). 유효 옵션 목록에 `timestamps` 없음.
+- **원인:** 선언형 파이프라인의 `timestamps()` 옵션은 **Timestamper 플러그인**이 제공한다. 이 Jenkins(Helm 기본 플러그인 셋)엔 미설치(또는 옵션 미지원 버전)라 파서가 거부.
+- **해결:** 장식용이므로 `options {}` 에서 `timestamps()` 제거가 가장 단순(즉시 해소·플러그인 의존 제거). 시각표시가 필요하면 `jenkins-values.yaml` 의 `controller.additionalPlugins` 에 `timestamper` 추가 후 `helm upgrade` → 옵션 복원.
+- **★ 운영 함정(SCM 파이프라인):** 잡이 *Pipeline script from SCM* 이면 Jenkins 는 **git(master)** 의 Jenkinsfile 을 가져온다. 로컬 작업트리/드롭인 zip 만 고쳐선 반영 안 됨 → 수정 후 **commit & push** 필수.

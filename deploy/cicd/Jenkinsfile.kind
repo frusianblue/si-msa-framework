@@ -8,8 +8,8 @@
 //
 // 전제(09-jenkins-install.sh 가 셋업):
 //   · SA jenkins-deployer (si-msa 배포 권한), 시크릿 harbor-push-cred(jenkins ns, dockerconfigjson)
-//   · Harbor 가 harbor.local(=CoreDNS→CP_IP:30002)로 인-클러스터에서 push 가능
-//   · 노드 certs.d harbor.local→CP_IP:30002 (registry-trust DS) → 노드 pull 가능
+//   · Harbor 가 harbor.local 로 인-클러스터에서 push 가능(B안 ingress: CoreDNS→ingress-nginx ClusterIP:80)
+//   · 노드 certs.d harbor.local→http://harbor.local + /etc/hosts harbor.local→CP_IP:80(ingress hostPort) → 노드 pull 가능
 //   · base imagePullPolicy=IfNotPresent + 불변 :<sha> → 노드가 새 sha 1회 pull 후 캐시
 //
 // 잡 생성(UI 1회): Pipeline script from SCM → 이 파일.
@@ -49,7 +49,8 @@ spec:
   }
 
   options {
-    timestamps()
+    // timestamps() 제거: Timestamper 플러그인 미설치 시 "Invalid option type timestamps" 로 파이프라인 파싱 실패.
+    //   (로그 시각표시용 장식 옵션. 원하면 jenkins-values.yaml additionalPlugins 에 'timestamper' 추가 후 복원.)
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '20'))
   }
