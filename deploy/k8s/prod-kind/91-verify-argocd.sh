@@ -47,9 +47,12 @@ echo "  curl -H Host:argocd.local http://localhost/ → $ACODE"
 case "$ACODE" in 200|302|307) pass "argocd.local 도달($ACODE)";; *) fail "argocd.local 도달 실패($ACODE)";; esac
 
 echo "════════ G7) kind-svc 등록 + cicd→svc API 도달 ════════"
-if kubectl --context "$CICD_CTX" -n "$NS" get secret "$CLUSTER_NAME" \
-     -l argocd.argoproj.io/secret-type=cluster >/dev/null 2>&1; then
-  pass "cluster Secret '$CLUSTER_NAME' 존재"; else fail "cluster Secret '$CLUSTER_NAME' 없음(12 선행)"; fi
+if kubectl --context "$CICD_CTX" -n "$NS" get secret "$CLUSTER_NAME" >/dev/null 2>&1; then
+  LBL="$(kubectl --context "$CICD_CTX" -n "$NS" get secret "$CLUSTER_NAME" -o jsonpath='{.metadata.labels.argocd\.argoproj\.io/secret-type}' 2>/dev/null || true)"
+  if [ "$LBL" = "cluster" ]; then pass "cluster Secret '$CLUSTER_NAME' 존재(secret-type=cluster)"; else fail "Secret '$CLUSTER_NAME' 있으나 cluster 라벨 아님($LBL)"; fi
+else
+  fail "cluster Secret '$CLUSTER_NAME' 없음(12 선행)"
+fi
 SVC_CP_IP="$(docker inspect -f '{{(index .NetworkSettings.Networks "kind").IPAddress}}' "$SVC_CP_NODE" 2>/dev/null || true)"
 if [ -z "$SVC_CP_IP" ]; then fail "svc CP IP 산출 실패"; else
   echo "  svc CP IP = $SVC_CP_IP (ArgoCD 가 등록한 server)"
