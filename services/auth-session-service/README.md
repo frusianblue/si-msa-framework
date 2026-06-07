@@ -1,6 +1,6 @@
 # auth-session-service (T1 — 서버 세션 기반 인증)
 
-인증 방식별로 분리한 실서비스 중 **세션 방식**. 이름 그대로 `HttpSession` + 쿠키(`SESSION`)로 신원을 유지한다.
+인증 방식별로 분리한 실서비스 중 **세션 방식**. 이름 그대로 `HttpSession` + 쿠키(단일 파드는 톰캣 기본 `JSESSIONID`, framework-session 추가 시 `SESSION`)로 신원을 유지한다.
 (다른 방식: `auth-jwt-service` / `auth-oidc-service` / `auth-saml-service`)
 
 > 학습·체감용 카탈로그는 `examples/auth-types`(프로파일 `t1-form-session`). 개념은 `docs/_internal/AUTH_TYPES_REFERENCE.md`.

@@ -44,7 +44,7 @@ repo 루트에서:
 # 1) 보호 리소스 — 미인증 401
 curl -i localhost:8080/api/resource
 
-# 2) 세션 로그인 → 쿠키 저장 (Set-Cookie: SESSION=...)
+# 2) 세션 로그인 → 쿠키 저장 (Set-Cookie: JSESSIONID=...  ← 단일 파드는 톰캣 기본 이름. framework-session 추가 시 SESSION)
 curl -i -c cookies.txt -X POST localhost:8080/api/v1/auth/session/login \
   -H 'Content-Type: application/json' -d '{"loginId":"alice","password":"Password1!"}'
 

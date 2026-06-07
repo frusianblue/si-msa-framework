@@ -67,7 +67,7 @@
 
 | 트랙 | 방식 | 카탈로그(`examples/auth-types`) | 실서비스(`services/`) |
 |------|------|-------------------------------|----------------------|
-| T1 | 세션 | ◐ `t1-form-session` 프로파일 + 루트 빌드 편입(#1 완료) | ◐ `auth-session-service` 골격 생성 |
+| T1 | 세션 | ☑ `t1-form-session` curl 4~5단계 검증 통과 + 루트 편입(#1) | ◐ `auth-session-service` 골격(8081 curl 미검증) |
 | T2 | 무상태 JWT | ☐ | ☐ `auth-jwt-service` |
 | T3 | OIDC RP | ☐ | ☐ `auth-oidc-service` |
 | T4 | SAML SP | ☐ | ☐ `auth-saml-service` |
@@ -85,7 +85,7 @@
 ## 5. T1 실행 메모 (세션 기반)
 
 프레임워크 매핑: `framework.security.session.mode=session` → `SessionAuthController` 등록
-(`POST /api/v1/auth/session/login | /logout`, `Set-Cookie: SESSION=...`).
+(`POST /api/v1/auth/session/login | /logout`, 단일 파드는 `Set-Cookie: JSESSIONID=...`(톰캣 기본). framework-session 추가 시 `SESSION`).
 
 - **데모 인증기**: `DemoAuthenticator implements Authenticator` (인메모리 사용자, BCrypt 검증).
 - **부팅 전제**: framework-security 가 `framework-mybatis` 를 전이로 끌어옴 → SqlSessionFactory 용 **DataSource(H2) 필수**.
@@ -143,6 +143,15 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
   해결(데모): 빈 rbac 스키마(행 0) 3테이블을 H2 `INIT=RUNSCRIPT FROM 'classpath:db/rbac-empty-schema.sql'` 로 선생성
   → 0행 조회로 조용히 부팅. (schema.sql 은 빈 생성 순서에 따라 reload 후 실행될 수 있어 INIT 절을 택함.)
   근본 해결은 #2(보안-영속 결합 분리) — SecurityMetadataService 의 무조건 DB 결합 제거가 이 WARN 의 진짜 원인.
+- **[겪음 encountered] `framework.security.session.cookie-name` 은 현재 어디서도 소비되지 않는 "죽은" 설정** —
+  T1 검증에서 쿠키가 설정값 `SESSION` 이 아니라 톰캣 기본 `JSESSIONID` 로 나왔다. `FrameworkSecurityProperties.Session.cookieName`
+  에 필드/게터/세터·기본값("SESSION")은 있으나 `getCookieName()` 호출부가 framework-security 에 없다(소비처는 전부 secure-web XSRF·
+  saml-sp 의 별개 프로퍼티). framework-session(Spring Session) 도 쿠키 이름을 따로 안 잡고 Boot 표준 `SessionAutoConfiguration`
+  에 위임 → 그때 Spring Session `DefaultCookieSerializer` **기본값**이 우연히 `SESSION` 일 뿐(이 프로퍼티가 만든 게 아님).
+  ∴ 단일 파드=`JSESSIONID`, framework-session 추가 시=`SESSION`, **둘 다 이 프로퍼티와 무관**. 쿠키 이름을 실제로 바꾸려면
+  표준 `server.servlet.session.cookie.name`(톰캣·Spring Session 양쪽을 Boot 가 함께 적용)을 써야 한다.
+  → 결정 필요: (a) 프로퍼티를 `server.servlet.session.cookie.name` 으로 배선(framework 변경, 문서 캐스케이드 동반), 또는
+    (b) 죽은 프로퍼티 제거하고 표준 키로 안내. T1 검증엔 무영향(curl 쿠키 자(jar)는 이름 무관 캡처).
 
 ---
 
