@@ -24,6 +24,12 @@ kubectl --context "$CTX" create namespace "$JENKINS_NS" >/dev/null 2>&1 || true
 helm --kube-context "$CTX" upgrade --install jenkins jenkins/jenkins -n "$JENKINS_NS" \
   -f jenkins-values.yaml --wait --timeout 10m
 
+echo "== 1.5) si-msa 네임스페이스 보장(jenkins-rbac 의 RoleBinding/Role 대상) =="
+# jenkins-rbac.yaml 의 RoleBinding/Role 3개는 si-msa ns 에 들어간다. 앱 오버레이(overlays/dev,
+# base/namespace.yaml)가 정식 소유자지만, 아직 apply 전이면 ns 부재 → "namespaces \"si-msa\" not found".
+# 여기서 멱등 생성해 RBAC 적용을 앱 배포 순서와 분리한다(나중 apply -k 가 라벨 등 흡수, no-op).
+kubectl --context "$CTX" create namespace si-msa --dry-run=client -o yaml | kubectl --context "$CTX" apply -f -
+
 echo "== 2) agent 배포 RBAC =="
 kubectl --context "$CTX" apply -f jenkins-rbac.yaml
 

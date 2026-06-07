@@ -24,3 +24,12 @@
     '{"spec":{"template":{"spec":{"nodeSelector":{"ingress-ready":"true","kubernetes.io/os":"linux"},"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}}}}'
   ```
   `10-ingress-nginx.sh` 1.5단계에 내장(멱등 — 재실행/재apply 해도 유지). 매니페스트 버전을 올릴 때 nodeSelector 포함 여부를 매번 재확인할 것(버전 회귀 가능).
+
+### [겪음 encountered] 09-jenkins-install 의 jenkins-rbac.yaml → `namespaces "si-msa" not found`
+- **증상:** `09-jenkins-install.sh` 실행 중 `serviceaccount/jenkins-deployer created` 뒤에 `Error from server (NotFound): error when creating "jenkins-rbac.yaml": namespaces "si-msa" not found` 가 3회. Jenkins 자체(Helm)는 deployed, 로그인 정상.
+- **원인:** `jenkins-rbac.yaml` 의 ServiceAccount 는 `jenkins` ns(존재)이나, RoleBinding/Role/RoleBinding 3개는 `si-msa` ns 대상. `si-msa` 는 앱 오버레이(`overlays/dev` → `base/namespace.yaml`)가 만드는데, 클러스터 재생성 후 앱 오버레이를 아직 apply 하지 않아 ns 부재 → 네임스페이스 종속 객체 생성 실패. (또한 앱 이미지는 `harbor.local/si-msa/*:dev` 핀이라 Jenkins CI 첫 push 전엔 어차피 ImagePullBackOff → 오버레이를 RBAC 전제로 강제하면 닭-달걀.)
+- **해결:** 09 가 RBAC apply 직전에 si-msa ns 를 멱등 생성해 앱 배포 순서와 분리한다.
+  ```bash
+  kubectl create namespace si-msa --dry-run=client -o yaml | kubectl apply -f -
+  ```
+  나중 `kubectl apply -k overlays/dev` 가 동일 ns(라벨 포함)를 흡수(no-op). 권장 순서: ① ns+RBAC(09) → ② Jenkins 잡 1회 Build(이미지 push) → ③ `apply -k overlays/dev`.

@@ -87,7 +87,9 @@ bash 11-host-access-verify.sh     # harbor.local/jenkins.local 호스트 접속 
 | 증상 | 원인 → 조치 |
 |---|---|
 | `curl http://localhost` connection refused | extraPortMappings 부재(구 kind-config 로 생성). 재생성 필요. host 80 점유도 확인. |
-| ingress controller Pending | `ingress-ready=true` 라벨 없음 → kind-config(B안) 재생성 또는 임시 label. |
+| `curl http://localhost` **connection reset** | 컨트롤러가 worker 에 떠서 hostPort 80 이 CP 와 어긋남(v1.13.0 매니페스트 nodeSelector 누락). `10` 의 1.5 patch(nodeSelector `ingress-ready`+control-plane toleration) 적용 확인 → `get pods -o wide` NODE=control-plane. |
+| ingress controller Pending | `ingress-ready=true` 라벨 없음, 또는 1.5 patch 의 control-plane taint toleration 누락 → kind-config(B안) 재생성/패치 확인. |
+| `09` 실행 시 `namespaces "si-msa" not found` (×3) | RBAC 의 si-msa ns 종속 객체가 ns 부재로 실패. `09` 의 1.5(si-msa ns 멱등 생성) 적용본 사용, 또는 수동: `kubectl create ns si-msa --dry-run=client -o yaml \| kubectl apply -f -` 후 `kubectl apply -f jenkins-rbac.yaml`. |
 | `harbor.local` 308→https | ingress annotation `ssl-redirect=false` 누락(harbor-values). |
 | Harbor push 413 | `proxy-body-size: "0"` 누락(harbor-values). |
 | 노드 pull `connection refused`/`x509` | 노드 /etc/hosts harbor.local 또는 certs.d 미반영 → `07-reboot-recover.sh`(CP_IP 재산출). |
