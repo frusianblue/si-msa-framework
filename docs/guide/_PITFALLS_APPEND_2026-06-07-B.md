@@ -45,3 +45,8 @@
 - **원인:** podTemplate 의 kubectl 컨테이너가 `bitnami/kubectl:latest` 참조. Bitnami 가 2025-08-28~09-29 사이 `docker.io/bitnami` 공개 카탈로그를 삭제하고 `bitnamilegacy` 로 이전 → 해당 이미지 pull 실패(ImagePullBackOff). (단, 큰 이미지 첫 pull 지연과 구분할 것: `kubectl describe pod` Events 에서 `Pulling`/`ImagePullBackOff`/`FailedMount` 확인.)
 - **해결:** kubectl 컨테이너 이미지를 유지되는 것으로 교체. **`alpine/kubectl:<ver>`**(alpine 기반 → `/bin/sh`+`sleep` 존재) 사용. 잡이 SCM 파이프라인이므로 **commit & push** 후 재빌드.
 - **★ 부수 함정:** 교체 시 `registry.k8s.io/kubectl` 은 **distroless**(셸·`sleep` 없음)라 이 podTemplate 패턴(`command: sleep infinity` 유지 + Jenkins `container('kubectl'){ sh ... }`)엔 부적합 → `CreateContainerError` 또는 sh 스텝 실패. 셸 포함 이미지를 쓸 것.
+
+### [겪음 encountered] 09 의 `set -e` 가 step 2 실패 시 step 3(시크릿)을 건너뜀 → agent 파드 FailedMount
+- **증상:** Jenkins agent 파드가 `ContainerCreating` 영구 고착. `describe pod` → `Warning FailedMount ... MountVolume.SetUp failed for volume "kaniko-docker" : secret "harbor-push-cred" not found`. `kubectl -n jenkins get secret harbor-push-cred` → NotFound.
+- **원인:** `09-jenkins-install.sh` 는 `set -euo pipefail`. 이전 실행에서 step 2(`kubectl apply -f jenkins-rbac.yaml`)가 `namespaces "si-msa" not found` 로 non-zero exit → 스크립트가 거기서 중단 → step 3(harbor-push-cred docker-registry 시크릿 생성)이 실행되지 않음. podTemplate 의 kaniko 컨테이너가 그 시크릿을 볼륨 마운트하므로 파드가 못 뜸. (= 직전 si-msa ns 함정의 2차 피해.)
+- **해결:** 즉시 — `kubectl -n jenkins create secret docker-registry harbor-push-cred --docker-server=harbor.local --docker-username=admin --docker-password=Harbor12345` 후 Build Now(새 agent 파드가 마운트 성공). 영구 — 09 의 step 1.5(si-msa ns 멱등 생성)로 step 2 가 실패하지 않으므로 재실행 시 step 3 까지 도달. 교훈: 선행 단계 실패가 `set -e` 로 후행 셋업(시크릿 등)을 조용히 건너뛰면, 증상은 한참 뒤(파드 마운트)서야 표면화한다 — 셋업 스크립트는 단계 독립성/멱등성을 갖추거나 ns 의존을 먼저 보장할 것.

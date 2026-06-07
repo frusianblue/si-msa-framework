@@ -34,9 +34,10 @@ spec:
     - name: kubectl
       # ★ bitnami/kubectl 제거: Bitnami 가 2025-09-29 docker.io/bitnami 공개 카탈로그를 삭제(legacy 이전)
       #   → bitnami/kubectl:latest 는 ImagePullBackOff 위험.
-      #   교체: alpine/kubectl (유지됨, alpine 기반 → /bin/sh + sleep 존재).
+      #   교체: alpine/kubectl(유지됨, alpine 기반 → /bin/sh + sleep 존재).
       #   ⚠️ registry.k8s.io/kubectl 은 distroless(셸·sleep 없음) → 이 podTemplate(sleep 유지 + sh 스텝)엔 부적합.
-      image: alpine/kubectl:1.33.1
+      #   핀: 1.36.1 — 클러스터(노드 v1.36.1)와 동일 버전 → version skew 없음. Docker Hub 실재 태그 확인필.
+      image: alpine/kubectl:1.36.1
       command: ["sleep"]
       args: ["infinity"]
       securityContext:
