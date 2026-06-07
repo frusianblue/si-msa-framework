@@ -150,12 +150,17 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
   에 위임 → 그때 Spring Session `DefaultCookieSerializer` **기본값**이 우연히 `SESSION` 일 뿐(이 프로퍼티가 만든 게 아님).
   ∴ 단일 파드=`JSESSIONID`, framework-session 추가 시=`SESSION`, **둘 다 이 프로퍼티와 무관**. 쿠키 이름을 실제로 바꾸려면
   표준 `server.servlet.session.cookie.name`(톰캣·Spring Session 양쪽을 Boot 가 함께 적용)을 써야 한다.
-  → 결정 필요: (a) 프로퍼티를 `server.servlet.session.cookie.name` 으로 배선(framework 변경, 문서 캐스케이드 동반), 또는
-    (b) 죽은 프로퍼티 제거하고 표준 키로 안내. T1 검증엔 무영향(curl 쿠키 자(jar)는 이름 무관 캡처).
+  → **결정됨: (a)** — `framework.security.session.cookie-name` 을 표준 `server.servlet.session.cookie.name` 으로 배선해
+    실제로 쿠키 이름을 바꾼다(톰캣·Spring Session 양쪽을 Boot 가 함께 적용). framework-security 변경이라 문서 캐스케이드 동반
+    (모듈 README 켜는법/쓰는법, FRAMEWORK_MODULES, AUTH_COMPOSITION_GUIDE 등). 다음다음 세션 이후 처리(우선순위는 8081 검증 → #2 뒤).
+    T1 검증엔 무영향(curl 쿠키 jar 는 이름 무관 캡처).
 
 ---
 
 ## 7. 다음 (Next)
+
+> **다음 세션 시작점**: 8081(`auth-session-service`) curl 검증 — 절차는 [`AUTH_T1_VERIFY.md`](./AUTH_T1_VERIFY.md) 그대로,
+> `BASE=http://localhost:8081` 로만 바꿔 1·5=401, 2·3·4=200 확인.
 
 ### 먼저 처리
 1. ✅ **카탈로그 빌드 통일(완료)** — `examples/auth-types` 를 standalone → **루트 멀티프로젝트로 편입**.
@@ -166,8 +171,16 @@ curl -i -b cookies.txt -X POST localhost:8080/api/v1/auth/session/logout
 2. **보안-영속 결합 분리(리팩터)** — `docs/_internal/planning/NEXT_SECURITY_PERSISTENCE_DECOUPLING.md` 착수.
    `framework-security` 의 MyBatis/DataSource 강제 결합을 RBAC 포트/어댑터(`framework-security-rbac-mybatis`)로 분리.
    완료 후 T1 데모에서 H2/DataSource 제거(인증만 → DataSource 불필요).
+3. **[결정됨 (a)] `session.cookie-name` 실배선** — 죽은 프로퍼티(§6)를 `server.servlet.session.cookie.name` 으로 연결해
+   실제 쿠키 이름을 바꾼다(톰캣·Spring Session 동시 적용). framework-security 변경 → 문서 캐스케이드 동반. 우선순위: 8081 검증 → #2 뒤.
 
 ### 트랙 진행
-3. **T1 로컬 부팅·curl 검증** (Chae 로컬) — 카탈로그 `t1-form-session` + `auth-session-service` 양쪽.
-4. **T1 멀티팟 체감** — `auth-session-service` replicas=2 로 띄워 세션 외부화 on/off 차이 확인(`framework-session`).
-5. **T2(무상태 JWT)로 상태 축 비교** — `auth-jwt-service` + 카탈로그 `t2-jwt` 프로파일. 로그아웃·확장 차이 기록.
+4. **T1 검증** — ☑ 카탈로그(8080) curl 4~5단계 통과. ☐ **실서비스(8081) 동일 검증**(다음 세션 시작점, `AUTH_T1_VERIFY.md`).
+5. **T1 멀티팟 체감** — `auth-session-service` replicas=2 로 띄워 세션 외부화 on/off 차이 확인(`framework-session`).
+6. **T2(무상태 JWT)로 상태 축 비교** — `auth-jwt-service` + 카탈로그 `t2-jwt` 프로파일. 로그아웃·확장 차이 기록.
+
+### 세션 닫음 메모 (이번 세션)
+- 완료: #1 카탈로그 루트 편입 / rbac WARN 억제(H2 `INIT=RUNSCRIPT` 빈 스키마, 양쪽) / T1 카탈로그(8080) curl 검증 통과 /
+  cookie-name 죽은 설정 발견·문서 정정·(a) 결정 / 재실행용 [`AUTH_T1_VERIFY.md`](./AUTH_T1_VERIFY.md) 작성.
+- 미커밋: 이번 세션 변경분 전부 working state — 다음 세션 또는 별도로 커밋/푸시 필요.
+
