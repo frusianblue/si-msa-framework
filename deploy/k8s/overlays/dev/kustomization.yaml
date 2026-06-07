@@ -85,8 +85,22 @@ patches:
         path: /data/FRAMEWORK_FILE_STORAGE_BASE_PATH
         value: /tmp/uploads
 
-  # ── ServiceMonitor: S4-2(kube-prometheus-stack) 설치로 활성화됨 ──
-  #   이전엔 monitoring.coreos.com CRD 부재로 base 의 si-msa-services SM 을 $patch:delete 했으나,
-  #   05-prometheus-stack.sh 가 Prometheus Operator(=CRD)를 설치하므로 그 delete 패치를 제거해 SM 을 그대로 적용한다.
-  #   base SM 의 release=kube-prometheus-stack 라벨이 Operator serviceMonitorSelector 와 매칭(+ 스크립트가 NilUsesHelmValues=false 로 전체수용).
-  #   ⚠️ kube-prometheus-stack 미설치 클러스터에 apply 하면 `no matches for kind "ServiceMonitor"` → 먼저 05 스크립트 실행.
+  # ── ServiceMonitor: 코어 앱 배포에서 제거(operator CRD 불요) ──
+  #   근거: ServiceMonitor 는 Prometheus Operator(kube-prometheus-stack)가 설치돼야 존재하는 CRD 다.
+  #     base 에 그대로 두면 operator 미설치 클러스터(CI/standalone 기본)에서 `apply -k` 전체가
+  #     `no matches for kind "ServiceMonitor"` 로 실패한다(관측은 코어 배포의 선결조건이 아니어야 함).
+  #   따라서 dev 도 local 과 동일하게 base 의 si-msa-services SM 을 $patch:delete 한다.
+  #   ▶ 관측(Prometheus/Grafana)을 켤 때는 `05-prometheus-stack.sh` 가 operator 설치 후
+  #     base SM 파일(`deploy/k8s/base/common/servicemonitor.yaml`)을 si-msa ns 에 **직접 apply** 한다
+  #     (dev overlay 재적용에 의존하지 않음). 즉 SM 의 단일 소유자 = 05 스크립트.
+  - patch: |-
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: si-msa-services
+    target:
+      group: monitoring.coreos.com
+      version: v1
+      kind: ServiceMonitor
+      name: si-msa-services

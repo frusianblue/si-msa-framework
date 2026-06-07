@@ -2,12 +2,12 @@
 # =====================================================================
 # 05-prometheus-stack.sh  (S4-2)
 #   standalone kind-sanity 에 kube-prometheus-stack(Helm) 설치 → Prometheus Operator/CRD →
-#   dev overlay 의 ServiceMonitor($patch:delete 해제분) 적용 → Prometheus 가 6앱(/actuator/prometheus)
+#   base ServiceMonitor(si-msa-services)를 si-msa ns 에 직접 적용 → Prometheus 가 6앱(/actuator/prometheus)
 #   을 스크랩하는지(타깃 UP) 스모크 → (옵션) Grafana 접속 안내.
 #
 #   전제(확인됨): 4서비스 모두 actuator 'prometheus' 노출 + Service 포트명 'http' + base SM(si-msa-services,
-#                 release=kube-prometheus-stack 라벨). dev overlay 의 SM delete 패치는 본 트랙에서 제거됨.
-#   ⚠️ 이 스크립트는 dev/kustomization.yaml 의 SM $patch:delete 가 **제거된 상태**를 전제(S4-2 패치 적용 후 실행).
+#                 release=kube-prometheus-stack 라벨). dev overlay 는 SM 을 $patch:delete(코어 apply operator 비의존).
+#   ▶ SM 의 단일 소유자 = 이 스크립트(operator 설치 후 base SM 파일 직접 apply). dev overlay 재적용에 의존하지 않음.
 # ---------------------------------------------------------------------
 # 사용법:
 #   bash deploy/k8s/standalone-kind/05-prometheus-stack.sh           # 설치 + SM 적용 + 스크랩 스모크
@@ -38,8 +38,11 @@ note "0) 사전 점검 (ctx=${CTX}, ns=${NS}, release=${RELEASE})"
 command -v helm >/dev/null 2>&1 || fail "helm 미설치 — https://helm.sh/docs/intro/install (또는 K8S_ADDONS.md)"
 K cluster-info >/dev/null 2>&1 || fail "컨텍스트 '${CTX}' 도달 불가"
 K -n "$NS" get deploy -l app.kubernetes.io/component=service >/dev/null 2>&1 || fail "${NS} 앱 Deployment 없음 — 03-dev-overlay-up.sh 먼저"
-grep -q 'patch: delete' "${OVERLAY}/kustomization.yaml" 2>/dev/null && grep -q 'ServiceMonitor' "${OVERLAY}/kustomization.yaml" \
-  && warn "dev overlay 에 ServiceMonitor \$patch:delete 가 남아 있음 — S4-2 패치(제거)를 먼저 적용해야 SM 이 뜬다" || ok "dev overlay SM delete 패치 없음(정상)"
+if grep -q 'patch: delete' "${OVERLAY}/kustomization.yaml" 2>/dev/null && grep -q 'ServiceMonitor' "${OVERLAY}/kustomization.yaml"; then
+  ok "dev overlay 에 SM \$patch:delete 존재(정상) — 코어 apply 는 operator 불요, SM 은 본 스크립트가 직접 건다"
+else
+  warn "dev overlay 에 SM \$patch:delete 가 없음 — 코어 apply 가 operator CRD 를 요구할 수 있다(현 설계는 delete 전제)"
+fi
 
 # 1) Helm 리포 + 설치 -------------------------------------------------------
 note "1) kube-prometheus-stack 설치/업그레이드 (ns=${MON_NS})"
@@ -61,10 +64,12 @@ note "2) Prometheus Operator CRD 확인"
 K wait --for=condition=established --timeout=60s crd/servicemonitors.monitoring.coreos.com >/dev/null
 ok "servicemonitors.monitoring.coreos.com 확립"
 
-# 3) dev overlay 재적용 → base ServiceMonitor 적용 --------------------------
-note "3) dev overlay 재적용 (ServiceMonitor si-msa-services 적용)"
-K apply -k "$OVERLAY" >/dev/null
-K -n "$NS" get servicemonitor si-msa-services >/dev/null 2>&1 || fail "si-msa-services SM 미적용 — overlay 의 SM delete 패치 제거 여부 확인"
+# 3) base ServiceMonitor 직접 적용(operator CRD 확립 후) -------------------
+note "3) base ServiceMonitor(si-msa-services) 직접 적용 → ns=${NS}"
+# dev overlay 는 SM 을 $patch:delete 하므로(코어 apply 의 operator 비의존 보장), SM 의 단일 소유자는 이 스크립트다.
+#   base SM 파일을 si-msa ns 에 직접 apply(operator serviceMonitorSelectorNilUsesHelmValues=false 라 라벨 무관 선택).
+K -n "$NS" apply -f deploy/k8s/base/common/servicemonitor.yaml >/dev/null
+K -n "$NS" get servicemonitor si-msa-services >/dev/null 2>&1 || fail "si-msa-services SM 미적용 — base/common/servicemonitor.yaml 확인"
 ok "ServiceMonitor si-msa-services 적용됨"
 
 # 4) 스크랩 스모크: Prometheus 타깃 UP ------------------------------------

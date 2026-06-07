@@ -51,3 +51,33 @@ subjects:
   - kind: ServiceAccount
     name: jenkins-deployer
     namespace: jenkins
+---
+# si-msa 네임스페이스 객체(클러스터 스코프) patch 권한.
+#   왜: `kubectl apply -k overlays/dev` 의 kustomize 출력에는 base/namespace.yaml 의 Namespace/si-msa 가 포함된다.
+#       apply 는 모든 객체에 3-way merge patch 를 거는데, Namespace 는 **클러스터 스코프** 라
+#       위의 RoleBinding(edit, 네임스페이스 한정)으론 못 건드린다 →
+#       `namespaces "si-msa" is forbidden: ... cannot patch resource "namespaces"`.
+#   해결: ClusterRole 로 namespaces get/patch 를 주되 **resourceNames: [si-msa] 로 그 한 객체만** 허용(최소권한).
+#       (생성은 09-jenkins-install.sh 가 admin 컨텍스트로 선보장 → CI 는 patch 만 필요.)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jenkins-deployer-namespace
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "patch"]
+    resourceNames: ["si-msa"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jenkins-deployer-namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: jenkins-deployer-namespace
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-deployer
+    namespace: jenkins
