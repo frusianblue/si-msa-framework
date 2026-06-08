@@ -37,7 +37,7 @@
 | 프로파일 | DB / 저장소 | 용도 |
 |---|---|---|
 | `local` (기본) | H2 인메모리 `admindb` + /h2-console, audit=jdbc | 단독 기동·검증 |
-| `local-postgres` | localhost:5432/sidb | 로컬 PostgreSQL |
+| `local-postgres` | localhost:5432/admindb | 로컬 PostgreSQL |
 | `local-redis` | + Redis | 토큰 store=redis |
 | `local-noauth` | local 위 겹침 | 로그인/권한 우회(개발) |
 | `dev` | env 주입(DB/Redis) | 개발 서버. token-store=redis, audit=jdbc |
@@ -66,7 +66,7 @@ Flyway: `V1`(init) · `V2`(audit_log).
 ./gradlew :services:admin-service:bootRun
 #   → http://localhost:8081  (Swagger: /swagger-ui.html, H2: /h2-console)
 
-# 2) 로컬 PostgreSQL (전제: localhost:5432/sidb)
+# 2) 로컬 PostgreSQL (전제: localhost:5432/admindb)
 ./gradlew :services:admin-service:bootRun --args='--spring.profiles.active=local,local-postgres'
 
 # 3) + Redis (토큰 store=redis)

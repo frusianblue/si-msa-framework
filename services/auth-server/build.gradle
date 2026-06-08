@@ -77,7 +77,7 @@ dependencies {
 // ===== Flyway Gradle 플러그인 (CI 배포 게이트, user-service 와 동일) =====
 flyway {
     url      = project.findProperty('flyway.url')      ?: 'jdbc:postgresql://localhost:5432/authdb'
-    user     = project.findProperty('flyway.user')     ?: 'authuser'
+    user     = project.findProperty('flyway.user')     ?: 'auth_app'
     password = project.findProperty('flyway.password') ?: 'authpass'
     locations = ['filesystem:src/main/resources/db/migration']
     baselineOnMigrate = true

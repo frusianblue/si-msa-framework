@@ -57,8 +57,8 @@
 
 ## 2. PostgreSQL 설치 + DB/계정 생성
 
-서비스 기본값과 맞추기 위해 **DB=`sidb`, 사용자=`siuser`/`sipass`** 로 만든다.
-(admin-service 도 같은 `sidb` 를 공유한다 — 테이블이 겹치지 않음.)
+서비스 기본값과 맞추기 위해 **DB=`userdb`, 사용자=`user_app`/`dev-userpass`** 로 만든다.
+(admin-service 도 같은 `userdb` 를 공유한다 — 테이블이 겹치지 않음.)
 
 ### 설치
 - **Windows**: [postgresql.org/download/windows](https://www.postgresql.org/download/windows/) 의 EDB 인스톨러. 설치 중 superuser(`postgres`) 비밀번호 지정. `psql` 은 시작메뉴 "SQL Shell (psql)".
@@ -67,18 +67,18 @@
 
 ### DB/계정 만들기 (psql 접속 후)
 ```sql
-CREATE DATABASE sidb;
-CREATE USER siuser WITH PASSWORD 'sipass';
-GRANT ALL PRIVILEGES ON DATABASE sidb TO siuser;
+CREATE DATABASE userdb;
+CREATE USER user_app WITH PASSWORD 'dev-userpass';
+GRANT ALL PRIVILEGES ON DATABASE userdb TO user_app;
 -- PostgreSQL 15+ 는 public 스키마 권한을 따로 줘야 한다
-\connect sidb
-GRANT ALL ON SCHEMA public TO siuser;
+\connect userdb
+GRANT ALL ON SCHEMA public TO user_app;
 ```
 > Windows EDB 설치본은 `psql -U postgres` 로 접속(설치 시 정한 비번). mac/Linux 는 `sudo -u postgres psql`.
 
 ### 연결 확인
 ```bash
-psql "host=localhost port=5432 dbname=sidb user=siuser password=sipass" -c "select version();"
+psql "host=localhost port=5432 dbname=userdb user=user_app password=dev-userpass" -c "select version();"
 ```
 
 테이블은 앱 기동 시 **Flyway 가 자동 생성**(`db/migration` + 감사 `V4/V2__audit_log.sql`). 수동 DDL 불필요.
@@ -157,7 +157,7 @@ curl -i -X POST http://localhost:8080/api/v1/auth/login \
 ```
 # 3) H2 콘솔로 눈으로 확인
 #    브라우저: http://localhost:8080/h2-console
-#    JDBC URL: jdbc:h2:mem:sidb   User: sa   Password: (빈칸)
+#    JDBC URL: jdbc:h2:mem:userdb   User: sa   Password: (빈칸)
 SELECT * FROM audit_log ORDER BY event_time DESC;
 ```
 - `@AuditLog` 가 붙은 메서드를 호출하면 `event_type=METHOD_AUDIT` 행도 생긴다.
@@ -167,7 +167,7 @@ SELECT * FROM audit_log ORDER BY event_time DESC;
 ```bash
 ./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,local-postgres'
 # 위 2) 호출 후
-psql "host=localhost dbname=sidb user=siuser password=sipass" \
+psql "host=localhost dbname=userdb user=user_app password=dev-userpass" \
      -c "SELECT event_time, event_type, actor, result FROM audit_log ORDER BY event_time DESC LIMIT 20;"
 ```
 
@@ -203,9 +203,9 @@ services:
   postgres:
     image: postgres:18
     environment:
-      POSTGRES_DB: sidb
-      POSTGRES_USER: siuser
-      POSTGRES_PASSWORD: sipass
+      POSTGRES_DB: userdb
+      POSTGRES_USER: user_app
+      POSTGRES_PASSWORD: dev-userpass
     ports: ["5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
   redis:

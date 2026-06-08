@@ -62,7 +62,7 @@ bash deploy/k8s/standalone-kind/02-auth-pull-sanity.sh
 # 4단계 — 실 이미지 빌드 → push → dev overlay apply → 검증 (B 결정: 인증 레지스트리로 충분)
 bash deploy/k8s/standalone-kind/03-dev-overlay-up.sh          # 빌드+push+apply+6파드/DB 검증
 bash deploy/k8s/standalone-kind/03-dev-overlay-up.sh --smoke  # + AS 토큰(client_credentials) 스모크
-#   그린: 6파드 Ready + 앱 Pulled>0 + authdb/sidb/admindb + (--smoke) access_token.
+#   그린: 6파드 Ready + 앱 Pulled>0 + authdb/userdb/admindb + (--smoke) access_token.
 
 # OAuth2 운영 인증 경로(authorization_code+PKCE+DbAuthenticator) 실클러스터 검증 — 시더 on 가정(아니면 ENSURE_SEEDER=1)
 bash deploy/k8s/standalone-kind/smoke-authcode-pkce.sh

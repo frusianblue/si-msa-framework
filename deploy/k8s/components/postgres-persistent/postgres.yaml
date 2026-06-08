@@ -16,17 +16,18 @@ metadata:
     app.kubernetes.io/component: database
 data:
   init.sql: |
-    CREATE ROLE authuser WITH LOGIN PASSWORD 'dev-authpass';
-    CREATE ROLE siuser   WITH LOGIN PASSWORD 'dev-sipass';
-    CREATE DATABASE authdb  OWNER authuser;
-    CREATE DATABASE sidb    OWNER siuser;
-    CREATE DATABASE admindb OWNER siuser;
+    CREATE ROLE auth_app  WITH LOGIN PASSWORD 'dev-authpass';
+    CREATE ROLE user_app  WITH LOGIN PASSWORD 'dev-userpass';
+    CREATE ROLE admin_app WITH LOGIN PASSWORD 'dev-adminpass';
+    CREATE DATABASE authdb  OWNER auth_app;
+    CREATE DATABASE userdb  OWNER user_app;
+    CREATE DATABASE admindb OWNER admin_app;
     \connect authdb
-    GRANT ALL ON SCHEMA public TO authuser;
-    \connect sidb
-    GRANT ALL ON SCHEMA public TO siuser;
+    GRANT ALL ON SCHEMA public TO auth_app;
+    \connect userdb
+    GRANT ALL ON SCHEMA public TO user_app;
     \connect admindb
-    GRANT ALL ON SCHEMA public TO siuser;
+    GRANT ALL ON SCHEMA public TO admin_app;
 ---
 apiVersion: apps/v1
 kind: StatefulSet

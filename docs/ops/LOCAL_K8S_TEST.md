@@ -4,7 +4,7 @@
 로컬 클러스터에 한 줄로 띄워 **실제 기동·헬스·DB 연결**을 확인하는 절차다.
 
 local 오버레이가 dev/prod 와 다른 점:
-- **인-클러스터 Postgres 동봉**(`postgres.yaml`) — `authdb`/`sidb` 두 DB 와 역할(authuser/siuser)을 initdb 로 생성. base 의 `DB_URL`(`postgres:5432/...`)이 그대로 풀려 **DB_URL 패치 없음**.
+- **인-클러스터 Postgres 동봉**(`postgres.yaml`) — `authdb`/`userdb` 두 DB 와 역할(auth_app/user_app)을 initdb 로 생성. base 의 `DB_URL`(`postgres:5432/...`)이 그대로 풀려 **DB_URL 패치 없음**.
 - **ServiceMonitor 제거** — 로컬엔 Prometheus Operator CRD 가 없으므로 `$patch: delete` 로 뺀다(없으면 apply 전체 실패).
 - **로컬 빌드 이미지 `:local`** — 가짜 레지스트리(`registry.example.com`) 대신 노드에 직접 적재. `:latest` 가 아니라 기본 `imagePullPolicy=IfNotPresent` → 레지스트리 접속 안 함.
 - **강한 시크릿**(`secrets-local.yaml`) — base 가 `prod` 프로파일로 뜨므로 dev 의 placeholder AES 는 `AesMasterKeySafetyGuard` 에 막힌다. 가드를 통과하는 32바이트 AES 등 로컬 전용 값 동봉.
@@ -100,8 +100,8 @@ curl -s localhost:8000/actuator/health
 
 DB 직접 확인:
 ```bash
-kubectl -n si-msa exec -it deploy/postgres -- psql -U postgres -c "\l"   # authdb, sidb 존재
-kubectl -n si-msa exec -it deploy/postgres -- psql -U authuser -d authdb -c "\dt"   # Flyway 테이블
+kubectl -n si-msa exec -it deploy/postgres -- psql -U postgres -c "\l"   # authdb, userdb 존재
+kubectl -n si-msa exec -it deploy/postgres -- psql -U auth_app -d authdb -c "\dt"   # Flyway 테이블
 ```
 
 ---

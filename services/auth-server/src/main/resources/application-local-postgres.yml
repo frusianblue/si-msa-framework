@@ -1,12 +1,12 @@
 # =====================================================================
 # local-postgres : DB 를 H2 → 로컬 PostgreSQL 로 교체하는 오버레이
 #   실행: --spring.profiles.active=local,local-postgres
-#   전제: localhost:5432/authdb (authuser/authpass)
+#   전제: localhost:5432/authdb (auth_app/authpass)
 # =====================================================================
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/authdb
-    username: ${DB_USER:authuser}
+    username: ${DB_USER:auth_app}
     password: ${DB_PASSWORD:authpass}
     driver-class-name: org.postgresql.Driver
   h2:

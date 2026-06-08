@@ -86,7 +86,7 @@ export SIGNING_KEY_ROTATION_ENABLED=true           # 회전 스케줄러 활성(
 export LOCK_TYPE=jdbc                               # 다중 파드 단일 회전(@SchedulerLock) 백엔드
 ./gradlew :services:auth-server:bootRun
 
-# 3) 로컬 PostgreSQL 로 전환(전제: localhost:5432/authdb, authuser/authpass)
+# 3) 로컬 PostgreSQL 로 전환(전제: localhost:5432/authdb, auth_app/authpass)
 ./gradlew :services:auth-server:bootRun --args='--spring.profiles.active=local,local-postgres'
 ```
 

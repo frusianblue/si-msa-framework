@@ -5,12 +5,12 @@
 #           --args='--spring.profiles.active=local,local-postgres'
 #
 #   사전 준비(로컬 PostgreSQL): docs/LOCAL_SETUP.md 참고
-#     CREATE DATABASE sidb;  CREATE USER siuser PASSWORD 'sipass';  GRANT ...
+#     CREATE DATABASE userdb;  CREATE USER user_app PASSWORD 'sipass';  GRANT ...
 # =====================================================================
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/sidb}
-    username: ${DB_USER:siuser}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/userdb}
+    username: ${DB_USER:user_app}
     password: ${DB_PASSWORD:sipass}
     driver-class-name: org.postgresql.Driver
     hikari:

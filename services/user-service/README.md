@@ -37,7 +37,7 @@
 | 프로파일 | DB / 저장소 | 용도 |
 |---|---|---|
 | `local` (기본) | H2 인메모리 + 시드, token-store=memory | 단독 기동·기능 검증 |
-| `local-postgres` | localhost:5432/sidb | 로컬 PostgreSQL |
+| `local-postgres` | localhost:5432/userdb | 로컬 PostgreSQL |
 | `local-redis` | + Redis | 토큰/블랙리스트/캐시 공유(다중 인스턴스 모사) |
 | `local-noauth` | local 위 겹침 | 로그인/권한 우회(개발) |
 | `dev` | env 주입(DB/Redis) | 개발 서버. token-store/audit=redis/jdbc 기본 |
@@ -73,7 +73,7 @@ Flyway: `V1`(init) · `V2`(common_code) · `V3`(file_metadata) · `V4`(audit_log
 ./gradlew :services:user-service:bootRun
 #   → http://localhost:8080  (Swagger: /swagger-ui.html, H2 콘솔: /h2-console)
 
-# 2) 로컬 PostgreSQL (전제: localhost:5432/sidb)
+# 2) 로컬 PostgreSQL (전제: localhost:5432/userdb)
 ./gradlew :services:user-service:bootRun --args='--spring.profiles.active=local,local-postgres'
 
 # 3) + Redis (리프레시 토큰/블랙리스트/분산 캐시 공유)

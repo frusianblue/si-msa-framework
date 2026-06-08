@@ -1,5 +1,5 @@
 # deploy/k8s/overlays/local/kustomization.yaml
-# LOCAL: kind/minikube 등 자기완결 클러스터용. 인-클러스터 Postgres(authdb+sidb) 동봉,
+# LOCAL: kind/minikube 등 자기완결 클러스터용. 인-클러스터 Postgres(authdb+userdb) 동봉,
 #        ServiceMonitor 제거(Prometheus Operator CRD 불요), 로컬 빌드 이미지(:local) 사용.
 #   한 줄 배포:  kubectl apply -k deploy/k8s/overlays/local
 #   ※ DB_URL 패치 없음 — base 가 이미 'postgres' 호스트를 가리키므로 동봉 Postgres Service(postgres)로 그대로 연결.
@@ -50,7 +50,7 @@ patches:
       data:
         FRAMEWORK_AUTH_SEED_SMOKE_CLIENT: "true"
   # admin-service: 전용 DB(admindb) + 컨테이너 쓰기 가능한 업로드 경로(local 파일저장, readOnlyRootFilesystem).
-  #   base 는 DB_URL=sidb(user 와 동일) → Flyway V1 동일 테이블 충돌. local 에선 admindb 로 분리.
+  #   base 가 admindb 로 분리되어 있으므로 명시적 재선언(중복 무해). user(userdb)·admin(admindb) 별도 계정으로 Flyway 충돌 원천 차단.
   #   (운영 overlay 도 admin 전용 DB 권장. admin 업로드는 실운영에선 PVC/NAS 또는 file 모듈 비활성.)
   - target: { kind: ConfigMap, name: admin-service-config }
     patch: |-

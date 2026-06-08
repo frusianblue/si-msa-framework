@@ -51,7 +51,7 @@ patches:
           - name: harbor-cred
 
   # ── DB: 외부 호스트 → 인-클러스터 영속 postgres(Service 'postgres'). ────────────────────────────
-  #   auth=authdb / user=sidb / admin=admindb. (admin 을 sidb 로 두면 user 와 같은 siuser·sidb 에서
+  #   auth=authdb / user=userdb / admin=admindb. (admin 을 userdb 로 두면 user 와 같은 user_app·userdb 에서
   #   Flyway V1 동일 테이블 충돌 → admindb 로 분리. components/postgres-persistent initdb 가 3 DB 생성.)
   - target: { kind: ConfigMap, name: auth-server-config }
     patch: |-
@@ -62,7 +62,7 @@ patches:
     patch: |-
       - op: replace
         path: /data/DB_URL
-        value: jdbc:postgresql://postgres:5432/sidb
+        value: jdbc:postgresql://postgres:5432/userdb
   - target: { kind: ConfigMap, name: admin-service-config }
     patch: |-
       - op: replace

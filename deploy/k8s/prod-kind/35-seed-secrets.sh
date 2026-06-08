@@ -11,7 +11,7 @@
 #   ⚠️ 이건 **리허설 전용 고정 시드**다. 실 prod 는 절대 이렇게 안 한다:
 #       - External Secrets Operator(ExternalSecret → Vault/AWS Secrets Manager) 또는
 #       - Sealed Secrets(kubeseal 로 암호화한 SealedSecret 만 커밋).
-#     DB 자격증명은 `initdb-prod.sql` 의 siuser/siuser_pw 와 **일치**해야 DB 연결이 된다.
+#     DB 자격증명은 `initdb-prod.sql` 의 서비스별 계정(auth_app/user_app/admin_app)과 **일치**해야 DB 연결이 된다.
 #
 #   ArgoCD 와의 관계: 이 Secret 들은 overlays/prod 가 렌더하지 않으므로 Application 관리 대상이 아님
 #     → selfHeal/prune 무관(수동 Secret 안전). 파드는 Secret 생성 후 재기동으로 즉시 복구.
@@ -25,8 +25,9 @@ set -euo pipefail
 SVC_CTX="${SVC_CTX:-kind-svc}"; NS="${NS:-si-msa}"
 
 # ── 리허설 고정값(운영 금지) ──
-DB_USER="${DB_USER:-siuser}"
-DB_PASSWORD="${DB_PASSWORD:-siuser_pw}"                                   # initdb-prod.sql 일치
+AUTH_DB_USER="${AUTH_DB_USER:-auth_app}";     AUTH_DB_PASSWORD="${AUTH_DB_PASSWORD:-auth_app_pw}"      # initdb-prod.sql 일치
+USER_DB_USER="${USER_DB_USER:-user_app}";     USER_DB_PASSWORD="${USER_DB_PASSWORD:-user_app_pw}"      #   (서비스별 전용 계정 — 최소권한)
+ADMIN_DB_USER="${ADMIN_DB_USER:-admin_app}";  ADMIN_DB_PASSWORD="${ADMIN_DB_PASSWORD:-admin_app_pw}"
 JWT="${JWT:-rehearsal-hmac-jwt-secret-do-not-use-in-prod-0123456789abcdef}"  # HMAC 32바이트+ 넉넉히
 AES="${AES:-0123456789abcdef0123456789abcdef}"                           # 정확히 32바이트(AES-256 raw)
 
@@ -46,18 +47,18 @@ echo "== 1) 시크릿 4개 주입(리허설 고정값) =="
 seed gateway-secret \
   --from-literal=JWT_SECRET="$JWT"
 seed auth-server-secret \
-  --from-literal=DB_USER="$DB_USER" \
-  --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+  --from-literal=DB_USER="$AUTH_DB_USER" \
+  --from-literal=DB_PASSWORD="$AUTH_DB_PASSWORD" \
   --from-literal=FRAMEWORK_JWT_SECRET="$JWT" \
   --from-literal=AES_SECRET="$AES"
 seed user-service-secret \
-  --from-literal=DB_USER="$DB_USER" \
-  --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+  --from-literal=DB_USER="$USER_DB_USER" \
+  --from-literal=DB_PASSWORD="$USER_DB_PASSWORD" \
   --from-literal=JWT_SECRET="$JWT" \
   --from-literal=AES_SECRET="$AES"
 seed admin-service-secret \
-  --from-literal=DB_USER="$DB_USER" \
-  --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+  --from-literal=DB_USER="$ADMIN_DB_USER" \
+  --from-literal=DB_PASSWORD="$ADMIN_DB_PASSWORD" \
   --from-literal=JWT_SECRET="$JWT" \
   --from-literal=AES_SECRET="$AES"
 
@@ -70,6 +71,6 @@ echo "  파드 재생성 트리거 — Secret 적재된 새 파드가 뜬다."
 echo
 echo "──────────────────────────────────────────────────────────────"
 echo "✅ 리허설 시크릿 4개 주입 완료(si-msa ns)."
-echo "   ⚠️ 리허설 전용 고정값 — 운영은 ESO/SealedSecrets. DB=siuser/siuser_pw(initdb 일치)."
+echo "   ⚠️ 리허설 전용 고정값 — 운영은 ESO/SealedSecrets. DB=서비스별 계정(auth_app/user_app/admin_app, initdb 일치)."
 echo "   파드 pull(:<sha>)+startup+DB 연결에 시간 필요. 충분히 대기 후:"
 echo "   다음: bash 41-verify-promote.sh  (G13 파드 green 확인)"

@@ -9,7 +9,7 @@ data:
   SPRING_PROFILES_ACTIVE: "prod"
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
-  DB_URL: "jdbc:postgresql://postgres:5432/sidb"
+  DB_URL: "jdbc:postgresql://postgres:5432/userdb"
   AUTH_SERVER_ISSUER: "http://auth-server:9000"
   AUTH_SERVER_JWKS_URI: "http://auth-server:9000/oauth2/jwks"
   RESOURCE_SERVER_ENABLED: "false"

@@ -1,4 +1,4 @@
-# deploy/k8s/base/admin-service/deployment.yaml — DB(sidb) + Redis 필요.
+# deploy/k8s/base/admin-service/deployment.yaml — DB(admindb) + Redis 필요.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

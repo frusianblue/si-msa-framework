@@ -61,7 +61,7 @@ management:
 ```yaml
 spring:
   datasource:
-    url: jdbc:h2:mem:sidb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:userdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
     username: sa
     password:
   flyway: { locations: classpath:db/migration,classpath:db/seed-local }   # 로컬 시드 추가

@@ -14,7 +14,7 @@
 | `NetworkPolicy`(백엔드 인그레스 제한) | **집행하는 CNI**(Calico/Cilium/VPC CNI) | CNI 정책모드 | prod 권장 · standalone kind(kindnet)=무집행 inert, **Docker Desktop kind 모드=집행함**(local 도 allow 규칙 필요) |
 | `PodDisruptionBudget`(드레인/롤링 가용성) | 없음(코어 API) | 기본 포함 | 전부(replicas≥2 서비스) |
 | prod 시크릿 주입 | 시크릿 오퍼레이터 | **External Secrets Operator** 또는 **Sealed Secrets** | prod |
-| DB(`authdb`/`sidb`) | PostgreSQL | local=동봉(`overlays/local`)·dev/prod=외부/매니지드 | 전부 |
+| DB(`authdb`/`userdb`) | PostgreSQL | local=동봉(`overlays/local`)·dev/prod=외부/매니지드 | 전부 |
 | 캐시/토큰/레이트리밋 | Redis | local/dev=인-클러스터(base)·prod=매니지드 권장 | 전부 |
 
 **환경별 최소 셋**
@@ -126,7 +126,7 @@ helm install sealed-secrets sealed-secrets/sealed-secrets -n kube-system
 
 ## 5. PostgreSQL / Redis
 
-- **local**: `overlays/local` 이 인-클러스터 PG(authdb/sidb)+Redis 를 동봉 → 추가 설치 없음.
+- **local**: `overlays/local` 이 인-클러스터 PG(authdb/userdb)+Redis 를 동봉 → 추가 설치 없음.
 - **dev**: base 의 인-클러스터 Redis 사용, DB 는 개발 서버(외부) 가리킴 → 외부 PG 준비.
 - **prod**: **매니지드 권장** — RDS/Aurora(PG), ElastiCache(Redis). 오버레이에서 `DB_URL`/`REDIS_HOST` 를 외부 엔드포인트로 치환. 인-클러스터 PG/Redis 는 prod 비권장(영속/HA/백업 부담).
 

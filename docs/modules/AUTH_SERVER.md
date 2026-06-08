@@ -143,7 +143,7 @@ docker run --rm --entrypoint sh si-msa/auth-server:local -c 'grep -ac SmokeClien
 kubectl -n si-msa delete pod -l app.kubernetes.io/name=auth-server
 
 # 3) 등록 확인 (demo-web/demo-service 2 rows 면 성공)
-kubectl -n si-msa exec deploy/postgres -- psql -U authuser -d authdb \
+kubectl -n si-msa exec deploy/postgres -- psql -U auth_app -d authdb \
   -c "SELECT client_id, authorization_grant_types FROM oauth2_registered_client;"
 
 # 4) authorization_code+PKCE: 브라우저로 /oauth2/authorize?client_id=demo-web... → tester/Test1234! 로그인(DbAuthenticator)

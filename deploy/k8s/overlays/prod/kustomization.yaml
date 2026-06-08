@@ -56,7 +56,7 @@ patches:
         value: https://auth.example.com
       - op: replace
         path: /data/DB_URL
-        value: jdbc:postgresql://prod-postgres.internal:5432/sidb
+        value: jdbc:postgresql://prod-postgres.internal:5432/userdb
   - target: { kind: ConfigMap, name: admin-service-config }
     patch: |-
       - op: replace

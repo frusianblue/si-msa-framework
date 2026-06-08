@@ -22,7 +22,7 @@
 ```bash
 cd deploy/k8s/prod-kind
 bash 00-up-clusters.sh     # kind-cicd + kind-svc 생성, 공유 kind 망 확인
-bash 01-data-containers.sh # 도커 postgres/redis(--network kind) 기동 + initdb(authdb/sidb/admindb)
+bash 01-data-containers.sh # 도커 postgres/redis(--network kind) 기동 + initdb(authdb/userdb/admindb)
 bash 02-coredns-db.sh      # kind-svc CoreDNS 에 DB 엔드포인트 주입(파드 해소)
 bash 03-cross-trust.sh     # kind-svc 노드가 Harbor(cicd) 신뢰하도록 배선
 bash 90-verify.sh          # G1~G4 PASS 게이트
@@ -42,7 +42,7 @@ bash 90-verify.sh          # G1~G4 PASS 게이트
 - **IP 변동성**: 데이터 컨테이너/노드 IP 는 재기동마다 바뀔 수 있음 → 데이터 컨테이너 재기동 후엔 `02` 재실행, 클러스터 재생성 후엔 `03` 재실행(둘 다 `docker inspect` 로 매번 재산출 = 멱등).
 - **Harbor pull 은 2단계**: 1단계는 신뢰 *배선* 까지. Harbor 본체는 hub(`kind-cicd`)에 2단계에서 설치 → 그때 실제 `harbor.local` pull 실증.
 - **호스트 포트 점유**: 80/443/8080/8443 중 점유된 게 있으면 `kind create` 가 bind 실패. `00-up-clusters.sh` 0.5단계가 미리 잡아 명확히 실패시킨다. **가장 흔한 범인 = 기존 `kind-sanity`**(standalone-kind B안, 호스트 80/443 게시). 해결 택1 — A) 미사용 시 `kind delete cluster --name sanity` 후 재실행(권장, 스펙 §6 "둘 동시에 안 돌림"), B) sanity 유지 시 `kind-cicd-config.yaml` 의 hostPort 를 8000/8043 등으로 변경 + hosts 도 그 포트로.
-- **데이터 = 리허설 시드**: `initdb-prod.sql` 의 siuser/비번/DB 는 리허설용. 실 prod 는 DBA 가 분리관리. user↔admin 의 sidb 공유는 Flyway 충돌 소지(PITFALLS §9) → admindb 미리 생성, 분리는 step5(데이터 정합)에서.
+- **데이터 = 리허설 시드**: `initdb-prod.sql` 의 서비스별 계정(auth_app/user_app/admin_app)/비번/DB 는 리허설용. 실 prod 는 DBA 가 분리관리. user↔admin 의 DB 공유는 Flyway 충돌 소지(PITFALLS §9) → admindb 미리 생성, 분리는 step5(데이터 정합)에서.
 
 ## 2단계: ArgoCD(hub) + kind-svc 원격등록
 
@@ -110,7 +110,7 @@ bash 41-verify-promote.sh       # G11~G13
 
 **호스트 push 사전조건**(40-promote 가 docker push harbor.local 하려면): Docker Desktop daemon 에 `insecure-registries: ["harbor.local"]`(HTTP 평문 레지스트리) + Windows/WSL hosts 에 `127.0.0.1 harbor.local`. **git author identity**(`git config user.email/user.name`)도 있어야 promote commit 이 된다(40 의 0단계가 선점검).
 
-**리허설 시크릿**(`35-seed-secrets.sh`): prod overlay 는 시크릿을 git 에 안 넣는다(설계 — ESO/SealedSecrets/운영자 사전주입). base Deployment 의 `envFrom.secretRef`(4개 `*-secret`)가 없으면 파드가 **CreateContainerConfigError**(이미지 pull 이전 config 단계 실패). 리허설에선 `siuser/siuser_pw`(initdb 일치) 고정값으로 1회 주입.
+**리허설 시크릿**(`35-seed-secrets.sh`): prod overlay 는 시크릿을 git 에 안 넣는다(설계 — ESO/SealedSecrets/운영자 사전주입). base Deployment 의 `envFrom.secretRef`(4개 `*-secret`)가 없으면 파드가 **CreateContainerConfigError**(이미지 pull 이전 config 단계 실패). 리허설에선 서비스별 계정(initdb 일치) 고정값으로 1회 주입.
 
 promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4서비스 `:<sha>` 빌드(builder 스테이지 SERVICE 무관 → 1회 컴파일 재사용) → ② `harbor.local/si-msa/<svc>:<sha>` push → ③ `overlays/prod` 의 images 줄을 sed 로 통째 교체(placeholder newName + sha newTag, flow 유지, 멱등 — kustomize CLI 불요) → ④ **git commit/push**(prod 반전 — dev 의 "되커밋 X"와 정반대, ArgoCD 는 master 가 진실) → ⑤ `refresh=hard` 로 즉시 reconcile.
 
@@ -126,8 +126,8 @@ promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4
 - **sed 핀(kustomize 불요)**: overlay images 는 flow 스타일 한 줄이라 `40-promote` 가 sed 로 줄 통째 교체(첫/재promote 멱등). dev 의 `pin-image-tag.sh`(sed)와 일관 — 별도 CLI 설치 불요.
 - **파드 green 의 런타임 선결조건(데이터 정합)**: prod 는 다음이 매니페스트에 반영돼 있어야 4서비스가 뜬다 —
   - **file base-path**: `deployment-hardening.yaml` 공통 env `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`(readOnlyRootFilesystem 에서 local FileStorage 가 `/application/uploads` 못 만들어 admin 등이 깨짐).
-  - **DB 분리**: user=`sidb`, admin=`admindb`(둘 다 sidb 면 Flyway `checksum mismatch` 충돌 — PITFALLS §9). initdb-prod.sql 이 admindb 를 만들어둠.
-  - ⚠️ **이미 sidb 가 오염된 클러스터**(과거 admin 이 sidb 에 마이그레이션 적용): `36-reset-sidb-rehearsal.sh` 로 sidb 재생성(admin→admindb 분리 sync 후). fresh 클러스터(00~)는 처음부터 분리라 불요.
+  - **DB 분리**: user=`userdb`(user_app), admin=`admindb`(admin_app) — 서비스별 전용 DB·계정(최소권한). 같은 DB·계정을 공유하면 Flyway `checksum mismatch` 충돌(PITFALLS §9). initdb-prod.sql 이 3 DB/3 계정을 만들어둔다.
+  - ⚠️ **이미 sidb 가 오염된 클러스터**(과거 admin 이 sidb 에 마이그레이션 적용): `36-reset-userdb-rehearsal.sh` 로 sidb 재생성(admin→admindb 분리 sync 후). fresh 클러스터(00~)는 처음부터 분리라 불요.
   - ⚠️ **base/overlay 매니페스트 변경은 40-promote 가 자동 커밋하지 않는다**(images 핀만 커밋) → `deployment-hardening.yaml`·admin DB_URL 변경은 **별도 git commit/push** 해야 ArgoCD 가 본다.
 
 ## 다음 단계 (스펙 §3-5~)

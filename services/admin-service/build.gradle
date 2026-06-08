@@ -56,8 +56,8 @@ dependencies {
 // 로컬 기본값 + CI 는 -Pflyway.url / -Pflyway.user / -Pflyway.password 로 주입.
 // 운영 마이그레이션(db/migration)만 검증하고, 로컬 시드(db/seed-local)는 제외한다.
 flyway {
-    url      = project.findProperty('flyway.url')      ?: 'jdbc:postgresql://localhost:5432/sidb'
-    user     = project.findProperty('flyway.user')     ?: 'siuser'
+    url      = project.findProperty('flyway.url')      ?: 'jdbc:postgresql://localhost:5432/admindb'
+    user     = project.findProperty('flyway.user')     ?: 'admin_app'
     password = project.findProperty('flyway.password') ?: 'sipass'
     locations = ['filesystem:src/main/resources/db/migration']
     baselineOnMigrate = true

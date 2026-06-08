@@ -48,8 +48,8 @@ ConfigMap(`<svc>-config`, 비밀 아님) + Secret(`<svc>-secret`, 비밀)으로 
 |---|---|---|---|---|---|
 | gateway | 8000 | REDIS_HOST/PORT, GATEWAY_AUTH_ENABLED=true, AUTH_SERVER_ISSUER, AUTH_SERVER_JWKS_URI | JWT_SECRET | ✅(reactive) | — |
 | auth-server | 9000 | SPRING_PROFILES_ACTIVE=prod, AUTH_SERVER_ISSUER, DB_URL(authdb), LOCK_TYPE=jdbc, SIGNING_KEY_ROTATION_ENABLED=true | DB_USER, DB_PASSWORD, FRAMEWORK_JWT_SECRET, AES_SECRET | — | authdb |
-| user-service | 8080 | SPRING_PROFILES_ACTIVE=prod, REDIS_HOST/PORT, DB_URL(sidb), AUTH_SERVER_ISSUER/JWKS_URI, FILE_STORAGE_TYPE=s3, TRACE_SAMPLING | DB_USER, DB_PASSWORD, JWT_SECRET, AES_SECRET | ✅ | sidb |
-| admin-service | 8081 | SPRING_PROFILES_ACTIVE=prod, REDIS_HOST/PORT, DB_URL(sidb), TRACE_SAMPLING | DB_USER, DB_PASSWORD, JWT_SECRET, AES_SECRET | ✅ | sidb |
+| user-service | 8080 | SPRING_PROFILES_ACTIVE=prod, REDIS_HOST/PORT, DB_URL(userdb), AUTH_SERVER_ISSUER/JWKS_URI, FILE_STORAGE_TYPE=s3, TRACE_SAMPLING | DB_USER, DB_PASSWORD, JWT_SECRET, AES_SECRET | ✅ | userdb |
+| admin-service | 8081 | SPRING_PROFILES_ACTIVE=prod, REDIS_HOST/PORT, DB_URL(userdb), TRACE_SAMPLING | DB_USER, DB_PASSWORD, JWT_SECRET, AES_SECRET | ✅ | userdb |
 
 > **issuer 주의**: `AUTH_SERVER_ISSUER` 는 토큰 `iss`(외부 공개 안정 URL)와 일치해야 gateway/RS 검증을 통과한다. JWKS 조회만 클러스터 내부(`http://auth-server:9000/oauth2/jwks`)로 단축할 수 있다. prod 오버레이가 issuer 를 `https://auth.example.com` 으로 치환한다.
 
@@ -81,7 +81,7 @@ ConfigMap(`<svc>-config`, 비밀 아님) + Secret(`<svc>-secret`, 비밀)으로 
 - 이미지 빌드는 `JAR_FILE=services/<svc>/build/libs/<svc>-1.0.0.jar` 를 Dockerfile 에 넘긴다(plain jar 비활성 안 했으므로 boot jar 경로 명시).
 
 **Jenkins** (`deploy/cicd/Jenkinsfile`)
-- 게이트 스테이지 → `Flyway Validate`(authdb/sidb 병렬) → `Build & Push Images`(matrix `SERVICE` axis) → `Deploy to K8s`(matrix 밖 1회).
+- 게이트 스테이지 → `Flyway Validate`(authdb/userdb 병렬) → `Build & Push Images`(matrix `SERVICE` axis) → `Deploy to K8s`(matrix 밖 1회).
 
 **배포 명령**
 ```bash

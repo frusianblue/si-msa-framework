@@ -7,7 +7,7 @@
 # =====================================================================
 spring:
   datasource:
-    url: jdbc:h2:mem:sidb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:userdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
     username: sa
     password:
     driver-class-name: org.h2.Driver
@@ -16,7 +16,7 @@ spring:
     locations: classpath:db/migration,classpath:db/seed-local
   # H2 웹 콘솔: 감사 로그가 DB 에 실제로 쌓이는지 눈으로 확인하는 용도.
   #   브라우저 http://localhost:8080/h2-console
-  #   JDBC URL: jdbc:h2:mem:sidb   /  User: sa  /  Password: (빈칸)
+  #   JDBC URL: jdbc:h2:mem:userdb   /  User: sa  /  Password: (빈칸)
   h2:
     console:
       enabled: true

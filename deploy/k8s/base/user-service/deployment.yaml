@@ -1,4 +1,4 @@
-# deploy/k8s/base/user-service/deployment.yaml — DB(sidb) + Redis(토큰스토어/캐시) 필요.
+# deploy/k8s/base/user-service/deployment.yaml — DB(userdb) + Redis(토큰스토어/캐시) 필요.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -86,11 +86,11 @@ PULLED=$(kubectl --context "$CTX" -n "$NS" get events --field-selector reason=Pu
           -o jsonpath='{range .items[*]}{.involvedObject.name}{"\n"}{end}' 2>/dev/null | grep -cE 'gateway|auth-server|user-service|admin-service' || true)
 echo "  앱 파드 Pulled 이벤트=${PULLED}건 (노드가 harbor.local 에서 실제 pull)"
 
-echo "== 6) DB 검증(authdb/sidb/admindb 생성 = initdb 정상) =="
+echo "== 6) DB 검증(authdb/userdb/admindb 생성 = initdb 정상) =="
 DBS=$(kubectl --context "$CTX" -n "$NS" exec statefulset/postgres -- \
-        psql -U postgres -tAc "SELECT datname FROM pg_database WHERE datname IN ('authdb','sidb','admindb') ORDER BY 1;" 2>/dev/null | tr '\n' ' ' || true)
+        psql -U postgres -tAc "SELECT datname FROM pg_database WHERE datname IN ('authdb','userdb','admindb') ORDER BY 1;" 2>/dev/null | tr '\n' ' ' || true)
 echo "  존재 DB: ${DBS:-(조회 실패)}"
-case "$DBS" in *authdb*sidb*) echo "  ✅ 3 DB 정상(admin=admindb 분리 → user↔admin Flyway 충돌 회피)";; *) echo "  ⚠️ DB 누락 — PITFALLS §9(initdb 1회성) 트리아지";; esac
+case "$DBS" in *authdb*userdb*) echo "  ✅ 3 DB 정상(admin=admindb 분리 → user↔admin Flyway 충돌 회피)";; *) echo "  ⚠️ DB 누락 — PITFALLS §9(initdb 1회성) 트리아지";; esac
 
 if [ "$SMOKE" = "1" ]; then
   echo "== 7) AS 토큰 스모크(--smoke): 시드 클라이언트 켜고 client_credentials =="
@@ -114,6 +114,6 @@ fi
 
 echo
 echo "──────────────────────────────────────────────────────────────"
-echo "그린 기준: 6파드 Ready + 앱 Pulled>0 + authdb/sidb/admindb + (--smoke 시) access_token."
+echo "그린 기준: 6파드 Ready + 앱 Pulled>0 + authdb/userdb/admindb + (--smoke 시) access_token."
 echo "다음: S4 애드온(metrics-server/HPA → kube-prometheus-stack) → S5 prod-rehearsal → S6 상위흐름 → S7 Jenkins(sha 핀 자동)."
 echo "정리: bash deploy/k8s/standalone-kind/00-cleanup.sh --teardown-sanity"

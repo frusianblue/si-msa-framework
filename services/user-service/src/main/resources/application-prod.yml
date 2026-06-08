@@ -5,7 +5,7 @@
 # =====================================================================
 spring:
   datasource:
-    url: ${DB_URL}                 # 예) jdbc:postgresql://postgres:5432/sidb (기본값 없음 = 필수)
+    url: ${DB_URL}                 # 예) jdbc:postgresql://postgres:5432/userdb (기본값 없음 = 필수)
     username: ${DB_USER}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver

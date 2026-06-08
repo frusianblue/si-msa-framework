@@ -11,7 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     routing:
  *       enabled: false                 # 2단 토글(선택형 → 명시적 on 필요)
  *       write:                         # 주(쓰기) 노드 — 필수
- *         url: jdbc:postgresql://primary:5432/sidb
+ *         url: jdbc:postgresql://primary:5432/userdb
  *         username: ${DB_USER}
  *         password: ${DB_PASSWORD}
  *         driver-class-name: org.postgresql.Driver   # 보통 url 로 추론되어 생략 가능
@@ -19,7 +19,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *         minimum-idle: 5
  *         connection-timeout-ms: 3000
  *       read:                          # 복제(읽기) 노드 — 선택. url 비우면 READ 도 WRITE 로 매핑(단일 DB 무해)
- *         url: jdbc:postgresql://replica:5432/sidb
+ *         url: jdbc:postgresql://replica:5432/userdb
  *         username: ${DB_USER}
  *         password: ${DB_PASSWORD}
  *         maximum-pool-size: 30        # 읽기 부하가 크면 풀을 더 크게

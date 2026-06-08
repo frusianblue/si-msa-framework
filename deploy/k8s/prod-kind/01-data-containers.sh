@@ -49,9 +49,9 @@ for i in $(seq 1 15); do
   sleep 1; [ "$i" = 15 ] && { echo "FAIL: redis ping 실패"; docker logs --tail 20 "$RD_NAME"; exit 1; }
 done
 
-echo "== 3) DB 시드 확인 (authdb/sidb/admindb) =="
+echo "== 3) DB 시드 확인 (authdb/userdb/admindb) =="
 docker exec "$PG_NAME" psql -U postgres -tAc \
-  "SELECT datname FROM pg_database WHERE datname IN ('authdb','sidb','admindb') ORDER BY 1;"
+  "SELECT datname FROM pg_database WHERE datname IN ('authdb','userdb','admindb') ORDER BY 1;"
 
 echo "== 4) kind 망 IP 확인 =="
 PG_IP="$(docker inspect -f '{{(index .NetworkSettings.Networks "kind").IPAddress}}' "$PG_NAME")"

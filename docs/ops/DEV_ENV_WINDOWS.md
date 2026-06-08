@@ -90,11 +90,11 @@ Community 로 충분하다(Spring 전용 보조 기능이 필요하면 Ultimate)
 - **postgres 가 필요한 경우**(local-postgres / prod 프로파일 흉내) — Docker 로 띄운다:
 ```bash
 docker run -d --name pg -p 5432:5432 \
-  -e POSTGRES_USER=siuser -e POSTGRES_PASSWORD=dev-sipass -e POSTGRES_DB=sidb \
+  -e POSTGRES_USER=user_app -e POSTGRES_PASSWORD=dev-userpass -e POSTGRES_DB=userdb \
   postgres:16-alpine
 docker run -d --name redis -p 6379:6379 redis:7-alpine
 ```
-auth-server 는 `authdb` 가 추가로 필요(`docker exec pg psql -U siuser -c "CREATE DATABASE authdb;"`). DB 점검은 `psql`/`redis-cli` 또는 `docker exec` 로.
+auth-server 는 `authdb` 가 추가로 필요(`docker exec pg psql -U user_app -c "CREATE DATABASE authdb;"`). DB 점검은 `psql`/`redis-cli` 또는 `docker exec` 로.
 
 ---
 

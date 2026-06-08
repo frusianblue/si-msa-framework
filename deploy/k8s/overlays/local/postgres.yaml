@@ -2,7 +2,7 @@
 # 로컬 전용 인-클러스터 PostgreSQL — kind/minikube 등 자기완결 클러스터에서 4개 서비스를
 # 실제로 기동/검증하기 위한 throwaway DB. 운영/개발 서버에는 절대 쓰지 않는다(영속성 없음).
 #   - Service 이름을 'postgres' 로 두어 base 의 DB_URL(jdbc:postgresql://postgres:5432/...) 이 그대로 풀린다.
-#   - initdb 스크립트로 authdb/sidb 두 DB 와 앱 역할(authuser/siuser)을 생성 — secrets-local.yaml 의 계정과 일치.
+#   - initdb 스크립트로 authdb/userdb/admindb 와 서비스별 앱 역할(auth_app/user_app/admin_app)을 생성 — secrets-local.yaml 의 계정과 일치.
 #   - component: database 라벨 → base 의 hardened 패치/ServiceMonitor 대상에서 제외(redis 와 동일 원리).
 apiVersion: v1
 kind: ConfigMap
@@ -14,17 +14,18 @@ metadata:
 data:
   # /docker-entrypoint-initdb.d 의 .sql 은 최초 1회(빈 데이터 디렉토리)만 psql 로 실행된다.
   init.sql: |
-    CREATE ROLE authuser WITH LOGIN PASSWORD 'dev-authpass';
-    CREATE ROLE siuser   WITH LOGIN PASSWORD 'dev-sipass';
-    CREATE DATABASE authdb  OWNER authuser;
-    CREATE DATABASE sidb    OWNER siuser;
-    CREATE DATABASE admindb OWNER siuser;   -- admin-service 전용(user-service 와 Flyway 충돌 회피)
+    CREATE ROLE auth_app  WITH LOGIN PASSWORD 'dev-authpass';
+    CREATE ROLE user_app  WITH LOGIN PASSWORD 'dev-userpass';
+    CREATE ROLE admin_app WITH LOGIN PASSWORD 'dev-adminpass';
+    CREATE DATABASE authdb  OWNER auth_app;
+    CREATE DATABASE userdb  OWNER user_app;
+    CREATE DATABASE admindb OWNER admin_app;   -- admin-service 전용(user-service 와 Flyway 충돌 회피)
     \connect authdb
-    GRANT ALL ON SCHEMA public TO authuser;
-    \connect sidb
-    GRANT ALL ON SCHEMA public TO siuser;
+    GRANT ALL ON SCHEMA public TO auth_app;
+    \connect userdb
+    GRANT ALL ON SCHEMA public TO user_app;
     \connect admindb
-    GRANT ALL ON SCHEMA public TO siuser;
+    GRANT ALL ON SCHEMA public TO admin_app;
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -9,9 +9,9 @@ Gradle 로 직접 빌드**한다(A안). 환경값은 `deploy/k8s/overlays/local`
 |---|---|---|---|
 | gateway | source build | `8000:8000` | — |
 | auth-server | source build | `9000:9000` | authdb |
-| user-service | source build | `8080:8080` | sidb |
+| user-service | source build | `8080:8080` | userdb |
 | admin-service | source build | `8081:8081` | **admindb** |
-| postgres | `postgres:16-alpine` | `5432:5432` | authdb / sidb / admindb |
+| postgres | `postgres:16-alpine` | `5432:5432` | authdb / userdb / admindb |
 | redis | `redis:7-alpine` | `6379:6379` | — |
 
 > 전제: 빌드 단계에서 Maven Central 접근(인터넷)이 필요하다. 사내 프록시 환경이면
@@ -51,9 +51,9 @@ curl -s localhost:9000/.well-known/openid-configuration | head
 
 # DB 스키마(Flyway 적용 결과) 확인
 docker compose -f deploy/compose/docker-compose.yml exec postgres \
-  psql -U siuser -d sidb -c '\dt'
+  psql -U user_app -d userdb -c '\dt'
 docker compose -f deploy/compose/docker-compose.yml exec postgres \
-  psql -U authuser -d authdb -c '\dt'
+  psql -U auth_app -d authdb -c '\dt'
 ```
 
 ## 끄는 법
@@ -70,7 +70,7 @@ docker compose -f deploy/compose/docker-compose.yml down -v
 
 ## ⚠️ 주의 — admin-service 는 별도 DB(admindb)
 
-k8s `overlays/local` 은 user-service 와 admin-service 를 **둘 다 `sidb`** 로 지정한다.
+k8s `overlays/local` 은 user-service 와 admin-service 를 **둘 다 `userdb`** 로 지정한다.
 그런데 두 서비스의 Flyway 마이그레이션이 충돌한다:
 
 - 두 서비스 모두 `flyway.locations=classpath:db/migration`, 기본 history 테이블 `flyway_schema_history` 사용
