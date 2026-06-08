@@ -1,0 +1,23 @@
+# deploy/k8s/components/file-storage-nfs/kustomization.yaml
+# 파일 영속(NFS RWX) Component — overlay 의 components: 로 끼운다(예: overlays/prod).
+#   사용:  overlays/prod/kustomization.yaml 의
+#          components:
+#            - ../../components/file-storage-nfs
+#   전제:  StorageClass `nfs` 가 클러스터에 존재해야 PVC 가 Bound 된다 → 13-nfs-provisioner.sh 선행
+#          (nfs-server-provisioner = built-in ganesha NFS, 워크로드 클러스터 애드온).
+#   구성:  PVC×2(user-uploads/admin-uploads, RWX) + user/admin Deployment 에 마운트·env override 패치.
+#          application.yml 은 env placeholder(${FRAMEWORK_FILE_STORAGE_BASE_PATH}/${FILE_STORAGE_TYPE})라
+#          소스 변경·재빌드·promote 불요 — 이 매니페스트만으로 /tmp(휘발) → NFS(영속) 전환된다.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - pvc.yaml
+patches:
+  - path: patch-user.yaml
+    target:
+      kind: Deployment
+      name: user-service
+  - path: patch-admin.yaml
+    target:
+      kind: Deployment
+      name: admin-service

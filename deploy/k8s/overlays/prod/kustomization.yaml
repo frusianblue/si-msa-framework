@@ -17,6 +17,12 @@ resources:
   - ../../base
   - hpa.yaml
 
+components:
+  # 파일 영속(NFS RWX): PVC×2(user-uploads/admin-uploads) + user/admin 마운트·env override(/tmp → /mnt/uploads).
+  #   ⚠️ StorageClass `nfs` 선행 필요(13-nfs-provisioner.sh = nfs-server-provisioner 애드온, kind-svc).
+  #   application.yml 이 env placeholder 라 소스변경/promote 불요 — 이 component 만으로 휘발→영속 전환.
+  - ../../components/file-storage-nfs
+
 # 초기 레플리카(이후 HPA 가 조정). base 의 2 를 유지하므로 별도 replicas 미지정.
 
 # 불변 sha 핀(promote 가 커밋). registry.example.com 은 운영 레지스트리 placeholder(ops 가 newName 으로 치환).

@@ -53,6 +53,7 @@ cd deploy/k8s/prod-kind
 bash 10-cicd-ingress.sh    # kind-cicd 에 ingress-nginx(호스트 localhost:80)
 bash 11-argocd-install.sh  # ArgoCD(Helm) + argocd.local ingress + admin 비번 출력
 bash 12-register-svc.sh    # kind-svc 를 cluster Secret 로 등록(server=svc CP 컨테이너 IP)
+bash 13-nfs-provisioner.sh # kind-svc 에 NFS 동적 프로비저너(RWX, built-in ganesha) — 파일 영속 PVC(5단계②) 선결. 20(bootstrap) 전에.
 bash 91-verify-argocd.sh   # G5~G7 PASS 게이트
 ```
 
@@ -132,7 +133,11 @@ promote 흐름(`40-promote.sh`): ① 호스트 docker + `Dockerfile.build` 로 4
 
 ## 다음 단계 (스펙 §3-5~)
 
-5. 데이터/관측 정합 (prod overlay DB/Redis 를 K8s밖 엔드포인트로, 관측 분산형)
+5. 데이터/관측 정합
+   - ① DB/role 서비스별 개명 — **완료**(authdb/auth_app · userdb/user_app · admindb/admin_app). prod overlay DB_URL·initdb-prod.sql·35-seed 정합.
+   - ② 파일 영속(NFS RWX) — **산출 완료**(`13-nfs-provisioner.sh` + `components/file-storage-nfs`). user/admin 업로드를 `/tmp`(휘발) → NFS PVC(`/mnt/uploads`, RWX·replicas:2 공유)로 전환. application.yml 이 env placeholder 라 promote 불요 — 13 실행 + ArgoCD sync 로 PVC Bound + 파드 재기동.
+     - 적용: `13-nfs-provisioner.sh`(SC `nfs`) → ArgoCD sync(prod overlay 의 component) → `kubectl -n si-msa get pvc`(Bound) → 파드 재기동(`/mnt/uploads` 마운트·`FILE_STORAGE_TYPE=nas`). 운영은 관리형 NFS/EFS 로 promote.
+   - ③ 관측 분산형 (워크로드 Prometheus agent → 중앙 Grafana) — 미착수.
 6. 문서 캐스케이드(`docs/ops/PROD_GITOPS_ARGOCD.md` 신설)
 - (선택) Jenkins(`Jenkinsfile.promote`) 파이프라인화 — bash promote 흐름 증명 후
 

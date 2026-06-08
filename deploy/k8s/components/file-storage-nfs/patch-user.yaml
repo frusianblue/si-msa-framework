@@ -1,0 +1,27 @@
+# user-service: 업로드 영속 — base-path 를 RWX PVC 마운트로 override.
+#   deployment-hardening 이 공통으로 준 FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads(휘발 emptyDir)를
+#   여기서 /mnt/uploads(NFS PVC)로 덮는다(env 는 name 기준 strategic merge → component 가 나중 적용=승리).
+#   FILE_STORAGE_TYPE=nas: 동작은 local 과 동일(FileSystemFileStorage 공유)하나 메타데이터 라벨을 "nas"로
+#   기록(공유 마운트임을 표기). env 가 configmap(envFrom)보다 우선이라 user configmap 의 local 을 덮는다.
+#   readOnlyRootFilesystem:true 와 무관 — PVC 마운트 경로는 별도 쓰기 가능. fsGroup:1001(hardening)로 그룹 쓰기.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          env:
+            - name: FRAMEWORK_FILE_STORAGE_BASE_PATH
+              value: /mnt/uploads
+            - name: FILE_STORAGE_TYPE
+              value: nas
+          volumeMounts:
+            - name: uploads
+              mountPath: /mnt/uploads
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: user-uploads

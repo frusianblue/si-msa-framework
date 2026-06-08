@@ -1,0 +1,32 @@
+# deploy/k8s/components/file-storage-nfs/pvc.yaml
+# 서비스별 업로드 PVC — RWX(ReadWriteMany). user/admin 각각 replicas:2 가 같은 볼륨을 공유한다.
+#   ⚠️ RWX 가 필수인 이유: local-path 등 RWO 는 단일 파드만 마운트 → replicas:2 에서 둘째 파드 ContainerCreating 정지.
+#      RWX 를 주는 건 NFS(StorageClass `nfs`, nfs-server-provisioner 가 제공) — 13-nfs-provisioner.sh 선행.
+#   서비스별 분리(user-uploads/admin-uploads): DB 개명(서비스별 전용)과 동일 원칙 — 서비스 간 파일 격리.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: user-uploads
+  labels:
+    app.kubernetes.io/part-of: si-msa
+    app.kubernetes.io/component: file-storage
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: admin-uploads
+  labels:
+    app.kubernetes.io/part-of: si-msa
+    app.kubernetes.io/component: file-storage
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs
+  resources:
+    requests:
+      storage: 5Gi

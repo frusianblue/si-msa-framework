@@ -7,42 +7,37 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**🟢 5단계 ① DB/role 서비스별 개명 — `sidb→userdb` · `siuser→user_app`(user)/`admin_app`(admin) · `authuser→auth_app`, owner 도 각 짝(최소권한). 코드·매니페스트·현행 가이드 전면 개명 + 정합성 정적검증 전체 PASS(2026-06-08, devops).** 배경: user↔admin 가 공유하던 `sidb`/`siuser`(§9 Flyway checksum 충돌의 근원)를 서비스별 전용 DB·계정으로 분리 → 금융권 최소권한 + 공유 충돌 **설계 단계 원천 차단**. prod-kind 의 단일 `siuser`(authdb/sidb/admindb 통합)도 3 role 로 분리 정합. 비번 정책 = dev/local `dev-{auth,user,admin}pass` · prod-kind `{auth,user,admin}_app_pw`(서비스별). **검증 PASS**: secrets `DB_USER/DB_PASSWORD` ↔ initdb role/PW 일치(dev/local 각 3계정) · initdb owner↔role 짝(local/persistent) · prod-kind initdb↔35-seed 비번 일치 · base configmap DB_URL(user=userdb/admin=admindb) · YAML 유효성 10파일 · 비문서 잔존 0(36 의 "과거/전환 설명" 주석만 의도적 보존).
+**🟢 5단계 데이터/파일 정합 — ① DB/role 서비스별 개명(검증 PASS) + ② 파일 영속 NFS RWX(산출 완료·적용 대기)(2026-06-08, devops, 프레임워크 소스 무변경).** ① `sidb→userdb`·`siuser→user_app/admin_app`·`authuser→auth_app`(owner 각 짝, 최소권한) — 공유 sidb Flyway 충돌(§9)을 설계 단계 원천 차단, prod-kind 단일 siuser→3 role 분리. ② user/admin 업로드를 `/tmp`(휘발 emptyDir) → NFS PVC(`/mnt/uploads`, RWX)로: `13-nfs-provisioner.sh`(in-cluster ganesha nfs-server-provisioner, StorageClass `nfs`) + `components/file-storage-nfs`(PVC×2 RWX + deployment patch). **application.yml 이 env placeholder(`${FRAMEWORK_FILE_STORAGE_BASE_PATH}`/`${FILE_STORAGE_TYPE}`)라 소스변경·재빌드·promote 불요** — 13 실행 + ArgoCD sync 만으로 휘발→영속 전환. **검증**: ① PyYAML 전체 PASS(secrets↔initdb↔owner·prod 비번·configmap DB_URL·YAML 10) · ② 구조 PASS(Component kind·PVC RWX/sc nfs·patch env override·prod overlay 참조). kustomize build 는 형님 환경 `kubectl kustomize` 위임.
 
 ## 최종 갱신
-- 일자: 2026-06-08 · 갱신자: 세션(5단계 ① DB/role 서비스별 개명)
-- 대상 브랜치: master · 환경: 프레임워크 소스 무변경(서비스 application*.yml·build.gradle 의 DB명/계정 + 매니페스트 + 스크립트 + 문서). **drop-in zip 전달, Chae 가 적용·커밋. ⚠️ 구 `36-reset-sidb-rehearsal.sh` 는 `git rm` 필요(rename — drop-in 은 덮어쓰기만).**
+- 일자: 2026-06-08 · 갱신자: 세션(5단계 ① DB/role 개명 + ② 파일 영속 NFS)
+- 대상 브랜치: master · 환경: 프레임워크 소스 무변경(매니페스트·스크립트·서비스 설정·문서). **drop-in zip. ⚠️ 구 `36-reset-sidb-rehearsal.sh` 는 `git rm`(rename).**
 
 ## 직전에 한 것 (Done)
 | 항목 | 산출/검증 |
 |---|---|
-| initdb 4종 | compose/local/persistent/prod-kind — role 3분리(auth_app/user_app/admin_app) + DB authdb/userdb/admindb + owner 짝. |
-| secrets/configmap | dev/local secrets DB_USER/PASSWORD 서비스별 분리 · base configmap user=userdb·admin=admindb(거짓 기본값 교정). |
-| compose/overlay | docker-compose DB_URL/USER/PASSWORD 서비스별 · dev/prod overlay user DB_URL→userdb · 주석 정합. |
-| prod-kind 스크립트 | 35-seed 서비스별 계정(AUTH/USER/ADMIN_DB_USER+PW) · 36 용도변경(오염정리→userdb 리허설 초기화, `36-reset-userdb-rehearsal.sh`) · 01/03 DB 검증목록. |
-| 서비스 소스 | user(→userdb/user_app)·admin(→admindb/admin_app)·auth(→auth_app) application*.yml + build.gradle(flyway.url/user) + framework-datasource javadoc. |
-| 현행 가이드 | deploy README 3 · docs/ops 6 · SAMPLES · AUTH_SERVER · services README 3 개명. |
-| 정합성 검증 | ✅ PyYAML 전체 PASS(secrets↔initdb↔owner, prod 비번, configmap DB_URL, YAML 유효성). |
-| 작업기록 | PITFALLS §9 개명 교훈 1건 추가 + 인라인 보정 · SUMMARY · planning 36 파일명 · HANDOFF 누적 엔트리. |
+| ① DB/role 개명 | initdb 4종(role 3분리+DB+owner) · secrets/configmap/compose/overlay · 35-seed 서비스별 · 36 용도변경(userdb 리허설) · 서비스 소스·현행 가이드. PyYAML 정합 PASS. |
+| ② NFS provisioner | `13-nfs-provisioner.sh` — kind-svc 애드온, nfs-server-provisioner(ganesha built-in, RWX), StorageClass `nfs`. bash -n PASS. |
+| ② file-storage component | `components/file-storage-nfs`: PVC×2(user-uploads/admin-uploads, RWX) + user/admin deployment patch(/mnt/uploads 마운트·`FRAMEWORK_FILE_STORAGE_BASE_PATH` override·`FILE_STORAGE_TYPE=nas`). prod overlay `components:` 끼움. 구조 PASS. |
+| 문서 | PITFALLS §9 2건(개명·NFS RWX) · prod-kind README(13 시퀀스+5단계②) · SUMMARY · planning · HANDOFF. |
 
 ## 현재 상태 (적용/검증)
-- **개명 완료(정적)**: 비문서 영역 sidb/siuser/authuser 잔존 0(36 설명 주석 제외). 검증 PASS — Chae 환경 적용 대기.
-- **DB/계정 토폴로지**: authdb/auth_app · userdb/user_app · admindb/admin_app(서비스별 전용, owner 각 짝). prod-kind 단일 siuser → 3 분리.
-- **② file storage(NFS PVC)·③ 관측 분산형 = 미착수**(5단계 잔여 2축).
+- **① 개명: 정적 PASS, 적용 대기**(비문서 잔존 0). **② 파일 영속: 산출 완료, 형님 PASS 게이트 대기**(helm install·PVC Bound·파드 재기동).
+- **③ 관측 분산형 = 미착수**(5단계 잔여 1축).
 
 ## 바로 다음 할 일 (Next) — 다음 섹션
-1. **기존 클러스터 개명 적용 안내**: initdb 1회성이라 옛 sidb 만 있고 userdb/신 role 자동생성 안 됨 → prod-postgres `01-data-containers.sh` 재실행(컨테이너 재생성, 리허설 데이터 버림) 또는 `36-reset-userdb-rehearsal.sh`. 구 36 `git rm`.
-2. **5단계 ② file storage(NFS PVC)**: in-cluster NFS server + nfs-subdir-external-provisioner(`registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2`) + StorageClass `nfs` + RWX PVC(user/admin replicas:2 공유, local-path 는 RWO 불가) + deployment 마운트(/mnt/uploads)+env override(FRAMEWORK_FILE_STORAGE_BASE_PATH)+type=nas. kustomize component(`components/file-storage-nfs/`) 패턴 권장. application.yml 은 env placeholder → 소스변경/promote 불요(매니페스트만). NFS 이미지 pull 리스크(mirror intercept/harbor 신뢰) 확인.
+1. **② 적용·검증(형님 환경 PASS 게이트)**: `kubectl kustomize overlays/prod` 렌더 확인 → `helm show values`로 nfs-server-provisioner values 키 확인(편차 대비) → `bash 13-nfs-provisioner.sh`(SC `nfs`) → ArgoCD sync → `kubectl -n si-msa get pvc`(user-uploads/admin-uploads Bound) → 파드 재기동 후 `/mnt/uploads` 마운트·업로드 영속 확인. ⚠️ provisioner 이미지 노드 pull(mirror intercept §8) 점검.
+2. **① 적용**: `unzip -o` + `git rm` 구 36. 기존 클러스터는 initdb 1회성 → `01-data-containers.sh` 재실행 또는 `36-reset-userdb-rehearsal.sh`.
 3. **5단계 ③ 관측 분산형**: kind-svc Prometheus agent(remote_write)+base ServiceMonitor 직접 apply, kind-cicd 중앙 Prometheus+Grafana.
 4. **6단계 문서 캐스케이드** — `docs/ops/PROD_GITOPS_ARGOCD.md` 신설.
 
 ## 빈칸 / 잔여
-- **운영 클러스터 VM**: prod 전용 VM 미생성(stg 폐기).
-- **AUTH 트랙(별개 진행 중)**: `AUTH_SERVER.md` `NEXT_K8S_REAL_DEPLOY §S3'` 평문 잔여 1줄 + `modules/{AUTH_SERVER,OIDC_HARDENING}.md` 깨진 링크.
-- **운영 영속 업로드**: 현재 /tmp(휘발) — ② NFS PVC 로 전환 예정.
+- **② 미검증**: helm chart values 키(`storageClass.name` 등)·provisioner 이미지 버전은 형님 환경 확인 필요(버전 날조 금지 — chart default + helm show values).
+- **운영 클러스터 VM**: prod 전용 VM 미생성.
+- **AUTH 트랙(별개)**: `AUTH_SERVER.md` 평문 잔여 1줄 + `modules/*` 깨진 링크.
 
 ## 이번 섹션 함정/원칙 (되돌리지 말 것 · 상세 PITFALLS §9)
-- **DB/role 개명 = 단순 sed 금지**: user 맥락 `sidb→userdb` vs admin base configmap 거짓 기본값 `sidb→admindb` 구분 / `siuser` 는 user_app(user)·admin_app(admin) 갈림 / secrets↔initdb role·PW 한 글자라도 어긋나면 연결 실패.
-- **개명 적용 ≠ 그냥 sync**: initdb 1회성 → 기존 클러스터는 컨테이너 재생성(01) 또는 36 으로 신 role/DB 보강. claimed-uncommitted ≠ actually — Chae 환경에서 fresh 상태 확인 후 적용.
-- **서비스별 전용 DB·계정이 기본값**: 공유 시 §9 Flyway 충돌 — 분리는 설계로 차단됐으니 되돌리지 말 것.
+- **개명 = 단순 sed 금지**: user `sidb→userdb` vs admin base configmap 거짓 기본값 `sidb→admindb` / `siuser`=user_app·admin_app / secrets↔initdb 정합 필수. initdb 1회성 → 기존 클러스터 재생성.
+- **파일 RWX 필수**: replicas:2 공유엔 RWX(NFS), RWO(local-path)는 단일 파드만. in-cluster ganesha(userspace)로 커널 nfsd 회피(WSL2). hardening `/tmp/uploads` → component `/mnt/uploads` override(kustomize 순서상 component 승리). 휘발은 리허설, 운영은 관리형 NFS/EFS/S3.
+- **env placeholder 설계의 보상**: application.yml 이 env placeholder 라 스토리지 전환이 매니페스트만으로(소스변경/promote 불요) — 직전 세션의 "명시 placeholder" 결정이 이번에 회수됨.
 <!-- 갱신 끝 -->

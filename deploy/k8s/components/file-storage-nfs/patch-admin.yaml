@@ -1,0 +1,22 @@
+# admin-service: 업로드 영속 — user 와 동일 패턴, 전용 PVC(admin-uploads)로 격리.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          env:
+            - name: FRAMEWORK_FILE_STORAGE_BASE_PATH
+              value: /mnt/uploads
+            - name: FILE_STORAGE_TYPE
+              value: nas
+          volumeMounts:
+            - name: uploads
+              mountPath: /mnt/uploads
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: admin-uploads
