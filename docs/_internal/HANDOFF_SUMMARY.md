@@ -7,44 +7,42 @@
 ---
 <!-- 갱신 시작 -->
 ## 이번 세션 한 줄 요약
-**🟢 prod GitOps 4단계 bash promote 파이프라인 end-to-end 증명 + 4서비스 중 3(+redis) green — admin-service CrashLoop 만 잔여(다음 섹션 진입 과제)(2026-06-08, devops · kind 멀티클러스터).** 빌드 주체 = **호스트 docker**(Chae 결정, Kaniko 아님). **신규 자산 5**(`deploy/k8s/prod-kind/`): `30-harbor-hub-install`(08 멀티클러스터 적응 — kind-cicd Harbor Helm + si-msa public) · `40-promote`(호스트 docker 4서비스 `:<sha>` → push → overlay images **sed** 치환[placeholder newName+sha newTag, kustomize 불요] → **git commit/push**[prod 반전] → ArgoCD refresh; 0단계 워킹트리 clean + git identity 선점검) · `41-verify-promote`(G11~G13) · `35-seed-secrets`(리허설 시크릿 4개, DB=siuser/siuser_pw) · `36-reset-sidb-rehearsal`(sidb 오염 정리, PG16 WITH FORCE). **매니페스트 픽스 2**: deployment-hardening `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads`(문서-구현 드리프트 보정) · prod overlay admin DB_URL `sidb→admindb`(Flyway 분리). **promote 증명** = ArgoCD 가 master 새 커밋 sync → `:520856b` 새 ReplicaSet(빌드→push→핀→commit→sync→새 RS 전 구간 실측). **실측 트러블슈팅 순차**: ① git identity→commit 깨짐(40 0단계 선점검) ② CreateContainerConfigError=prod 시크릿 미커밋(35) ③ admin `/application/uploads` read-only=file base-path 누락(보정) ④ user `Flyway checksum mismatch`=sidb 공유(admin→admindb+sidb 재생성=user Running). **현재 green**: gateway·auth-server·user-service·redis. **잔여: admin-service CrashLoop**(file/admindb 적용 후에도 — 원인 미규명).
+**🟢 인계 과제 admin-service CrashLoop 원인 규명·해결 + user-service 동근원 정합 → promote 재완주로 4서비스+redis 전부 green(2026-06-08, devops · kind 멀티클러스터). 4단계 prod GitOps 종료.** 근인 = **file storage base-path 환경변수 바인딩 실패**(kebab-case relaxed binding 함정). admin 은 application.yml 에 `framework.file.*` 미선언 → base-path 를 env relaxed binding 에만 의존하는데, 매니페스트가 주는 `FRAMEWORK_FILE_STORAGE_BASE_PATH`(언더스코어)가 Spring 정식 형태(대시 제거 = `FRAMEWORK_FILE_STORAGE_BASEPATH`)와 어긋나 **바인딩 미보장** → 기본값 `./uploads`(=`/application/uploads`) 사용 → readOnlyRootFilesystem 에서 createDirectories 실패 → localFileStorage 빈 실패 → 기동 불가(첨부 로그 경로가 `/application/uploads` = 바인딩 실패의 결정적 증거). user 는 별개 양상 동근원 — `FILE_STORAGE_TYPE=s3` 인데 `framework-file-s3` 주석(미의존) → S3FileStorage 빈 부재 + localFileStorage 는 type=local 조건 → **FileStorage 빈 0개** → fileService 미충족 CrashLoop. **해결(이론 의존 X, 명시 placeholder 로 모호성 제거)**: admin/user `application.yml` 에 `base-path: ${FRAMEWORK_FILE_STORAGE_BASE_PATH:./uploads}` 박음(명시 placeholder=env 명 그대로 매칭) + user configmap `FILE_STORAGE_TYPE: s3→local`(s3 모듈 없는 거짓 기본값 제거). **매니페스트는 무변경**(hardening 이 이미 `/tmp/uploads` env 공급). **promote 재완주**: `40-promote` 가 `:e5e1aff` 4서비스 빌드→harbor.local push→prod overlay sed 핀→commit/push→ArgoCD sync. **실측 PASS**: `41-verify-promote` G11~G13 전부 PASS(8파드 1/1 Running, sentinel 소거 + newName 4건 핀, ArgoCD Synced) · `42-diagnose-admin-file`(신규) 가 admin 파드 env `FRAMEWORK_FILE_STORAGE_BASE_PATH=/tmp/uploads` 주입 확인 + CrashLoop 로그 file 경로 미재현 → 원인 닫힘. 옛 RS(`:__GITSHA__`/`:520856b`) 0 스케일, 새 `:e5e1aff` RS 2/2.
 
 ## 최종 갱신
-- 일자: 2026-06-08 · 갱신자: 세션(prod GitOps 4단계 promote 증명 + 부분 green) — **이번 섹션 마무리**
-- 대상 브랜치: master · 환경: 프레임워크/스택 무변경(devops). **drop-in zip 전달(스크립트 5 + 매니페스트 2 + 문서 4=11파일).** ⚠️ `40-promote` 는 overlays/prod(images 핀)만 자동 commit/push — deployment-hardening·admin DB_URL 등 base/overlay 변경은 **별도 commit/push** 필요(ArgoCD=master 진실).
+- 일자: 2026-06-08 · 갱신자: 세션(admin/user file storage 정합 + 4단계 prod GitOps green 마감)
+- 대상 브랜치: master · 환경: 프레임워크 무변경(서비스 설정 yml 2 + base configmap 1 + 진단 스크립트 1 + 문서). **drop-in zip 전달, Chae 가 적용·커밋·promote 실행.**
 
 ## 직전에 한 것 (Done)
 | 항목 | 산출/검증 |
 |---|---|
-| promote 파이프라인 | ✅ end-to-end 증명 — ArgoCD master 새 커밋 sync → :520856b 새 RS. 빌드(호스트 docker)→push→sed핀→commit→sync. |
-| 30/40/41/35/36 | 5 스크립트 작성·bash -n PASS·정적검증(sed 핀 멱등·G12 grep·YAML). 받는 쪽 실측. |
-| 매니페스트 픽스 | deployment-hardening file base-path + prod overlay admin→admindb. |
-| 실측 green | gateway·auth-server·user-service·redis Running. user 는 sidb 분리/재생성으로 Flyway 해소 확인. |
-| 문서 | HANDOFF §7 누적 + SUMMARY + spec §0/§3-4 + PITFALLS §9 6건 + README §4. |
+| admin CrashLoop 원인 | ✅ 규명 — local FileStorage createDirectories on read-only rootfs + base-path env relaxed binding 미보장(소스 실독). |
+| 해결(admin/user) | admin/user `application.yml` 명시 placeholder `${FRAMEWORK_FILE_STORAGE_BASE_PATH:./uploads}` + user configmap type local. 매니페스트 무변경. |
+| 진단 스크립트 | `42-diagnose-admin-file.sh` 신규(파드 env·로그 경로·Ready 판정, bash -n PASS). |
+| promote 재완주 | `40-promote` :e5e1aff 4서비스 빌드/push/핀/commit/sync. |
+| 실측 green | G11~G13 PASS, 8파드 1/1 Running, admin env=/tmp/uploads 주입 + file 에러 미재현. |
+| 문서 | HANDOFF §7 누적 + SUMMARY + PITFALLS §9 1건(env 바인딩 함정·기존 항목 보정) + NEXT 진단/해결 기록. |
 
 ## 현재 상태 (적용/검증)
-- **promote 파이프라인**: ✅ 증명. git(master)=진실, ArgoCD reconcile.
-- **파드 green**: gateway ✅ · auth-server ✅ · user-service ✅ · redis ✅ / **admin-service ❌ CrashLoop(잔여)**.
-- **매니페스트**: deployment-hardening(file base-path) · prod overlay(admin admindb) · images(:520856b) 커밋/push/sync.
-- **이번 섹션 마무리** — admin CrashLoop 은 다음 섹션 첫 과제로 인계.
+- **파드 green**: gateway ✅ · auth-server ✅ · user-service ✅ · admin-service ✅ · redis ✅ (8파드 1/1 Running).
+- **promote 파이프라인**: ✅ 재완주. git(master :e5e1aff)=진실, ArgoCD reconcile.
+- **file storage**: admin/user 둘 다 type=local + base-path `/tmp/uploads`(hardening env, /tmp emptyDir). ⚠️ /tmp 휘발 = 리허설 한정, 운영 영속은 s3/PVC(5단계).
+- **4단계 prod GitOps 종료** — 인계 과제(admin CrashLoop) 닫힘.
 
-## 바로 다음 할 일 (Next) — 다음 섹션 진입
-1. **admin-service CrashLoop 원인 규명** — `kubectl --context kind-svc -n si-msa logs <admin-pod> --previous --tail=80`. file(/tmp/uploads)·admindb 적용 후 잔여 원인 후보: admindb Flyway · TokenStore redis 의존(PITFALLS §9, build.gradle framework-redis) · 기타 startup. gateway/auth/user 가 green 이라 admin 고유 문제.
-2. **5단계 데이터/관측 정합** — file storage 전략 통일(local /tmp vs s3/PVC) · DB 분리 확정(user=sidb/admin=admindb) · 관측 분산형(워크로드 agent → 중앙 Grafana).
-3. **6단계 문서 캐스케이드** — `docs/ops/PROD_GITOPS_ARGOCD.md` 신설 + branch-per-env 가이드.
-4. (선택) Jenkins `Jenkinsfile.promote` 파이프라인화 — bash 흐름 증명 완료.
+## 바로 다음 할 일 (Next) — 다음 섹션
+1. **5단계 데이터/관측 정합** — file storage 운영 전략 통일(local /tmp → s3/PVC) · DB 분리 확정(user=sidb / admin=admindb) · 관측 분산형(워크로드 agent → 중앙 Grafana).
+2. **6단계 문서 캐스케이드** — `docs/ops/PROD_GITOPS_ARGOCD.md` 신설 + branch-per-env 가이드.
+3. (선택) Jenkins `Jenkinsfile.promote` 파이프라인화 — bash 흐름 증명 완료.
+4. (위생) user-service s3 복귀 시 = `framework-file-s3` 의존 해제 + configmap type=s3 + S3 자격증명(현재는 local 로 청산).
 
 ## 빈칸 / 잔여
-- **admin-service CrashLoop**: 미규명. 다음 섹션 logs 진입.
 - **운영 클러스터 VM**: prod 전용 VM 미생성(stg 폐기). master=prod 실 클러스터 위치 = VM 이전 시점 결정.
 - **AUTH 트랙(별개 진행 중, 본 세션 미관여)**: `AUTH_SERVER.md` `NEXT_K8S_REAL_DEPLOY §S3'` 평문 잔여 1줄 + `modules/{AUTH_SERVER,OIDC_HARDENING}.md` `planning/→archive/` 깨진 링크.
+- **운영 영속 업로드 미결정**: 현재 /tmp(휘발) — 5단계에서 s3/PVC 확정.
 
 ## 이번 섹션 함정/원칙 (되돌리지 말 것 · 상세 PITFALLS §9)
-- **prod 핀은 newName 까지(sed)**: placeholder name `registry.example.com/...` → newTag 만 바꾸면 가짜 레지스트리 pull. overlay images 줄 sed 통째 교체로 newName+newTag 동시(kustomize 불요).
-- **prod=git 커밋이 진실(dev 반전)**: dev 워크스페이스만 핀(되커밋 X), prod 는 핀을 git commit/push 해야 ArgoCD sync.
-- **promote 선결조건 fail-fast**: git identity 없으면 빌드·push 후 commit 에서 깨짐 → 40 0단계 선점검.
-- **prod 시크릿 git 밖 → 클러스터 사전존재가 기동 선결**: 없으면 CreateContainerConfigError(ImagePullBackOff 아님). 리허설=35, 운영=ESO/SealedSecrets.
-- **문서-구현 드리프트 경계**: PITFALLS 에 "해결"이라 적어도 실제 매니페스트 반영 여부를 grep 확인(deployment-hardening file base-path 가 k8s 에 빠져 있었음).
-- **한 DB·한 flyway_history 에 두 서비스 금지**: user↔admin sidb 공유 = checksum mismatch. 분리(admin→admindb) + 오염 시 DB 재생성.
-- **base/overlay 변경은 40 이 자동커밋 안 함**: images 핀만. deployment-hardening·DB_URL 은 별도 commit/push.
+- **env 를 줬다 ≠ 프로퍼티에 바인딩됐다**: kebab-case(`base-path`)의 relaxed binding 정식 env 는 대시 제거형(`BASEPATH`). 매니페스트가 언더스코어형(`BASE_PATH`)을 주면 `base.path` 로 갈려 매칭 보장 안 됨 → application.yml 에 **명시 placeholder** 로 env 명을 고정하라.
+- **로그 경로가 진단의 결정타**: file 저장 실패 로그가 `/application/uploads`(기본값)면 env 미바인딩, `/tmp/uploads`면 바인딩됨 — env 주입 여부를 로그 경로로 판별.
+- **거짓 기본값 금지**: 모듈(framework-file-s3) 없이 `type=s3` 는 "뜨지 않는 설정". 당장 안 쓰면 type=local 로(또는 모듈 의존 해제 후 s3).
+- **소스 변경 = 이미지 재빌드+promote / 매니페스트 변경 = git push 로 ArgoCD 가 읽음**: application.yml 은 이미지에 구워지므로 push 만으론 반영 안 됨 — promote(빌드) 필수.
 <!-- 갱신 끝 -->

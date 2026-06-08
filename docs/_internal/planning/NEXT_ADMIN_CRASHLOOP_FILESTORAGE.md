@@ -1,7 +1,11 @@
 # NEXT_ADMIN_CRASHLOOP_FILESTORAGE.md — admin-service CrashLoop 원인 규명 + 해결
 
+> ✅✅ **완료(2026-06-08)** — admin/user 모두 해소, promote 재완주로 8파드 1/1 Running 실측 PASS.
+> `42-diagnose-admin-file.sh` 가 admin 파드 env `/tmp/uploads` 주입 + file 에러 미재현 확인. 누적 정본은 `../HANDOFF.md` §7.
+> (완료 설계서 규약상 다음 정리 시 `docs/archive/` 이동 후보.)
+>
 > 인계 과제(HANDOFF_SUMMARY "바로 다음 할 일 1"): admin-service CrashLoop 원인 규명.
-> 결론: **file storage base-path 환경변수 바인딩 실패**. 코드(서비스 설정) 한 곳 + 검증으로 해소.
+> 결론: **file storage base-path 환경변수 바인딩 실패**(kebab-case relaxed binding 함정). 서비스 설정(application.yml) 명시 placeholder + user configmap type=local 로 해소.
 
 ---
 
